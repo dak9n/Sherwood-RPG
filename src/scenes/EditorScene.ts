@@ -24,6 +24,31 @@ export class EditorScene extends MapScene {
     // Capture выключен (false): иначе Phaser перехватит эти клавиши по умолчанию,
     // и их нельзя будет напечатать в поле переименования слоя.
     this.panKeys = this.input.keyboard?.addKeys('W,A,S,D', false) as PanKeys | undefined;
+    this.setupMousePan();
+  }
+
+  /** Панорама и зум мышью — только в редакторе: в игре камера ведёт игрока. */
+  private setupMousePan(): void {
+    const cam = this.cameras.main;
+
+    // Панорама — средней кнопкой или пробелом с левой. Проверять Pointer.isDown нельзя:
+    // он истинен для любой кнопки, и тогда кисть таскала бы карту.
+    const space = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+      const panning = p.middleButtonDown() || (p.leftButtonDown() && space?.isDown);
+      if (!panning) return;
+      cam.scrollX -= (p.x - p.prevPosition.x) / cam.zoom;
+      cam.scrollY -= (p.y - p.prevPosition.y) / cam.zoom;
+    });
+
+    // Зум колесом, с курсором как центром.
+    this.input.on('wheel', (p: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => {
+      const before = cam.getWorldPoint(p.x, p.y);
+      cam.setZoom(Phaser.Math.Clamp(cam.zoom * (dy > 0 ? 0.9 : 1.1), 0.25, 16));
+      const after = cam.getWorldPoint(p.x, p.y);
+      cam.scrollX += before.x - after.x;
+      cam.scrollY += before.y - after.y;
+    });
   }
 
   protected onUpdate(delta: number): void {

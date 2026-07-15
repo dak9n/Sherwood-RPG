@@ -61,6 +61,10 @@ export function buildTilemap(scene: Phaser.Scene, doc: MapDoc): MapView {
   for (const layerData of data.layers) {
     const layer = map.createBlankLayer(layerData.name, tilesets)!;
     layer.setVisible(layerData.visible);
+    // Слои получают глубину с запасом между ними: без этого у всех depth = 0,
+    // и любой спрайт рисуется либо поверх всей карты, либо под ней. Промежутки
+    // нужны, чтобы персонажей и объекты можно было вставлять между слоями.
+    layer.setDepth(view.layers.length * 10);
     view.layers.push(layer);
 
     const layerIndex = view.layers.length - 1;

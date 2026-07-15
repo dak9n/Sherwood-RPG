@@ -80,28 +80,11 @@ export abstract class MapScene extends Phaser.Scene {
   }
 
   private setupCamera(): void {
-    const cam = this.cameras.main;
     this.fitCamera();
     this.input.mouse?.disableContextMenu();
-
-    // Панорама — средней кнопкой или пробелом с левой. Проверять Pointer.isDown нельзя:
-    // он истинен для любой кнопки, и тогда кисть в редакторе таскала бы карту.
-    const space = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
-      const panning = p.middleButtonDown() || (p.leftButtonDown() && space?.isDown);
-      if (!panning) return;
-      cam.scrollX -= (p.x - p.prevPosition.x) / cam.zoom;
-      cam.scrollY -= (p.y - p.prevPosition.y) / cam.zoom;
-    });
-
-    // Зум колесом, с курсором как центром.
-    this.input.on('wheel', (p: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => {
-      const before = cam.getWorldPoint(p.x, p.y);
-      cam.setZoom(Phaser.Math.Clamp(cam.zoom * (dy > 0 ? 0.9 : 1.1), 0.25, 16));
-      const after = cam.getWorldPoint(p.x, p.y);
-      cam.scrollX += before.x - after.x;
-      cam.scrollY += before.y - after.y;
-    });
+    // Панорама и зум мышью живут в EditorScene: в игре камера ведёт игрока, и
+    // возможность утащить её колесом или средней кнопкой — это способ потерять
+    // персонажа за кадром, а не фича.
   }
 
   update(_time: number, delta: number): void {

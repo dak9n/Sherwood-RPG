@@ -49,7 +49,12 @@ export class Player {
     body.setSize(12, 8);
     body.setOffset(FRAME / 2 - 6, 40);
 
-    this.sprite.setDepth(1);
+    // Глубина слоёв карты — индекс*10 (см. buildTilemap). 215 ставит игрока под
+    // деревья и тростник (objects2/1/3, reeds — это 220..250) и над травой.
+    // Число привязано к текущему порядку слоёв: переставят слои — пересчитать.
+    // Правильное решение — сортировка по Y, но она нужна только когда за деревом
+    // надо будет прятаться по-настоящему.
+    this.sprite.setDepth(215);
     this.play('idle');
 
     const kb = scene.input.keyboard!;
