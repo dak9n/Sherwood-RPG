@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { MapDoc } from '../map/doc';
 import { resizeMap } from '../map/resize';
-import { withLayerAdded, withLayerRemoved, suggestLayerName } from '../map/layers';
+import { withLayerAdded, withLayerRemoved, withLayerMoved, suggestLayerName } from '../map/layers';
 import { EditorState } from './state';
 import { installTools, type Tool } from './tools';
 import { Overlay } from './overlay';
@@ -37,6 +37,7 @@ export function mountEditor(game: Phaser.Game): void {
   const redrawLayers = buildLayers(shell.layers, state, {
     onDelete: deleteLayer,
     onRename: (i, name) => state.renameLayer(i, name),
+    onReorder: reorderLayer,
   });
   buildPalette(shell.palette, state);
   shell.addLayer.onclick = addLayer;
@@ -253,6 +254,13 @@ export function mountEditor(game: Phaser.Game): void {
     const doc = new MapDoc(withLayerRemoved(state.doc.map, index));
     scene.rebuild(doc);
     state.relayer(doc, scene.view, index); // relayer сам поджимает индекс под укоротившийся список
+  }
+
+  function reorderLayer(from: number, to: number): void {
+    if (from === to) return; // бросили на то же место — ничего не делаем
+    const doc = new MapDoc(withLayerMoved(state.doc.map, from, to));
+    scene.rebuild(doc);
+    state.relayer(doc, scene.view, to); // перемещённый слой остаётся активным
   }
 
   // Горячие клавиши

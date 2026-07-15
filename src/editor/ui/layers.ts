@@ -1,14 +1,15 @@
 import type { EditorState } from '../state';
-import { layerNameError } from '../../map/layers';
+import { layerNameError, reorderTarget } from '../../map/layers';
 
 /**
- * Что панель слоёв умеет делать снаружи. Переименование и удаление меняют
- * структуру карты, поэтому исполняет их mount (там есть сцена для пересборки),
- * а панель только собирает UI и зовёт эти колбэки.
+ * Что панель слоёв умеет делать снаружи. Переименование, удаление и перестановка
+ * меняют структуру карты, поэтому исполняет их mount (там есть сцена для
+ * пересборки), а панель только собирает UI и зовёт эти колбэки.
  */
 export interface LayerListOps {
   onDelete: (index: number) => void;
   onRename: (index: number, name: string) => void;
+  onReorder: (from: number, to: number) => void;
 }
 
 /**
@@ -23,9 +24,19 @@ export interface LayerListOps {
  */
 export function buildLayers(host: HTMLElement, state: EditorState, ops: LayerListOps): () => void {
   const rows: HTMLDivElement[] = [];
+  /** Индекс слоя, который сейчас тащат (null — не тащим). */
+  let dragFrom: number | null = null;
+
+  function clearDropMarks(): void {
+    for (const r of rows) r.classList.remove('drop-above', 'drop-below');
+  }
 
   /** Инлайн-редактор имени. Проверку уникальности держим здесь: только тут видно поле ввода, куда вернуть фокус при ошибке. */
   function startRename(index: number, nameEl: HTMLSpanElement): void {
+    // Draggable-строка мешает ставить каретку и выделять текст в поле — гасим на время правки.
+    const row = nameEl.closest('.ed-layer') as HTMLElement | null;
+    if (row) row.draggable = false;
+
     const input = document.createElement('input');
     input.className = 'rn';
     input.value = state.doc.layers[index].name;
@@ -94,6 +105,43 @@ export function buildLayers(host: HTMLElement, state: EditorState, ops: LayerLis
       const row = document.createElement('div');
       row.className = 'ed-layer';
       row.dataset.index = String(i);
+
+      // Перетаскивание строки меняет порядок (z-order) слоёв. Список показан
+      // в обратном порядке, поэтому итоговый индекс считает reorderTarget.
+      row.draggable = true;
+      row.ondragstart = (e) => {
+        dragFrom = i;
+        row.classList.add('dragging');
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', String(i)); // без данных Firefox не начнёт перетаскивание
+        }
+      };
+      row.ondragover = (e) => {
+        if (dragFrom === null) return;
+        e.preventDefault(); // без этого drop не сработает
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        const rect = row.getBoundingClientRect();
+        const below = e.clientY - rect.top > rect.height / 2;
+        clearDropMarks();
+        row.classList.add(below ? 'drop-below' : 'drop-above');
+      };
+      row.ondrop = (e) => {
+        if (dragFrom === null) return;
+        e.preventDefault();
+        const rect = row.getBoundingClientRect();
+        const below = e.clientY - rect.top > rect.height / 2;
+        const to = reorderTarget(dragFrom, i, below, state.doc.layers.length);
+        const from = dragFrom;
+        dragFrom = null;
+        clearDropMarks();
+        ops.onReorder(from, to); // перерисует список
+      };
+      row.ondragend = () => {
+        dragFrom = null;
+        clearDropMarks();
+        row.classList.remove('dragging');
+      };
 
       const eye = document.createElement('span');
       eye.className = 'eye';

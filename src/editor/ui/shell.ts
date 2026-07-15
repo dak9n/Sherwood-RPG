@@ -47,6 +47,11 @@ const CSS = `
     border: 1px solid #63a354; border-radius: 2px; padding: 0 3px; outline: none;
   }
   .ed-layer input.rn.bad { border-color: #e2705f; }
+  .ed-layer { cursor: grab; }
+  .ed-layer.dragging { opacity: .5; cursor: grabbing; }
+  /* Куда встанет слой при отпускании: зелёная черта сверху или снизу строки. */
+  .ed-layer.drop-above { box-shadow: inset 0 2px 0 #63a354; }
+  .ed-layer.drop-below { box-shadow: inset 0 -2px 0 #63a354; }
 
   #ed-palette { flex: 1; overflow-y: auto; }
   .ed-ts-head {

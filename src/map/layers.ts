@@ -51,3 +51,32 @@ export function withLayerRemoved(map: GameMap, index: number): GameMap {
   layers.splice(index, 1);
   return { ...map, layers };
 }
+
+/**
+ * Переставляет слой с позиции from на позицию to (итоговый индекс в массиве).
+ * Чистая. Порядок слоёв в массиве — это z-order: 0 снизу, последний сверху.
+ */
+export function withLayerMoved(map: GameMap, from: number, to: number): GameMap {
+  const layers = map.layers.slice();
+  const [moved] = layers.splice(from, 1);
+  layers.splice(to, 0, moved);
+  return { ...map, layers };
+}
+
+/**
+ * Куда встанет перетаскиваемый слой. Панель показывает слои в обратном порядке
+ * (верх списка — верхний слой карты, то есть наибольший индекс), поэтому считаем
+ * в «экранных» позициях сверху вниз и переводим результат обратно в индекс массива.
+ *
+ * from — индекс взятого слоя; over — индекс слоя, на который бросают;
+ * insertBelow — курсор в нижней половине строки (визуально ниже over);
+ * n — всего слоёв. Бросок на самого себя даёт from (перестановки нет).
+ */
+export function reorderTarget(from: number, over: number, insertBelow: boolean, n: number): number {
+  const vFrom = n - 1 - from;
+  const vOver = n - 1 - over;
+  const vInsert = vOver + (insertBelow ? 1 : 0);
+  // При переносе вниз по списку изъятие сдвигает всё выше — компенсируем.
+  const vTo = vInsert > vFrom ? vInsert - 1 : vInsert;
+  return n - 1 - vTo;
+}
