@@ -9,6 +9,7 @@ import { saveMap, fetchRevision } from './save';
 import { askResize } from './resize-dialog';
 import { buildShell } from './ui/shell';
 import { buildLayers } from './ui/layers';
+import { showHelp } from './ui/help';
 import { buildPalette, revealBrush } from './ui/palette';
 import { WORLD_READY } from '../scenes/MapScene';
 import type { EditorScene } from '../scenes/EditorScene';
@@ -71,6 +72,7 @@ export function mountEditor(game: Phaser.Game): void {
   const redoBtn = btn('↷', 'Вернуть (Ctrl+Shift+Z)', () => state.redo());
   btn('Размер', 'Изменить размер карты', () => doResize());
   const saveBtn = btn('Сохранить', 'Записать карту в файл (Ctrl+S)', () => doSave());
+  btn('?', 'Горячие клавиши редактора', () => showHelp());
 
   let gridOn = true;
   gridBtn.setAttribute('aria-pressed', 'true');
