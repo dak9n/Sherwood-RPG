@@ -4,12 +4,13 @@ import { Player, type Strike } from '../game/player';
 import { Monster } from '../game/monster';
 import { findTallObjects } from '../game/tall-objects';
 import { pickSpawns } from '../game/spawn';
-import { MONSTERS, SPAWNS, xpToNext, rollDrop } from '../game/creatures';
+import { HERO, MONSTERS, SPAWNS, xpToNext, rollDrop } from '../game/creatures';
 import { Hud } from '../game/hud';
 import { draftCollision } from '../map/collision-draft';
 import { Loot, registerItemFrames } from '../game/loot';
-import { addToBag, takeOne, ITEMS, type Stack } from '../game/items';
+import { addToBag, takeOne, ITEMS, type Stack, type EquipSlot } from '../game/items';
 import { InventoryUi } from '../game/inventory-ui';
+import { equipFromBag, unequip, totalBonuses, type Equipped } from '../game/equipment';
 
 /** Целый зум: при дробном пиксели карты не легли бы на пиксели экрана. */
 const ZOOM = 3;
@@ -37,6 +38,8 @@ export class GameScene extends MapScene {
   private loot: Loot[] = [];
   /** Сумка игрока. */
   bag: (Stack | null)[] = new Array(BAG_SIZE).fill(null);
+  /** Надетое. */
+  equipped: Equipped = {};
 
   constructor() {
     super('world');
@@ -71,7 +74,22 @@ export class GameScene extends MapScene {
 
     this.inventory = new InventoryUi();
     this.inventory.setBag(this.bag);
+    this.inventory.setEquipped(this.equipped);
+    this.inventory.setHero(() => ({
+      hp: this.player.hp,
+      hpMax: this.player.hpMax,
+      mp: this.player.mp,
+      mpMax: this.player.mpMax,
+      level: this.player.level,
+      xp: this.player.xp,
+      xpNext: xpToNext(this.player.level),
+      // Урон растёт с уровнем — так же, как считает сам удар.
+      dmgMin: HERO.dmgMin + this.player.level - 1,
+      dmgMax: HERO.dmgMax + this.player.level - 1,
+    }));
     this.inventory.onUse = (index) => this.useItem(index);
+    this.inventory.onEquip = (index) => this.equipItem(index);
+    this.inventory.onUnequip = (slot) => this.unequipItem(slot as EquipSlot);
 
     // I открывает и закрывает сумку. Игру не останавливаем: пауки не ждут, пока
     // ты роешься в грибах, — иначе сумка станет способом переждать бой.
@@ -251,13 +269,39 @@ export class GameScene extends MapScene {
     this.inventory.render();
   }
 
+  /** Надеть вещь из ячейки сумки. */
+  private equipItem(index: number): void {
+    const res = equipFromBag(this.bag, index, this.equipped);
+    if (!res.ok) return;
+
+    this.applyGear();
+    this.inventory.render();
+  }
+
+  /** Снять надетое обратно в сумку. */
+  private unequipItem(slot: EquipSlot): void {
+    const res = unequip(this.equipped, slot, (id) => addToBag(this.bag, id, 1) === 0);
+    if (!res.ok) {
+      // Сумка полна: вещь осталась надетой, и игрок должен понять почему.
+      this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#b0a08a', 'сумка полна');
+      return;
+    }
+
+    this.applyGear();
+    this.inventory.render();
+  }
+
+  /** Пересчитать прибавки от вещей. Одно место — иначе бонусы разъедутся. */
+  private applyGear(): void {
+    this.player.setGear(totalBonuses(this.equipped));
+  }
+
   private gainXp(amount: number): void {
     this.player.xp += amount;
     while (this.player.xp >= xpToNext(this.player.level)) {
       this.player.xp -= xpToNext(this.player.level);
       this.player.level++;
-      this.player.hpMax += 10;
-      this.player.mpMax += 5;
+      this.player.growMax(10, 5);
       this.player.hp = this.player.hpMax;
       this.player.mp = this.player.mpMax;
       this.damageNumber(this.player.sprite.x, this.player.sprite.y - 40, 0, '#8ad46a', `УРОВЕНЬ ${this.player.level}`);
@@ -335,6 +379,7 @@ export class GameScene extends MapScene {
       this.player.xp,
       xpToNext(this.player.level),
     );
+    this.inventory.refreshStats();
     this.followPlayer();
   }
 

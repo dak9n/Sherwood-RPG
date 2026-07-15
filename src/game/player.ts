@@ -36,11 +36,43 @@ export class Player {
   readonly sprite: Phaser.Physics.Arcade.Sprite;
 
   hp = HERO.hp;
-  hpMax = HERO.hp;
   mp = HERO.mp;
-  mpMax = HERO.mp;
   level = 1;
   xp = 0;
+
+  /** Потолок от героя и уровней. Прибавка от вещей сюда не входит — см. hpMax. */
+  private hpBase = HERO.hp;
+  private mpBase = HERO.mp;
+
+  /**
+   * Что добавляют надетые вещи. Ставит сцена при каждой смене экипировки.
+   *
+   * Держим отдельно от базовых чисел: иначе, сняв меч, пришлось бы вычитать
+   * его урон обратно — и любая ошибка в вычитании копилась бы навсегда.
+   */
+  gear = { dmg: 0, def: 0, speed: 0, hp: 0, mp: 0 };
+
+  get hpMax(): number {
+    return this.hpBase + this.gear.hp;
+  }
+
+  get mpMax(): number {
+    return this.mpBase + this.gear.mp;
+  }
+
+  /** Уровень поднимает потолок навсегда. */
+  growMax(hp: number, mp: number): void {
+    this.hpBase += hp;
+    this.mpBase += mp;
+  }
+
+  /** Сменилась экипировка. */
+  setGear(bonus: { dmg: number; def: number; speed: number; hp: number; mp: number }): void {
+    this.gear = { ...bonus };
+    // Сняли шлем — потолок упал, и текущее здоровье не должно висеть выше него.
+    this.hp = Math.min(this.hp, this.hpMax);
+    this.mp = Math.min(this.mp, this.mpMax);
+  }
 
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
   private dir: Dir = 'down';
@@ -135,7 +167,9 @@ export class Player {
     this.didHit = true;
     const reach = this.heavySwing ? HERO.reach + 8 : HERO.reach;
     const width = this.heavySwing ? HERO.hitW + 8 : HERO.hitW;
-    const base = rollDamage(HERO.dmgMin + (this.level - 1), HERO.dmgMax + (this.level - 1));
+    // Урон = база + уровень + оружие. Меч должен чувствоваться в первом же ударе.
+    const bonus = this.level - 1 + this.gear.dmg;
+    const base = rollDamage(HERO.dmgMin + bonus, HERO.dmgMax + bonus);
 
     this.onStrike({
       rect: hitRect(this.sprite.x, this.sprite.y, this.dir, reach, width),
@@ -181,7 +215,10 @@ export class Player {
   takeDamage(amount: number, now: number): boolean {
     if (this.state === 'dead' || now < this.invulnUntil) return false;
 
-    this.hp -= amount;
+    // Броня режет урон, но не в ноль: неуязвимый герой — не игра. Минимум
+    // единица, иначе с полным набором пауки перестали бы существовать.
+    const taken = Math.max(1, amount - this.gear.def);
+    this.hp -= taken;
     this.invulnUntil = now + HERO.iframes;
     this.lastHurtAt = now;
 
@@ -248,9 +285,12 @@ export class Player {
     const vx = (k.D.isDown || k.RIGHT.isDown ? 1 : 0) - (k.A.isDown || k.LEFT.isDown ? 1 : 0);
     const vy = (k.S.isDown || k.DOWN.isDown ? 1 : 0) - (k.W.isDown || k.UP.isDown ? 1 : 0);
 
-    body.setVelocity(vx * HERO.speed, vy * HERO.speed);
+    // Сапоги ускоряют, латы замедляют. Ниже 30 не опускаем: в латах игрок должен
+    // быть медленным, а не приклеенным к земле.
+    const speed = Math.max(30, HERO.speed + this.gear.speed);
+    body.setVelocity(vx * speed, vy * speed);
     // По диагонали иначе выходило бы в 1.41 раза быстрее, чем по прямой.
-    body.velocity.normalize().scale(HERO.speed);
+    body.velocity.normalize().scale(speed);
 
     this.updateDepth();
 
