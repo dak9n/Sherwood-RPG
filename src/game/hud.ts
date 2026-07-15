@@ -1,7 +1,7 @@
 /**
- * Полоски здоровья и маны слева сверху.
+ * Панель героя слева сверху: портрет, здоровье, мана, опыт.
  *
- * Рисуются DOM-ом поверх канваса, а не средствами Phaser. Причина простая:
+ * Рисуется DOM-ом поверх канваса, а не средствами Phaser. Причина простая:
  * камера игры увеличена втрое, и всё, что рисуется внутри сцены, увеличивается
  * вместе с ней — интерфейс раздулся бы втрое, а цифры на пиксельном
  * увеличении превратились бы в кашу.
@@ -10,44 +10,63 @@
  * панель редактора: та ужимает канвас, и сцене приходится пересчитывать камеру.
  */
 
+const UI = 'assets/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/character_panel.png';
+
+/**
+ * Раскладка внутри character_panel.png (измерено по пикселям).
+ *
+ * В листе панель нарисована дважды: слева пустая, справа — с полными полосками.
+ * Берём пустую как фон, а куски полосок из правой — как заполнение. Полоски
+ * разной длины не по прихоти: панель сужается к хвосту, и рисунок это учитывает.
+ */
+const PANEL = { x: 2, y: 2, w: 84, h: 30 };
+const FILLED = { x: 98, y: 2 };
+const BARS = {
+  hp: { x: 30, y: 8, w: 52, h: 2 },
+  mp: { x: 32, y: 13, w: 43, h: 2 },
+  xp: { x: 32, y: 18, w: 37, h: 2 },
+} as const;
+
+/** Во сколько раз увеличить панель: в исходном виде она 84x30 и нечитаема. */
+const SCALE = 3;
+
 const CSS = `
   #hud {
     position: absolute; inset: 0; z-index: 10;
     /* Иначе невидимый слой съест все клики по игре. */
     pointer-events: none;
-    font: 11px/1 system-ui, sans-serif; color: #fff;
-    text-shadow: 0 1px 2px #000;
+    font: 10px/1 monospace; color: #f4e4c1;
+    text-shadow: 1px 1px 0 #000;
   }
-  #hud .panel { position: absolute; left: 14px; top: 14px; display: flex; gap: 8px; }
-  #hud .portrait {
-    width: 44px; height: 44px; border-radius: 4px;
-    background: #2b3a24 linear-gradient(160deg, #4a6b3c, #223018);
-    border: 2px solid #14200f; box-shadow: 0 2px 6px rgba(0,0,0,.5);
-  }
-  #hud .bars { display: flex; flex-direction: column; gap: 4px; justify-content: center; }
-  #hud .bar {
-    position: relative; width: 190px; height: 14px;
-    background: #10151a; border: 1px solid #05080a; border-radius: 7px;
-    box-shadow: inset 0 1px 2px rgba(0,0,0,.8), 0 1px 0 rgba(255,255,255,.06);
-    overflow: hidden;
+  #hud .panel {
+    position: absolute; left: 12px; top: 12px;
+    width: ${PANEL.w}px; height: ${PANEL.h}px;
+    background-image: url(${UI});
+    background-position: -${PANEL.x}px -${PANEL.y}px;
+    image-rendering: pixelated;
+    transform: scale(${SCALE});
+    transform-origin: top left;
   }
   #hud .fill {
-    position: absolute; inset: 0;
-    transform-origin: left center;
-    /* Заполняем через scaleX, а не width: это не заставляет браузер
-       пересчитывать разметку каждый кадр. Градиент вертикальный — scaleX его не растянет. */
-    transition: transform .12s linear;
-  }
-  #hud .hp .fill { background: linear-gradient(#e05c4a, #a32b1e); }
-  #hud .mp .fill { background: linear-gradient(#4aa3e0, #1e5aa3); }
-  #hud .num {
-    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-    font-variant-numeric: tabular-nums; font-size: 10px;
+    position: absolute; height: 2px;
+    background-image: url(${UI});
+    image-rendering: pixelated;
+    /* Ширина, а не scaleX: полоска склеена из пиксельного рисунка, и растягивать
+       её нельзя — торцы поедут. Обрезаем. */
+    transition: width .12s linear;
+    overflow: hidden;
   }
   #hud .lvl {
-    position: absolute; left: 0; top: 48px; width: 44px; text-align: center;
-    font-size: 10px; color: #d8c07a;
+    position: absolute; left: 12px; top: ${12 + PANEL.h * SCALE + 4}px;
+    font-size: 11px;
   }
+  #hud .nums {
+    position: absolute; left: ${12 + PANEL.w * SCALE + 8}px; top: 16px;
+    display: flex; flex-direction: column; gap: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  #hud .nums .hp { color: #e05c4a; }
+  #hud .nums .mp { color: #5ba3e0; }
   #hud .death {
     position: absolute; inset: 0; display: none;
     align-items: center; justify-content: center;
@@ -58,12 +77,11 @@ const CSS = `
 
 export class Hud {
   private root: HTMLDivElement;
-  private hpFill: HTMLDivElement;
-  private mpFill: HTMLDivElement;
+  private style: HTMLStyleElement;
+  private fills: Record<'hp' | 'mp' | 'xp', HTMLDivElement>;
+  private lvlEl: HTMLDivElement;
   private hpNum: HTMLSpanElement;
   private mpNum: HTMLSpanElement;
-  private lvlEl: HTMLDivElement;
-  private style: HTMLStyleElement;
   private last = '';
 
   constructor() {
@@ -73,39 +91,50 @@ export class Hud {
 
     this.root = document.createElement('div');
     this.root.id = 'hud';
+
+    const bar = (kind: keyof typeof BARS) => {
+      const b = BARS[kind];
+      // Кусок полоски берём из правой (заполненной) панели листа.
+      return `<div class="fill ${kind}" style="left:${b.x}px; top:${b.y}px;
+        background-position:-${FILLED.x + b.x}px -${FILLED.y + b.y}px"></div>`;
+    };
+
     this.root.innerHTML = `
       <div class="panel">
-        <div>
-          <div class="portrait"></div>
-          <div class="lvl">ур. 1</div>
-        </div>
-        <div class="bars">
-          <div class="bar hp"><div class="fill"></div><span class="num"></span></div>
-          <div class="bar mp"><div class="fill"></div><span class="num"></span></div>
-        </div>
+        ${bar('hp')}${bar('mp')}${bar('xp')}
+      </div>
+      <div class="lvl">ур. 1</div>
+      <div class="nums">
+        <span class="hp"></span><span class="mp"></span>
       </div>
       <div class="death">ТЫ ПОГИБ</div>
     `;
     document.body.append(this.root);
 
-    this.hpFill = this.root.querySelector('.hp .fill')!;
-    this.mpFill = this.root.querySelector('.mp .fill')!;
-    this.hpNum = this.root.querySelector('.hp .num')!;
-    this.mpNum = this.root.querySelector('.mp .num')!;
+    this.fills = {
+      hp: this.root.querySelector('.fill.hp')!,
+      mp: this.root.querySelector('.fill.mp')!,
+      xp: this.root.querySelector('.fill.xp')!,
+    };
     this.lvlEl = this.root.querySelector('.lvl')!;
+    this.hpNum = this.root.querySelector('.nums .hp')!;
+    this.mpNum = this.root.querySelector('.nums .mp')!;
   }
 
-  set(hp: number, hpMax: number, mp: number, mpMax: number, level: number): void {
+  set(hp: number, hpMax: number, mp: number, mpMax: number, level: number, xp = 0, xpNext = 1): void {
     // Трогаем DOM, только когда есть что менять: set зовётся каждый кадр.
-    const key = `${Math.ceil(hp)}/${hpMax}/${Math.floor(mp)}/${mpMax}/${level}`;
+    const key = `${Math.ceil(hp)}/${hpMax}/${Math.floor(mp)}/${mpMax}/${level}/${Math.floor(xp)}`;
     if (key === this.last) return;
     this.last = key;
 
-    this.hpFill.style.transform = `scaleX(${Math.max(0, hp) / hpMax})`;
-    this.mpFill.style.transform = `scaleX(${Math.max(0, mp) / mpMax})`;
-    this.hpNum.textContent = `${Math.ceil(Math.max(0, hp))} / ${hpMax}`;
-    this.mpNum.textContent = `${Math.floor(Math.max(0, mp))} / ${mpMax}`;
+    const frac = (v: number, max: number) => Math.max(0, Math.min(1, v / max));
+    this.fills.hp.style.width = `${BARS.hp.w * frac(hp, hpMax)}px`;
+    this.fills.mp.style.width = `${BARS.mp.w * frac(mp, mpMax)}px`;
+    this.fills.xp.style.width = `${BARS.xp.w * frac(xp, xpNext)}px`;
+
     this.lvlEl.textContent = `ур. ${level}`;
+    this.hpNum.textContent = `${Math.ceil(Math.max(0, hp))}/${hpMax}`;
+    this.mpNum.textContent = `${Math.floor(Math.max(0, mp))}/${mpMax}`;
   }
 
   showDeath(on: boolean): void {

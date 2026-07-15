@@ -217,7 +217,15 @@ export class GameScene extends MapScene {
       this.player.respawn(x, y, now);
     }
 
-    this.hud.set(this.player.hp, this.player.hpMax, this.player.mp, this.player.mpMax, this.player.level);
+    this.hud.set(
+      this.player.hp,
+      this.player.hpMax,
+      this.player.mp,
+      this.player.mpMax,
+      this.player.level,
+      this.player.xp,
+      xpToNext(this.player.level),
+    );
     this.followPlayer();
   }
 
