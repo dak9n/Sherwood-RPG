@@ -17,9 +17,12 @@ export function validateMap(map: unknown): string[] {
   const m = map as Record<string, unknown>;
 
   if (!m || typeof m !== 'object') return ['карта не объект'];
-  // Версия 2 добавила проходимость. Отказ громкий и специально: код, который
-  // о ней не знает, сохранил бы карту без неё и стёр бы работу молча.
-  if (m.version !== 2) errors.push(`version должен быть 2, а не ${JSON.stringify(m.version)}`);
+  // Версия 2 добавила проходимость, версия 3 вынесла тайлсеты в общий каталог.
+  // Отказ громкий и специально: код, который о них не знает, сохранил бы карту
+  // без них и стёр бы работу молча.
+  if (m.version !== 2 && m.version !== 3) {
+    errors.push(`version должен быть 2 или 3, а не ${JSON.stringify(m.version)}`);
+  }
 
   const isPositiveInt = (v: unknown): v is number => Number.isInteger(v) && (v as number) > 0;
   for (const key of ['width', 'height', 'tileWidth', 'tileHeight']) {

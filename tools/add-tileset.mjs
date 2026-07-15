@@ -1,20 +1,18 @@
 #!/usr/bin/env node
 /**
- * Добавляет картинку в карту как тайлсет — после этого она появляется в палитре
- * редактора, и ею можно рисовать.
+ * Добавляет картинку в общий каталог тайлсетов — после этого она появляется в
+ * палитре редактора СРАЗУ ВО ВСЕХ картах, и ею можно рисовать.
  *
  * Запуск:
  *   node tools/add-tileset.mjs <файл.png> [ещё.png ...]
- *   node tools/add-tileset.mjs --map Жека public/assets/road/PNG_Tiled/Road1.png
  *
  * Что делает:
  *   - копирует картинку в public/assets/tilesets/ (оттуда её отдаёт сервер);
  *   - считает сетку по размеру картинки (тайл 16x16);
- *   - дописывает тайлсет в карту, продолжая нумерацию тайлов;
- *   - сохраняет карту в том же формате, что и редактор.
+ *   - дописывает тайлсет в каталог, продолжая нумерацию.
  *
  * Руками в json это делать нельзя: номер первого тайла (firstId) должен
- * продолжать нумерацию без дыр и пересечений, иначе номера тайлов на карте
+ * продолжать нумерацию без дыр и пересечений, иначе номера тайлов на картах
  * начнут указывать не туда, и уже нарисованное поедет.
  */
 
@@ -24,62 +22,35 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const TILESET_DIR = resolve(root, 'public/assets/tilesets');
-const MAPS_DIR = resolve(root, 'public/assets/maps');
+const CATALOG = resolve(root, 'public/assets/tilesets.json');
+const TILE = 16;
 
 /** Размер PNG из заголовка: ширина и высота лежат в IHDR сразу за подписью. */
 function pngSize(path) {
   const buf = readFileSync(path);
-  const isPng = buf.readUInt32BE(0) === 0x89504e47;
-  if (!isPng) throw new Error(`${basename(path)}: это не png`);
+  if (buf.readUInt32BE(0) !== 0x89504e47) throw new Error(`${basename(path)}: это не png`);
   return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
 }
 
-/** Тот же формат, что пишет редактор: по строке на слой, чтобы git видел правки. */
-function serialize(map) {
-  const tilesets = map.tilesets.map((t) => '    ' + JSON.stringify(t)).join(',\n');
-  const layers = map.layers.map((l) => '    ' + JSON.stringify(l)).join(',\n');
-  return (
-    '{\n' +
-    `  "version": ${map.version},\n` +
-    `  "width": ${map.width},\n` +
-    `  "height": ${map.height},\n` +
-    `  "tileWidth": ${map.tileWidth},\n` +
-    `  "tileHeight": ${map.tileHeight},\n` +
-    '  "tilesets": [\n' + tilesets + '\n  ],\n' +
-    '  "layers": [\n' + layers + '\n  ],\n' +
-    `  "collision": ${JSON.stringify(map.collision)}\n` +
-    '}\n'
-  );
+function serializeCatalog(catalog) {
+  const tilesets = catalog.tilesets.map((t) => '    ' + JSON.stringify(t)).join(',\n');
+  return '{\n  "version": 1,\n  "tilesets": [\n' + tilesets + '\n  ]\n}\n';
 }
 
-const args = process.argv.slice(2);
-let mapName = 'forest';
-const files = [];
-for (let i = 0; i < args.length; i++) {
-  if (args[i] === '--map') mapName = args[++i];
-  else files.push(args[i]);
-}
-
+const files = process.argv.slice(2);
 if (!files.length) {
   console.error('нужен хотя бы один png: node tools/add-tileset.mjs <файл.png> ...');
   process.exit(1);
 }
 
-const mapPath = resolve(MAPS_DIR, `${mapName}.json`);
-if (!existsSync(mapPath)) {
-  console.error(`нет карты ${mapPath}`);
+if (!existsSync(CATALOG)) {
+  console.error(`нет каталога ${CATALOG} — сначала node tools/extract-tilesets.mjs`);
   process.exit(1);
 }
 
-const map = JSON.parse(readFileSync(mapPath, 'utf8'));
-
-// Старые карты не знали проходимости — дополняем, иначе формат не сойдётся.
-if (!Array.isArray(map.collision) || map.collision.length !== map.width * map.height) {
-  map.collision = new Array(map.width * map.height).fill(0);
-}
-map.version = 2;
-
+const catalog = JSON.parse(readFileSync(CATALOG, 'utf8'));
 let added = 0;
+
 for (const file of files) {
   const src = resolve(root, file);
   if (!existsSync(src)) {
@@ -90,8 +61,8 @@ for (const file of files) {
   const image = basename(src);
   const name = image.replace(/\.png$/i, '');
 
-  if (map.tilesets.some((t) => t.name === name)) {
-    console.error(`  пропущен ${name}: тайлсет с таким именем уже в карте`);
+  if (catalog.tilesets.some((t) => t.name === name)) {
+    console.error(`  пропущен ${name}: уже в каталоге`);
     continue;
   }
   // Разные картинки под одним именем затёрли бы друг друга в общей папке.
@@ -106,25 +77,15 @@ for (const file of files) {
   }
 
   const { width, height } = pngSize(src);
-  const columns = Math.floor(width / map.tileWidth);
-  const rows = Math.floor(height / map.tileHeight);
+  const columns = Math.floor(width / TILE);
+  const rows = Math.floor(height / TILE);
   const tileCount = columns * rows;
 
-  // Нумерация продолжается за последним тайлом: дыры и пересечения сдвинули бы
-  // номера уже нарисованных тайлов.
-  const firstId = map.tilesets.reduce((max, t) => Math.max(max, t.firstId + t.tileCount), 1);
+  // Нумерация продолжается за последним тайлом каталога.
+  const firstId = catalog.tilesets.reduce((max, t) => Math.max(max, t.firstId + t.tileCount), 1);
 
   copyFileSync(src, dest);
-  map.tilesets.push({
-    firstId,
-    name,
-    image,
-    imageWidth: width,
-    imageHeight: height,
-    columns,
-    tileCount,
-    animations: {},
-  });
+  catalog.tilesets.push({ firstId, name, image, imageWidth: width, imageHeight: height, columns, tileCount, animations: {} });
 
   console.log(`  + ${name}: ${width}x${height} -> ${columns}x${rows} = ${tileCount} тайлов, номера ${firstId}..${firstId + tileCount - 1}`);
   added++;
@@ -135,7 +96,7 @@ if (!added) {
   process.exit(0);
 }
 
-writeFileSync(mapPath, serialize(map));
+writeFileSync(CATALOG, serializeCatalog(catalog));
 console.log();
-console.log(`карта ${mapName}: тайлсетов ${map.tilesets.length}, тайлов ${map.tilesets.reduce((n, t) => n + t.tileCount, 0)}`);
-console.log(`записано: ${mapPath}`);
+console.log(`каталог: ${catalog.tilesets.length} тайлсетов, ${catalog.tilesets.reduce((n, t) => n + t.tileCount, 0)} тайлов`);
+console.log('доступны во всех картах сразу');

@@ -18,7 +18,9 @@ export function ensureCollision(map: GameMap): GameMap {
   if (!Array.isArray(map.collision) || map.collision.length !== map.width * map.height) {
     map.collision = new Array<number>(map.width * map.height).fill(UNSET);
   }
-  map.version = 2;
+  // Поднимаем версию, но не понижаем: карта версии 3 (тайлсеты в общем каталоге)
+  // не должна откатываться до 2 только потому, что через неё прошла эта миграция.
+  if (!(map.version >= 2)) map.version = 2;
   return map;
 }
 

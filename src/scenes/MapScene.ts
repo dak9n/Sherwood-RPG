@@ -1,10 +1,13 @@
 import Phaser from 'phaser';
 import type { GameMap } from '../map/types';
 import { MapDoc, ensureCollision } from '../map/doc';
+import { applyCatalog, CATALOG_URL, type TilesetCatalog } from '../map/catalog';
 import { buildTilemap, updateAnimations, type MapView } from '../map/view';
 
 /** Ключ карты в json-кэше Phaser — просто ручка, не имя файла. */
 const MAP_CACHE_KEY = 'map';
+/** Общий каталог тайлсетов: один на все карты. */
+const CATALOG_CACHE_KEY = 'tileset-catalog';
 const MAPS_URL = 'assets/maps/';
 const DEFAULT_MAP = 'forest';
 const TILESET_URL = 'assets/tilesets/';
@@ -33,6 +36,9 @@ export abstract class MapScene extends Phaser.Scene {
   }
 
   preload(): void {
+    // Каталог тайлсетов нужен всегда — даже новой карте, которую передали в память.
+    this.load.json(CATALOG_CACHE_KEY, CATALOG_URL);
+
     if (this.injected) return; // карта уже в памяти — грузить нечего
     // Какую карту грузить, говорит registry (ставит стартовый экран редактора).
     // Игра его не трогает → падает на DEFAULT_MAP='forest', поведение прежнее.
@@ -44,7 +50,12 @@ export abstract class MapScene extends Phaser.Scene {
     // Источник — либо переданная в память новая карта, либо загруженная с диска.
     // Карта на диске может быть ещё первой версии, без проходимости — дополняем
     // в памяти. На диск это попадёт при первом сохранении из редактора.
-    const data = ensureCollision(this.injected ?? (this.cache.json.get(MAP_CACHE_KEY) as GameMap));
+    const raw = ensureCollision(this.injected ?? (this.cache.json.get(MAP_CACHE_KEY) as GameMap));
+
+    // Тайлсеты приходят из общего каталога: в файле карты версии 3 их нет.
+    // Старая карта со своим списком его и оставит — иначе её номера тайлов поедут.
+    const catalog = this.cache.json.get(CATALOG_CACHE_KEY) as TilesetCatalog;
+    const data = applyCatalog(raw, catalog);
 
     // Картинки тайлсетов известны только из карты, поэтому это отдельный, второй
     // проход загрузки. Добавлять их из колбэка первого прохода нельзя: если очередь

@@ -43,11 +43,21 @@ export interface Layer {
 export type Pass = 0 | 1 | 2;
 
 export interface GameMap {
-  version: 2;
+  version: 2 | 3;
   width: number;
   height: number;
   tileWidth: number;
   tileHeight: number;
+  /**
+   * Тайлсеты карты.
+   *
+   * В файле версии 3 их НЕТ — они лежат в общем каталоге assets/tilesets.json,
+   * один на все карты. Сюда они подставляются при загрузке (см. map/catalog.ts),
+   * поэтому в памяти карта выглядит как раньше и остальной код о каталоге не знает.
+   *
+   * У карт версии 2 список остаётся свой: их номера тайлов уже расставлены по
+   * нему, и подмена каталогом сдвинула бы нарисованное.
+   */
   tilesets: Tileset[];
   layers: Layer[];
   /**
