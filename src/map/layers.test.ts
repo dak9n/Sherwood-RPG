@@ -6,7 +6,7 @@ import type { GameMap } from './types.ts';
 /** Карта 2x2 с двумя слоями: a (снизу, с тайлами), b (сверху, пустой). */
 function makeMap(): GameMap {
   return {
-    version: 1,
+    version: 2,
     width: 2,
     height: 2,
     tileWidth: 16,
@@ -18,6 +18,7 @@ function makeMap(): GameMap {
       { name: 'a', visible: true, data: [1, 2, 3, 4] },
       { name: 'b', visible: true, data: [0, 0, 0, 0] },
     ],
+    collision: [1, 1, 1, 1],
   };
 }
 
