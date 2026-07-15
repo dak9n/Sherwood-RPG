@@ -32,6 +32,18 @@ export class EditorState {
   private redoStack: CellEdit[][] = [];
   private listeners: Listener[] = [];
 
+  /**
+   * Слои, скрытые «глазом», — по ИМЕНИ, а не по номеру.
+   *
+   * Номера сдвигаются, стоит вставить или удалить слой, и скрытие переехало бы
+   * на соседа. Имена уникальны — это проверяет формат.
+   *
+   * Скрытие живёт только здесь и в файл не пишется: visible — поле формата,
+   * игра его читает. Погасил слой, чтобы заглянуть под него, сохранил — и друг
+   * получил бы карту без объектов.
+   */
+  private hidden = new Set<string>();
+
   constructor(
     public doc: MapDoc,
     public view: MapView,
@@ -116,7 +128,40 @@ export class EditorState {
     this.redoStack.length = 0;
     this.activeLayer = Math.max(0, Math.min(activeLayer, doc.layers.length - 1));
     this.dirty = true;
+    // Пересборка отдала новые слои Phaser, и все они видимые: возвращаем скрытие,
+    // иначе спрятанные «глазом» слои проявлялись бы после каждого добавления слоя.
+    this.applyHidden();
     this.emit();
+  }
+
+  /** Скрыт ли слой «глазом». */
+  isHidden(index: number): boolean {
+    return this.hidden.has(this.doc.layers[index]?.name);
+  }
+
+  /** Спрятать или показать слой на экране. В файл это не пишется. */
+  toggleHidden(index: number): boolean {
+    const name = this.doc.layers[index]?.name;
+    if (!name) return false;
+
+    if (this.hidden.has(name)) this.hidden.delete(name);
+    else this.hidden.add(name);
+
+    this.applyHidden();
+    return !this.hidden.has(name);
+  }
+
+  /**
+   * Приводит видимость слоёв Phaser в соответствие с документом и «глазом».
+   *
+   * Слой виден, только если он видим по формату И не спрятан глазом: это два
+   * разных выключателя, и путать их нельзя.
+   */
+  applyHidden(): void {
+    for (let i = 0; i < this.doc.layers.length; i++) {
+      const layer = this.doc.layers[i];
+      this.view.layers[i]?.setVisible(layer.visible && !this.hidden.has(layer.name));
+    }
   }
 
   /** После смены размера активный слой сохраняем, лишь поджимая под новый список. */
@@ -130,7 +175,12 @@ export class EditorState {
    * имя лишь подпись, на экране его нет.
    */
   renameLayer(index: number, name: string): void {
+    const old = this.doc.map.layers[index].name;
     this.doc.map.layers[index].name = name;
+
+    // Скрытие помнится по имени — переносим его на новое, иначе слой проявится.
+    if (this.hidden.delete(old)) this.hidden.add(name);
+
     this.dirty = true;
     this.emit();
   }

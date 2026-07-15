@@ -104,6 +104,9 @@ export function buildLayers(host: HTMLElement, state: EditorState, ops: LayerLis
       const layer = state.doc.layers[i];
       const row = document.createElement('div');
       row.className = 'ed-layer';
+      // Зачёркнутое имя ставим при отрисовке, а не только по клику: список
+      // перерисовывается на каждую правку, и пометка иначе слетала бы.
+      if (state.isHidden(i)) row.classList.add('hidden');
       row.dataset.index = String(i);
 
       // Перетаскивание строки меняет порядок (z-order) слоёв. Список показан
@@ -145,14 +148,15 @@ export function buildLayers(host: HTMLElement, state: EditorState, ops: LayerLis
 
       const eye = document.createElement('span');
       eye.className = 'eye';
-      eye.textContent = state.view.layers[i].visible ? '👁' : '·';
+      // Спрашиваем состояние, а не Phaser: слои Phaser пересоздаются при
+      // добавлении слоя и ресайзе, и приходят видимыми — скрытие живёт в state.
+      eye.textContent = state.isHidden(i) ? '·' : '👁';
       eye.title = 'Скрыть слой только на экране (в файл не пишется)';
       eye.onclick = (e) => {
         e.stopPropagation();
-        const next = !state.view.layers[i].visible;
-        state.view.layers[i].setVisible(next);
-        eye.textContent = next ? '👁' : '·';
-        row.classList.toggle('hidden', !next);
+        const visible = state.toggleHidden(i);
+        eye.textContent = visible ? '👁' : '·';
+        row.classList.toggle('hidden', !visible);
       };
 
       const name = document.createElement('span');
