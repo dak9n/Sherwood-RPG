@@ -218,16 +218,16 @@ export function mountEditor(game: Phaser.Game): void {
 
   function deleteLayer(index: number): void {
     if (state.doc.layers.length <= 1) return; // последний слой удалять нельзя
+    const name = state.doc.layers[index].name;
     const filled = state.doc.countFilled(index);
-    if (
-      filled > 0 &&
-      !confirm(
-        `Слой «${state.doc.layers[index].name}»: ${filled} тайлов будут потеряны безвозвратно.\n` +
-          'Undo это не вернёт. Удалить слой?',
-      )
-    ) {
-      return;
-    }
+    // Спрашиваем всегда: 🗑 легко задеть, а удаление структурно и чистит историю
+    // Undo. Слой с тайлами предупреждает жёстче — их уже не вернуть.
+    const question =
+      filled > 0
+        ? `Слой «${name}»: ${filled} тайлов будут потеряны безвозвратно.\nUndo это не вернёт. Удалить слой?`
+        : `Удалить слой «${name}»?`;
+    if (!confirm(question)) return;
+
     const doc = new MapDoc(withLayerRemoved(state.doc.map, index));
     scene.rebuild(doc);
     state.relayer(doc, scene.view, index); // relayer сам поджимает индекс под укоротившийся список
