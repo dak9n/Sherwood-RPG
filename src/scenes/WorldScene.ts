@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { GameMap } from '../map/types';
 import { MapDoc } from '../map/doc';
 import { buildTilemap, updateAnimations, type MapView } from '../map/view';
+import { Player } from '../game/player';
 
 const MAP_KEY = 'forest';
 const MAP_URL = 'assets/maps/forest.json';
@@ -19,6 +20,7 @@ export class WorldScene extends Phaser.Scene {
   doc!: MapDoc;
   view!: MapView;
   ready = false;
+  player?: Player;
   private panKeys?: PanKeys;
 
   constructor() {
@@ -27,6 +29,7 @@ export class WorldScene extends Phaser.Scene {
 
   preload(): void {
     this.load.json(MAP_KEY, MAP_URL);
+    Player.preload(this);
   }
 
   create(): void {
@@ -43,10 +46,49 @@ export class WorldScene extends Phaser.Scene {
       this.doc = new MapDoc(data);
       this.view = buildTilemap(this, this.doc);
       this.setupCamera();
+
+      if (!this.registry.get('editMode')) this.spawnPlayer();
+
       this.ready = true;
       this.events.emit(WORLD_READY);
     });
     this.load.start();
+  }
+
+  private spawnPlayer(): void {
+    // Ставим в середину нарисованного леса, а не карты: холст расширяли вправо
+    // и вниз, поэтому центр карты — пустое поле.
+    const { x, y } = this.drawnCenter();
+    this.player = new Player(this, x, y);
+
+    const cam = this.cameras.main;
+    cam.setZoom(3);
+    cam.startFollow(this.player.sprite, true, 0.1, 0.1);
+    cam.setBounds(0, 0, this.doc.width * this.doc.map.tileWidth, this.doc.height * this.doc.map.tileHeight);
+  }
+
+  /** Центр области, где вообще что-то нарисовано. */
+  private drawnCenter(): { x: number; y: number } {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    for (const layer of this.doc.layers) {
+      for (let i = 0; i < layer.data.length; i++) {
+        if (!layer.data[i]) continue;
+        const x = i % this.doc.width;
+        const y = Math.floor(i / this.doc.width);
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+
+    const tw = this.doc.map.tileWidth;
+    const th = this.doc.map.tileHeight;
+    return { x: ((minX + maxX) / 2) * tw, y: ((minY + maxY) / 2) * th };
   }
 
   /** Пересобрать карту после смены размера: у Phaser нет ресайза тайлмапа. */
@@ -104,7 +146,11 @@ export class WorldScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     if (!this.ready) return;
     updateAnimations(this.view, delta);
-    this.panCamera(delta);
+
+    // WASD достаются либо игроку, либо камере — обоим сразу нельзя, иначе карта
+    // уезжала бы из-под персонажа. В редакторе игрока нет, там WASD двигают камеру.
+    if (this.player) this.player.update();
+    else this.panCamera(delta);
   }
 
   /**
