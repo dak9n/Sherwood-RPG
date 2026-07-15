@@ -34,6 +34,15 @@ export interface HeroStats {
   regenDelay: number;
 }
 
+/** Что может упасть с монстра. Броски независимые: может упасть всё сразу. */
+export interface DropEntry {
+  id: string;
+  /** Вероятность от 0 до 1. */
+  chance: number;
+  min?: number;
+  max?: number;
+}
+
 export interface MonsterStats {
   /** Имя папки спрайтов: Mushroom1/2/3. */
   sheet: string;
@@ -57,6 +66,8 @@ export interface MonsterStats {
   /** Дальше этого от места появления не уходит — иначе уйдёт в озеро. */
   leash: number;
   xp: number;
+  /** Что с него падает. */
+  drop: DropEntry[];
 }
 
 export const HERO: HeroStats = {
@@ -92,20 +103,69 @@ export const MONSTERS: Record<string, MonsterStats> = {
     hp: 30, dmg: 3, speed: 50,
     aggro: 80, deaggro: 136, reach: 16, hitW: 18, hitFrame: 4,
     cooldown: 1200, body: [12, 8], leash: 140, xp: 6,
+    // Со слабого падает часто: первую добычу игрок должен увидеть за полминуты,
+    // а не гадать, работает ли она вообще.
+    drop: [
+      { id: 'mush_brown', chance: 0.6, min: 1, max: 2 },
+      { id: 'mush_red', chance: 0.15 },
+      { id: 'boots', chance: 0.03 },
+      { id: 'ring', chance: 0.02 },
+    ],
   },
   spider2: {
     sheet: 'Mushroom2', key: 'm2',
     hp: 50, dmg: 6, speed: 45,
     aggro: 90, deaggro: 153, reach: 16, hitW: 18, hitFrame: 4,
     cooldown: 1300, body: [12, 8], leash: 140, xp: 12,
+    drop: [
+      { id: 'mush_red', chance: 0.45, min: 1, max: 2 },
+      { id: 'mush_brown', chance: 0.3 },
+      { id: 'ore_copper', chance: 0.2 },
+      { id: 'apple', chance: 0.1 },
+      { id: 'potion_hp', chance: 0.08 },
+      { id: 'shield', chance: 0.05 },
+      { id: 'helm', chance: 0.04 },
+      { id: 'amulet', chance: 0.03 },
+    ],
   },
   spider3: {
     sheet: 'Mushroom3', key: 'm3',
     hp: 90, dmg: 10, speed: 38,
     aggro: 100, deaggro: 170, reach: 18, hitW: 22, hitFrame: 4,
     cooldown: 1500, body: [16, 8], leash: 140, xp: 25,
+    // Меч с сильного — примерно с четвёртого убийства. Это несколько минут,
+    // а не вечер: экипировка должна начать работать, пока игроку интересно.
+    drop: [
+      { id: 'mush_red', chance: 0.6, min: 2, max: 3 },
+      { id: 'crystal', chance: 0.25 },
+      { id: 'ore_copper', chance: 0.25 },
+      { id: 'sword', chance: 0.18 },
+      { id: 'potion_hp', chance: 0.15 },
+      { id: 'potion_mp', chance: 0.12 },
+      { id: 'armor', chance: 0.06 },
+      { id: 'sword_blue', chance: 0.03 },
+    ],
   },
 };
+
+/**
+ * Что упало с монстра. Броски независимые — с одного паука может упасть
+ * и гриб, и меч.
+ *
+ * rng параметром, чтобы тесты были воспроизводимы.
+ */
+export function rollDrop(table: DropEntry[], rng: () => number = Math.random): { id: string; qty: number }[] {
+  const out: { id: string; qty: number }[] = [];
+
+  for (const entry of table) {
+    if (rng() >= entry.chance) continue;
+    const min = entry.min ?? 1;
+    const max = entry.max ?? min;
+    out.push({ id: entry.id, qty: min + Math.floor(rng() * (max - min + 1)) });
+  }
+
+  return out;
+}
 
 /** Сколько кого расселить по лесу. */
 export const SPAWNS: { kind: string; count: number }[] = [

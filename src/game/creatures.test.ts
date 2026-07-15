@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { HERO, MONSTERS, SPAWNS, xpToNext } from './creatures.ts';
+import { HERO, MONSTERS, SPAWNS, xpToNext, rollDrop } from './creatures.ts';
+import { ITEMS } from './items.ts';
 
 test('от любого паука можно убежать', () => {
   // Монстр быстрее игрока — это смерть без выхода. Числа держим строго ниже.
@@ -78,4 +79,60 @@ test('опыт до уровня растёт', () => {
 
   // первый уровень — с трёх-четырёх слабых пауков
   assert.ok(xpToNext(1) / MONSTERS.spider1.xp <= 4);
+});
+
+// --- добыча ---
+
+test('падает только то, что есть в таблице предметов', () => {
+  for (const [name, m] of Object.entries(MONSTERS)) {
+    for (const d of m.drop) {
+      assert.ok(ITEMS[d.id], `${name} роняет ${d.id}, а такого предмета нет`);
+    }
+  }
+});
+
+test('вероятности осмысленные', () => {
+  for (const [name, m] of Object.entries(MONSTERS)) {
+    for (const d of m.drop) {
+      assert.ok(d.chance > 0 && d.chance <= 1, `${name}/${d.id}: шанс ${d.chance}`);
+      if (d.max !== undefined) assert.ok(d.max >= (d.min ?? 1), `${name}/${d.id}: max меньше min`);
+    }
+  }
+});
+
+test('с каждого паука что-то падает достаточно часто, чтобы это заметить', () => {
+  for (const [name, m] of Object.entries(MONSTERS)) {
+    // вероятность, что не упадёт ничего
+    const nothing = m.drop.reduce((p, d) => p * (1 - d.chance), 1);
+    assert.ok(nothing < 0.5, `${name}: с вероятностью ${(nothing * 100) | 0}% не падает ничего`);
+  }
+});
+
+test('каждый надеваемый предмет с кого-то падает', () => {
+  // Недостижимый предмет хуже отсутствующего: слот в экипировке обещает то,
+  // чего игра не даёт.
+  const dropped = new Set(Object.values(MONSTERS).flatMap((m) => m.drop.map((d) => d.id)));
+  for (const [id, def] of Object.entries(ITEMS)) {
+    if (def.slot) assert.ok(dropped.has(id), `${id} надевается, но его неоткуда взять`);
+  }
+});
+
+test('бросок: всё выпадает при удачном броске и ничего — при неудачном', () => {
+  const table = MONSTERS.spider1.drop;
+  assert.equal(rollDrop(table, () => 0).length, table.length, 'ноль — выпадает всё');
+  assert.equal(rollDrop(table, () => 0.99).length, 0, 'почти единица — не выпадает ничего');
+});
+
+test('бросок уважает количество', () => {
+  const [drop] = rollDrop([{ id: 'mush_red', chance: 1, min: 2, max: 3 }], () => 0);
+  assert.equal(drop.qty, 2, 'при нижнем броске — минимум');
+
+  const [max] = rollDrop([{ id: 'mush_red', chance: 1, min: 2, max: 3 }], () => 0.99);
+  assert.equal(max.qty, 3, 'при верхнем — максимум');
+});
+
+test('меч с сильного паука выпадает за разумное число боёв', () => {
+  const sword = MONSTERS.spider3.drop.find((d) => d.id === 'sword')!;
+  const kills = 1 / sword.chance;
+  assert.ok(kills <= 8, `меч раз в ${kills.toFixed(1)} убийств — слишком долго`);
 });

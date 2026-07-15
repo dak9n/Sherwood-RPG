@@ -1,0 +1,162 @@
+/**
+ * Предметы. Единственное место, где они описываются.
+ *
+ * Как и характеристики существ, это данные, а не код: добавить предмет — значит
+ * дописать строку. Файл намеренно не знает про Phaser, поэтому проверяется
+ * тестами без браузера.
+ */
+
+export type Tab = 'weapon' | 'armor' | 'resource' | 'food';
+export type EquipSlot = 'helm' | 'body' | 'weapon' | 'shield' | 'boots' | 'ring' | 'amulet';
+
+/**
+ * Кусок картинки: прямоугольник, а не номер в сетке.
+ *
+ * Иконки лежат неровно: в Icons.png сетка 16x16, а грибы приходится резать из
+ * тайлсета карты кусками 14x12 — они там нарисованы вместе с травой.
+ */
+export interface Icon {
+  /** Какой лист: 'icons' — набор интерфейса, 'Objects' — тайлсет карты. */
+  sheet: 'icons' | 'Objects';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface ItemDef {
+  id: string;
+  name: string;
+  tab: Tab;
+  /** Как выглядит в сумке. */
+  icon: Icon;
+  /** Как лежит на земле. У грибов — вместе с травой: на земле она уместна. */
+  world?: Icon;
+  /** Сколько влезает в одну ячейку. */
+  stack: number;
+  /** Что делает, если применить. */
+  use?: { hp?: number; mp?: number };
+  /** Куда надевается. */
+  slot?: EquipSlot;
+  /** Что даёт надетым. */
+  bonus?: { dmg?: number; def?: number; speed?: number; hp?: number; mp?: number };
+}
+
+/** Иконка из набора интерфейса: там ровная сетка 16x16. */
+const ico = (col: number, row: number): Icon => ({ sheet: 'icons', x: col * 16, y: row * 16, w: 16, h: 16 });
+
+/**
+ * Грибы режутся из тайлсета карты Objects.png — в наборе интерфейса грибов нет,
+ * а пауки у нас грибные, и ронять они должны грибы.
+ *
+ * Иконка берётся без травы (0 зелёных пикселей в этом прямоугольнике), а на
+ * земле гриб рисуется вместе с ней — так он выглядит частью леса.
+ */
+const MUSH_RED: Icon = { sheet: 'Objects', x: 440, y: 374, w: 14, h: 12 };
+const MUSH_RED_WORLD: Icon = { sheet: 'Objects', x: 440, y: 374, w: 16, h: 19 };
+const MUSH_BROWN: Icon = { sheet: 'Objects', x: 440, y: 406, w: 15, h: 12 };
+const MUSH_BROWN_WORLD: Icon = { sheet: 'Objects', x: 440, y: 406, w: 16, h: 19 };
+
+export const ITEMS: Record<string, ItemDef> = {
+  mush_red: {
+    id: 'mush_red', name: 'Красный гриб', tab: 'food',
+    icon: MUSH_RED, world: MUSH_RED_WORLD, stack: 99, use: { hp: 30 },
+  },
+  mush_brown: {
+    id: 'mush_brown', name: 'Бурый гриб', tab: 'food',
+    icon: MUSH_BROWN, world: MUSH_BROWN_WORLD, stack: 99, use: { mp: 25 },
+  },
+  apple: { id: 'apple', name: 'Яблоко', tab: 'food', icon: ico(5, 5), stack: 20, use: { hp: 12 } },
+  potion_hp: { id: 'potion_hp', name: 'Зелье здоровья', tab: 'food', icon: ico(3, 10), stack: 10, use: { hp: 60 } },
+  potion_mp: { id: 'potion_mp', name: 'Зелье маны', tab: 'food', icon: ico(4, 10), stack: 10, use: { mp: 40 } },
+
+  ore_copper: { id: 'ore_copper', name: 'Медная руда', tab: 'resource', icon: ico(4, 9), stack: 99 },
+  crystal: { id: 'crystal', name: 'Кристалл', tab: 'resource', icon: ico(4, 8), stack: 99 },
+
+  sword: {
+    id: 'sword', name: 'Стальной меч', tab: 'weapon',
+    icon: ico(0, 8), stack: 1, slot: 'weapon', bonus: { dmg: 3 },
+  },
+  sword_blue: {
+    id: 'sword_blue', name: 'Синий меч', tab: 'weapon',
+    icon: ico(3, 8), stack: 1, slot: 'weapon', bonus: { dmg: 6 },
+  },
+  shield: {
+    id: 'shield', name: 'Щит', tab: 'armor',
+    icon: ico(1, 8), stack: 1, slot: 'shield', bonus: { def: 1 },
+  },
+  helm: {
+    id: 'helm', name: 'Шлем', tab: 'armor',
+    icon: ico(4, 6), stack: 1, slot: 'helm', bonus: { def: 1, hp: 10 },
+  },
+  armor: {
+    id: 'armor', name: 'Латы', tab: 'armor',
+    // Броня тяжёлая: защищает, но замедляет — иначе надевать нечего думать.
+    icon: ico(5, 6), stack: 1, slot: 'body', bonus: { def: 2, speed: -4 },
+  },
+  boots: {
+    id: 'boots', name: 'Сапоги', tab: 'armor',
+    icon: ico(2, 8), stack: 1, slot: 'boots', bonus: { speed: 8 },
+  },
+  ring: {
+    id: 'ring', name: 'Кольцо', tab: 'armor',
+    icon: ico(5, 8), stack: 1, slot: 'ring', bonus: { dmg: 2 },
+  },
+  amulet: {
+    id: 'amulet', name: 'Амулет', tab: 'armor',
+    icon: ico(0, 9), stack: 1, slot: 'amulet', bonus: { mp: 15 },
+  },
+};
+
+/** Одна ячейка сумки. */
+export interface Stack {
+  id: string;
+  qty: number;
+}
+
+/**
+ * Кладёт предметы в сумку, досыпая в начатые стопки.
+ *
+ * Возвращает, сколько НЕ влезло: сумка не резиновая, и молча терять добычу
+ * нельзя — игрок должен узнать, что она полна.
+ */
+export function addToBag(bag: (Stack | null)[], id: string, qty: number): number {
+  const def = ITEMS[id];
+  if (!def) return qty;
+
+  let left = qty;
+
+  // Сначала досыпаем в начатые стопки, иначе сумка забьётся огрызками.
+  for (const slot of bag) {
+    if (left <= 0) break;
+    if (!slot || slot.id !== id || slot.qty >= def.stack) continue;
+    const room = def.stack - slot.qty;
+    const put = Math.min(room, left);
+    slot.qty += put;
+    left -= put;
+  }
+
+  for (let i = 0; i < bag.length && left > 0; i++) {
+    if (bag[i]) continue;
+    const put = Math.min(def.stack, left);
+    bag[i] = { id, qty: put };
+    left -= put;
+  }
+
+  return left;
+}
+
+/** Убирает одну штуку из ячейки. Пустая ячейка освобождается. */
+export function takeOne(bag: (Stack | null)[], index: number): string | null {
+  const slot = bag[index];
+  if (!slot) return null;
+
+  slot.qty--;
+  if (slot.qty <= 0) bag[index] = null;
+  return slot.id;
+}
+
+/** Сколько всего таких предметов в сумке. */
+export function countOf(bag: (Stack | null)[], id: string): number {
+  return bag.reduce((n, s) => n + (s && s.id === id ? s.qty : 0), 0);
+}

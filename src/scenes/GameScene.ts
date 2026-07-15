@@ -4,9 +4,11 @@ import { Player, type Strike } from '../game/player';
 import { Monster } from '../game/monster';
 import { findTallObjects } from '../game/tall-objects';
 import { pickSpawns } from '../game/spawn';
-import { MONSTERS, SPAWNS, xpToNext } from '../game/creatures';
+import { MONSTERS, SPAWNS, xpToNext, rollDrop } from '../game/creatures';
 import { Hud } from '../game/hud';
 import { draftCollision } from '../map/collision-draft';
+import { Loot, registerItemFrames } from '../game/loot';
+import { addToBag, ITEMS, type Stack } from '../game/items';
 
 /** Целый зум: при дробном пиксели карты не легли бы на пиксели экрана. */
 const ZOOM = 3;
@@ -23,10 +25,16 @@ const WALL_TILE = 1;
  * Редактор сюда не заглядывает: у него своя сцена. Общее у них — MapScene и
  * формат карты в src/map/.
  */
+/** Ячеек в сумке: 7x5, как в задуманном окне инвентаря. */
+const BAG_SIZE = 35;
+
 export class GameScene extends MapScene {
   player!: Player;
   private monsters: Monster[] = [];
   private hud!: Hud;
+  private loot: Loot[] = [];
+  /** Сумка игрока. Пока без окна — но добыча уже копится. */
+  bag: (Stack | null)[] = new Array(BAG_SIZE).fill(null);
 
   constructor() {
     super('world');
@@ -36,9 +44,15 @@ export class GameScene extends MapScene {
     super.preload();
     Player.preload(this);
     for (const stats of Object.values(MONSTERS)) Monster.preload(this, stats);
+    // Иконки предметов. Тайлсеты карты (грибы) грузит MapScene вторым проходом.
+    this.load.image('icons', 'assets/interface/PNG/Icons.png');
   }
 
   protected onReady(): void {
+    // Режем кадры под предметы: делать это в preload нельзя — тайлсет Objects
+    // с грибами догружается вторым проходом и до create его текстуры ещё нет.
+    registerItemFrames(this);
+
     // Ставим в середину нарисованного леса, а не карты: холст расширяли вправо
     // и вниз, поэтому центр карты — пустое поле.
     const { x, y } = this.drawnCenter();
@@ -137,10 +151,58 @@ export class GameScene extends MapScene {
     for (const m of hitAny) {
       m.takeDamage(strike.damage, this.player.sprite.x, this.player.sprite.y);
       this.damageNumber(m.sprite.x, m.sprite.y - 30, strike.damage, strike.heavy ? '#ffd35c' : '#ffffff');
-      if (m.isDead) this.gainXp(m.stats.xp);
+      if (m.isDead) {
+        this.gainXp(m.stats.xp);
+        this.dropLoot(m);
+      }
     }
 
     if (hitAny.length) this.cameras.main.shake(strike.heavy ? 140 : 80, strike.heavy ? 0.006 : 0.003);
+  }
+
+  /** Что выпало из паука. Раскладываем вокруг тела, чтобы стопка не легла в одну точку. */
+  private dropLoot(m: Monster): void {
+    const drops = rollDrop(m.stats.drop);
+
+    for (const [i, d] of drops.entries()) {
+      const angle = (i / Math.max(1, drops.length)) * Math.PI * 2;
+      const dist = drops.length > 1 ? 10 : 0;
+      this.loot.push(
+        new Loot(this, d.id, d.qty, m.sprite.x + Math.cos(angle) * dist, m.sprite.y + Math.sin(angle) * dist),
+      );
+    }
+  }
+
+  /** Подбираем то, до чего дошли. */
+  private updateLoot(now: number): void {
+    const px = this.player.sprite.x;
+    const py = this.player.sprite.y;
+
+    for (let i = this.loot.length - 1; i >= 0; i--) {
+      const l = this.loot[i];
+      l.update(now);
+
+      if (l.expired(now)) {
+        l.destroy();
+        this.loot.splice(i, 1);
+        continue;
+      }
+
+      if (this.player.isDead || !l.inReach(px, py)) continue;
+
+      const left = addToBag(this.bag, l.id, l.qty);
+      if (left === l.qty) {
+        // Сумка полна — предмет остаётся лежать. Молча его терять нельзя.
+        continue;
+      }
+
+      this.loot.splice(i, 1);
+      const name = ITEMS[l.id].name;
+      const taken = l.qty - left;
+      l.flyTo(px, py, () => {
+        this.damageNumber(px, py - 44, 0, '#d8c07a', `${name}${taken > 1 ? ` ×${taken}` : ''}`);
+      });
+    }
   }
 
   private gainXp(amount: number): void {
@@ -203,6 +265,8 @@ export class GameScene extends MapScene {
 
       if (m.shouldRespawn(now)) m.reset();
     }
+
+    this.updateLoot(now);
 
     if (this.player.isDead && !this.deathAt) {
       this.deathAt = now;
