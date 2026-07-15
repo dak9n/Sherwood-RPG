@@ -2,10 +2,18 @@ import Phaser from 'phaser';
 import type { EditorState } from './state';
 
 /** Сетка по тайлам и рамка кисти под курсором. Рисуется в мировых координатах. */
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export class Overlay {
   private g: Phaser.GameObjects.Graphics;
   private cursor = { x: -1, y: -1 };
   private showGrid = true;
+  private selection: Rect | null = null;
 
   constructor(
     private scene: Phaser.Scene,
@@ -20,6 +28,11 @@ export class Overlay {
 
   moveCursor(x: number, y: number): void {
     this.cursor = { x, y };
+  }
+
+  /** Рамка того, что взято Alt-протяжкой. null — убрать. */
+  setSelection(rect: Rect | null): void {
+    this.selection = rect;
   }
 
   draw(): void {
@@ -45,6 +58,15 @@ export class Overlay {
       for (let y = 1; y < doc.height; y++) {
         this.g.lineBetween(0, y * th, doc.width * tw, y * th);
       }
+    }
+
+    // Что выбрано Alt-протяжкой — голубым, чтобы не путалось с жёлтой кистью.
+    if (this.selection) {
+      const s = this.selection;
+      this.g.fillStyle(0x7cc4ff, 0.18);
+      this.g.fillRect(s.x * tw, s.y * th, s.w * tw, s.h * th);
+      this.g.lineStyle(thin * 2, 0x7cc4ff, 1);
+      this.g.strokeRect(s.x * tw, s.y * th, s.w * tw, s.h * th);
     }
 
     if (doc.inBounds(this.cursor.x, this.cursor.y)) {

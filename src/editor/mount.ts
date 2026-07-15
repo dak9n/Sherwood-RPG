@@ -47,6 +47,9 @@ export function mountEditor(game: Phaser.Game): void {
 
   const brushBtn = btn('Кисть', 'Рисовать (ЛКМ)', () => setTool('brush'));
   const eraserBtn = btn('Ластик', 'Стирать (ПКМ или этот режим)', () => setTool('eraser'));
+  const selectBtn = btn('Выделить', 'Обвести объект рамкой и взять его как кисть (то же самое — Alt+протяжка)', () =>
+    setTool('select'),
+  );
   const gridBtn = btn('Сетка', 'Показать сетку (при увеличении от 2x)', () => {
     gridOn = !gridOn;
     overlay.setGrid(gridOn);
@@ -64,17 +67,33 @@ export function mountEditor(game: Phaser.Game): void {
     tool = next;
     brushBtn.setAttribute('aria-pressed', String(next === 'brush'));
     eraserBtn.setAttribute('aria-pressed', String(next === 'eraser'));
+    selectBtn.setAttribute('aria-pressed', String(next === 'select'));
   }
   setTool('brush');
 
   // Инструменты на карте
   let hover = { x: -1, y: -1 };
   installTools(scene, state, () => tool, {
-    onPick: () => revealBrush(shell.palette, state, state.brush),
+    onPick: (note) => {
+      revealBrush(shell.palette, state, state.brush);
+      pickNote = note ?? '';
+      noteBrush = state.brush;
+      refreshStatus();
+    },
     onHover: (x, y) => {
       hover = { x, y };
       overlay.moveCursor(x, y);
       refreshStatus();
+    },
+    onSelection: (rect) => {
+      overlay.setSelection(rect);
+      if (!rect) {
+        // Сброс выделения возвращает кисть в одну клетку — иначе штамп остаётся,
+        // а рамки, объясняющей его размер, уже нет.
+        state.setBrush({ w: 1, h: 1, raws: [state.brush.raws.find(Boolean) ?? 0] });
+        pickNote = '';
+        refreshStatus();
+      }
     },
   });
 
@@ -83,12 +102,21 @@ export function mountEditor(game: Phaser.Game): void {
   // Статус
   let saveNote = '';
   let saveClass = '';
+  let pickNote = '';
+  // Подпись относится к конкретной кисти: выбрал другую в палитре — подпись уходит.
+  let noteBrush: unknown = null;
 
   function refreshStatus(): void {
     const layer = state.doc.layers[state.activeLayer]?.name ?? '?';
     const raw = state.doc.inBounds(hover.x, hover.y) ? state.doc.getRaw(state.activeLayer, hover.x, hover.y) : 0;
     const where = state.doc.inBounds(hover.x, hover.y) ? `${hover.x}:${hover.y}` : '—';
-    const brush = state.brush.w > 1 || state.brush.h > 1 ? ` · кисть ${state.brush.w}×${state.brush.h}` : '';
+
+    if (state.brush !== noteBrush) pickNote = '';
+    const brush = pickNote
+      ? ` · ${pickNote}`
+      : state.brush.w > 1 || state.brush.h > 1
+        ? ` · кисть ${state.brush.w}×${state.brush.h}`
+        : '';
 
     shell.setStatus(
       `${layer} · ${where} · ${raw || 'пусто'}${brush}`,
