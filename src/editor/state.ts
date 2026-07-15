@@ -139,6 +139,27 @@ export class EditorState {
     return this.hidden.has(this.doc.layers[index]?.name);
   }
 
+  /** Виден ли слой на экране: и по формату, и по «глазу». */
+  isVisible(index: number): boolean {
+    const layer = this.doc.layers[index];
+    return !!layer && layer.visible && !this.hidden.has(layer.name);
+  }
+
+  /**
+   * Верхний ВИДИМЫЙ слой с тайлом в клетке. -1, если брать нечего.
+   *
+   * Пипетка обязана спрашивать это, а не doc.topLayerAt: тот смотрит в данные
+   * карты и не знает про «глаз». Спрятал дерево, ткнул в траву под ним — и
+   * пипетка возвращала дерево, потому что оно всё ещё лежит сверху в файле.
+   * Брать надо то, что видно.
+   */
+  topVisibleLayerAt(x: number, y: number): number {
+    for (let i = this.doc.layers.length - 1; i >= 0; i--) {
+      if (this.isVisible(i) && this.doc.getRaw(i, x, y)) return i;
+    }
+    return -1;
+  }
+
   /** Спрятать или показать слой на экране. В файл это не пишется. */
   toggleHidden(index: number): boolean {
     const name = this.doc.layers[index]?.name;

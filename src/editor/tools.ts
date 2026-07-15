@@ -69,11 +69,14 @@ export function installTools(
    * Пипетка. Берёт значения дословно, вместе с флагами поворота, и переключает
    * слой: при 26 слоях вида lianas3/lianas4 угадывать, куда попал тайл, невозможно.
    *
+   * Берём с верхнего ВИДИМОГО слоя: спрятал дерево «глазом», ткнул в траву под
+   * ним — и должна взяться трава, а не невидимое дерево.
+   *
    * whole=true (Alt) — берёт объект под курсором целиком, обходя связные тайлы.
    * whole=false (Shift) — ровно одну клетку.
    */
   const pick = (x: number, y: number, whole: boolean): void => {
-    const layer = state.doc.topLayerAt(x, y);
+    const layer = state.topVisibleLayerAt(x, y);
     if (layer === -1) return;
     state.setActiveLayer(layer);
 
@@ -176,10 +179,11 @@ export function installTools(
 
       // Слой ищем по любой занятой клетке рамки, а не по её углу: угол часто
       // приходится на пустоту рядом с деревом, и по нему слой не определить.
+      // Только по видимым слоям — обводить спрятанное «глазом» незачем.
       let layer = -1;
       for (let dy = 0; dy < rect.h && layer === -1; dy++) {
         for (let dx = 0; dx < rect.w && layer === -1; dx++) {
-          layer = state.doc.topLayerAt(rect.x + dx, rect.y + dy);
+          layer = state.topVisibleLayerAt(rect.x + dx, rect.y + dy);
         }
       }
 
