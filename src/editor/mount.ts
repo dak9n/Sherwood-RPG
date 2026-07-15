@@ -5,11 +5,12 @@ import { withLayerAdded, withLayerRemoved, withLayerMoved, suggestLayerName } fr
 import { EditorState } from './state';
 import { installTools, type Tool } from './tools';
 import { Overlay } from './overlay';
-import { saveMap, fetchRevision } from './save';
+import { saveMap, saveMapAs, fetchRevision, fetchMaps } from './save';
 import { askResize } from './resize-dialog';
 import { buildShell } from './ui/shell';
 import { buildLayers } from './ui/layers';
 import { showHelp } from './ui/help';
+import { askMapName } from './ui/start-screen';
 import { buildPalette, revealBrush } from './ui/palette';
 import { WORLD_READY } from '../scenes/MapScene';
 import type { EditorScene } from '../scenes/EditorScene';
@@ -24,7 +25,14 @@ export function mountEditor(game: Phaser.Game): void {
     return;
   }
 
-  const state = new EditorState(scene.doc, scene.view);
+  const mapName = (game.registry.get('mapName') as string | undefined) ?? 'forest';
+  const isNew = game.registry.get('mapIsNew') === true;
+  game.registry.set('mapIsNew', false); // флаг одноразовый
+
+  const state = new EditorState(scene.doc, scene.view, mapName);
+  state.dirty = isNew; // новую карту надо сохранить; beforeunload её защитит
+  if (isNew) state.baseRevision = 'none'; // файла ещё нет; первое сохранение его создаст
+
   const shell = buildShell();
 
   // Панель забирает часть экрана уже после старта сцены: Phaser сам этого не
@@ -72,6 +80,8 @@ export function mountEditor(game: Phaser.Game): void {
   const redoBtn = btn('↷', 'Вернуть (Ctrl+Shift+Z)', () => state.redo());
   btn('Размер', 'Изменить размер карты', () => doResize());
   const saveBtn = btn('Сохранить', 'Записать карту в файл (Ctrl+S)', () => doSave());
+  btn('Сохранить как', 'Сохранить текущую карту в новый файл под другим именем', () => void doSaveAs());
+  btn('Карты', 'К списку карт: открыть другую карту или создать новую', () => backToPicker());
   btn('?', 'Горячие клавиши редактора', () => showHelp());
 
   let gridOn = true;
@@ -135,7 +145,7 @@ export function mountEditor(game: Phaser.Game): void {
         : '';
 
     shell.setStatus(
-      `${layer} · ${where} · ${raw || 'пусто'}${brush}`,
+      `${state.mapName} · ${layer} · ${where} · ${raw || 'пусто'}${brush}`,
       saveNote || (state.dirty ? 'не сохранено' : 'сохранено'),
       saveClass || (state.dirty ? 'save-dirty' : 'save-ok'),
     );
@@ -174,6 +184,10 @@ export function mountEditor(game: Phaser.Game): void {
 
     if (res.ok) {
       state.markSaved(res.revision);
+      // Первое сохранение новой карты: закрепляем ?map в URL, чтобы перезагрузка открыла её же.
+      if (!new URLSearchParams(location.search).has('map')) {
+        history.replaceState(null, '', `?edit&map=${encodeURIComponent(state.mapName)}`);
+      }
       saveNote = '';
       saveClass = '';
       refreshStatus();
@@ -181,7 +195,15 @@ export function mountEditor(game: Phaser.Game): void {
     }
 
     if (res.kind === 'conflict') {
-      // Просто сказать «перезагрузите» — значит предложить потерять всё нарисованное.
+      if (state.baseRevision === 'none') {
+        // Думали, что СОЗДАЁМ файл, а карта с таким именем уже есть — чужое не затираем.
+        alert(`Карта «${state.mapName}» уже существует. Открой её из списка или сохрани под другим именем.`);
+        saveNote = 'имя занято — не сохранено';
+        saveClass = 'save-err';
+        refreshStatus();
+        return;
+      }
+      // Файл на диске изменился с момента загрузки — предложить перезапись.
       const keep = confirm(
         'Файл карты на диске изменился с тех пор, как редактор её загрузил.\n' +
           'Это мог сделать git, конвертер или второй редактор.\n\n' +
@@ -203,6 +225,43 @@ export function mountEditor(game: Phaser.Game): void {
     saveClass = 'save-err';
     refreshStatus();
     console.error('Сохранение не удалось:', res);
+  }
+
+  // Сохранить как: текущая карта уходит в НОВЫЙ файл под другим именем.
+  async function doSaveAs(): Promise<void> {
+    const maps = await fetchMaps();
+    const newName = await askMapName(maps, 'Сохранить как', 'Сохранить');
+    if (!newName) return;
+
+    saveBtn.disabled = true;
+    saveNote = 'сохраняю…';
+    saveClass = '';
+    refreshStatus();
+
+    const res = await saveMapAs(state, newName);
+    saveBtn.disabled = false;
+
+    if (res.ok) {
+      state.mapName = newName; // дальше Ctrl+S пишет уже в новый файл
+      state.markSaved(res.revision);
+      history.replaceState(null, '', `?edit&map=${encodeURIComponent(newName)}`);
+      saveNote = '';
+      saveClass = '';
+      refreshStatus();
+      return;
+    }
+    // askMapName уже проверил имя по списку, так что 409 тут — редкая гонка.
+    if (res.kind === 'conflict') alert(`Карта «${newName}» уже есть — выбери другое имя.`);
+    saveNote = res.kind === 'invalid' ? `карта не прошла проверку (${res.errors.length})` : 'не сохранено';
+    saveClass = 'save-err';
+    refreshStatus();
+  }
+
+  // К списку карт: уходим на стартовый экран (?edit без map).
+  function backToPicker(): void {
+    if (state.dirty && !confirm('В карте есть несохранённые правки. Отбросить их и вернуться к списку карт?')) return;
+    state.dirty = false; // осознанно отбрасываем — гасим предупреждение beforeunload
+    location.search = '?edit';
   }
 
   // Изменение размера
@@ -290,11 +349,15 @@ export function mountEditor(game: Phaser.Game): void {
     e.returnValue = '';
   });
 
-  // Первая ревизия: карту грузит Phaser, заголовков ответа он наружу не отдаёт.
-  void fetchRevision().then((r) => {
-    state.baseRevision = r;
-    refreshStatus();
-  });
+  // Ревизия файла на диске: по ней ловим правку в обход редактора. Карту грузит
+  // Phaser, заголовков ответа наружу не отдаёт. Для новой карты файла ещё нет —
+  // baseRevision уже 'none', запрашивать нечего.
+  if (!isNew) {
+    void fetchRevision(state.mapName).then((r) => {
+      state.baseRevision = r;
+      refreshStatus();
+    });
+  }
 
   refreshStatus();
 

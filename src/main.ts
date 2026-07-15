@@ -20,7 +20,10 @@ const game = new Phaser.Game({
     default: 'arcade',
     arcade: { gravity: { x: 0, y: 0 } },
   },
-  scene: [editMode ? EditorScene : GameScene],
+  // В редакторе сцену на старте НЕ запускаем: иначе она загрузит forest ещё до
+  // того, как пользователь выберет карту на стартовом экране. Её добавит и
+  // запустит start.ts — уже после выбора.
+  scene: editMode ? [] : [GameScene],
 });
 
 if (import.meta.env.DEV) {
@@ -28,8 +31,10 @@ if (import.meta.env.DEV) {
   (globalThis as Record<string, unknown>).game = game;
 
   // Редактор подключается только по ?edit и только в разработке. Динамический
-  // импорт нужен, чтобы он не попал в собранную игру.
+  // импорт нужен, чтобы он не попал в собранную игру. start сначала даёт выбрать
+  // карту (стартовый экран), а уже потом запускает сцену и монтирует редактор.
   if (editMode) {
-    void import('./editor/mount').then((m) => m.mountEditor(game));
+    game.scene.add('world', EditorScene, false); // добавлена, но не запущена — старт за start.ts
+    void import('./editor/start').then((m) => m.startEditor(game));
   }
 }

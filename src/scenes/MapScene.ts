@@ -3,8 +3,10 @@ import type { GameMap } from '../map/types';
 import { MapDoc, ensureCollision } from '../map/doc';
 import { buildTilemap, updateAnimations, type MapView } from '../map/view';
 
-const MAP_KEY = 'forest';
-const MAP_URL = 'assets/maps/forest.json';
+/** Ключ карты в json-кэше Phaser — просто ручка, не имя файла. */
+const MAP_CACHE_KEY = 'map';
+const MAPS_URL = 'assets/maps/';
+const DEFAULT_MAP = 'forest';
 const TILESET_URL = 'assets/tilesets/';
 
 /** Карта и тайлсеты загружены, doc и view готовы. */
@@ -23,15 +25,26 @@ export abstract class MapScene extends Phaser.Scene {
   doc!: MapDoc;
   view!: MapView;
   ready = false;
+  /** Новую (ещё не сохранённую) карту редактор передаёт прямо в память — файла для неё ещё нет. */
+  private injected?: GameMap;
+
+  init(data?: { mapData?: GameMap }): void {
+    this.injected = data?.mapData;
+  }
 
   preload(): void {
-    this.load.json(MAP_KEY, MAP_URL);
+    if (this.injected) return; // карта уже в памяти — грузить нечего
+    // Какую карту грузить, говорит registry (ставит стартовый экран редактора).
+    // Игра его не трогает → падает на DEFAULT_MAP='forest', поведение прежнее.
+    const name = (this.registry.get('mapName') as string | undefined) ?? DEFAULT_MAP;
+    this.load.json(MAP_CACHE_KEY, `${MAPS_URL}${encodeURIComponent(name)}.json`);
   }
 
   create(): void {
+    // Источник — либо переданная в память новая карта, либо загруженная с диска.
     // Карта на диске может быть ещё первой версии, без проходимости — дополняем
     // в памяти. На диск это попадёт при первом сохранении из редактора.
-    const data = ensureCollision(this.cache.json.get(MAP_KEY) as GameMap);
+    const data = ensureCollision(this.injected ?? (this.cache.json.get(MAP_CACHE_KEY) as GameMap));
 
     // Картинки тайлсетов известны только из карты, поэтому это отдельный, второй
     // проход загрузки. Добавлять их из колбэка первого прохода нельзя: если очередь

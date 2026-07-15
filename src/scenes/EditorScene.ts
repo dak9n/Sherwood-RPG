@@ -18,6 +18,9 @@ export class EditorScene extends MapScene {
 
   constructor() {
     super('world');
+    // Сцену запускает только src/editor/start.ts и только ПОСЛЕ выбора карты
+    // (registry.mapName задан). Поэтому в main.ts её добавляют с autoStart=false,
+    // а не в загрузочный массив: иначе preload загрузил бы forest вместо стартового экрана.
   }
 
   protected onReady(): void {

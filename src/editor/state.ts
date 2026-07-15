@@ -35,6 +35,8 @@ export class EditorState {
   constructor(
     public doc: MapDoc,
     public view: MapView,
+    /** Имя открытой карты (файл <mapName>.json). Ctrl+S пишет именно в него. */
+    public mapName: string,
   ) {
     this.activeLayer = doc.layers.length - 1;
   }
