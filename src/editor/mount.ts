@@ -248,6 +248,7 @@ export function mountEditor(game: Phaser.Game): void {
 
     if (res.ok) {
       state.mapName = newName; // дальше Ctrl+S пишет уже в новый файл
+      state.persistHidden(); // скрытие слоёв запоминаем под новым именем карты
       state.markSaved(res.revision);
       history.replaceState(null, '', `?edit&map=${encodeURIComponent(newName)}`);
       saveNote = '';

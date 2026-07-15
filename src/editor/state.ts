@@ -1,6 +1,35 @@
 import { MapDoc } from '../map/doc';
 import { applyCell, type MapView } from '../map/view';
 
+/**
+ * Скрытые «глазом» слои запоминаются в браузере — по имени карты, отдельно для
+ * каждой. Это личная настройка вида, а не данные карты: в файл писать нельзя
+ * (там visible читает игра), а держать только в памяти мало — скрытие слетало
+ * бы на F5. Поэтому localStorage, как и размеры панелей.
+ */
+const HIDDEN_KEY = 'editor-hidden-layers';
+
+function loadHiddenNames(mapName: string): string[] {
+  try {
+    const all = JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? '{}');
+    const names = all?.[mapName];
+    return Array.isArray(names) ? names.filter((n): n is string => typeof n === 'string') : [];
+  } catch {
+    return []; // приватный режим или битые данные — просто ничего не скрываем
+  }
+}
+
+function saveHiddenNames(mapName: string, names: string[]): void {
+  try {
+    const all = JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? '{}') ?? {};
+    if (names.length) all[mapName] = names;
+    else delete all[mapName]; // не копим пустышки по картам без скрытых слоёв
+    localStorage.setItem(HIDDEN_KEY, JSON.stringify(all));
+  } catch {
+    // Приватный режим или переполненное хранилище — скрытие просто не запомнится.
+  }
+}
+
 /** Одна изменённая клетка. before/after — значения формата (0 = пусто). */
 export interface CellEdit {
   layerIndex: number;
@@ -51,6 +80,11 @@ export class EditorState {
     public mapName: string,
   ) {
     this.activeLayer = doc.layers.length - 1;
+    // Возвращаем скрытие прошлой сессии. Слои Phaser только что созданы и все
+    // видимые, а «глаз» — запомненная настройка вида: без этого спрятанные слои
+    // проявлялись бы при каждой перезагрузке вкладки.
+    for (const name of loadHiddenNames(mapName)) this.hidden.add(name);
+    this.applyHidden();
   }
 
   onChange(fn: Listener): void {
@@ -169,6 +203,7 @@ export class EditorState {
     else this.hidden.add(name);
 
     this.applyHidden();
+    this.persistHidden(); // чтобы скрытие пережило перезагрузку вкладки
     return !this.hidden.has(name);
   }
 
@@ -183,6 +218,15 @@ export class EditorState {
       const layer = this.doc.layers[i];
       this.view.layers[i]?.setVisible(layer.visible && !this.hidden.has(layer.name));
     }
+  }
+
+  /**
+   * Запоминает набор скрытых слоёв в браузере — по имени текущей карты. В список
+   * кладём только существующие слои: имена удалённых незачем тащить в хранилище.
+   */
+  persistHidden(): void {
+    const alive = new Set(this.doc.layers.map((l) => l.name));
+    saveHiddenNames(this.mapName, [...this.hidden].filter((n) => alive.has(n)));
   }
 
   /** После смены размера активный слой сохраняем, лишь поджимая под новый список. */
@@ -200,7 +244,10 @@ export class EditorState {
     this.doc.map.layers[index].name = name;
 
     // Скрытие помнится по имени — переносим его на новое, иначе слой проявится.
-    if (this.hidden.delete(old)) this.hidden.add(name);
+    if (this.hidden.delete(old)) {
+      this.hidden.add(name);
+      this.persistHidden(); // в localStorage тоже уже новое имя
+    }
 
     this.dirty = true;
     this.emit();
