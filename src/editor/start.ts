@@ -1,7 +1,6 @@
 import type Phaser from 'phaser';
 import { createBlankMap } from '../map/blank';
 import { isSafeMapName } from '../map/name';
-import type { GameMap } from '../map/types';
 import { fetchMaps } from './save';
 import { startScreen } from './ui/start-screen';
 
@@ -30,15 +29,9 @@ export async function startEditor(game: Phaser.Game): Promise<void> {
     return;
   }
 
-  // Новая карта: тайлсеты и размер тайла берём из forest, строим пустую в памяти.
-  const tpl = (await fetch('assets/maps/forest.json').then((r) => r.json())) as GameMap;
-  const map = createBlankMap({
-    width: choice.width,
-    height: choice.height,
-    tileWidth: tpl.tileWidth,
-    tileHeight: tpl.tileHeight,
-    tilesets: tpl.tilesets,
-  });
+  // Новая карта: строим пустую в памяти. Тайлсеты не копируем — их подставит
+  // общий каталог (applyCatalog) при загрузке сцены; размер тайла по умолчанию 16.
+  const map = createBlankMap({ width: choice.width, height: choice.height });
 
   game.registry.set('mapName', choice.name);
   game.registry.set('mapIsNew', true);
