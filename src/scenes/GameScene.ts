@@ -8,7 +8,8 @@ import { MONSTERS, SPAWNS, xpToNext, rollDrop } from '../game/creatures';
 import { Hud } from '../game/hud';
 import { draftCollision } from '../map/collision-draft';
 import { Loot, registerItemFrames } from '../game/loot';
-import { addToBag, ITEMS, type Stack } from '../game/items';
+import { addToBag, takeOne, ITEMS, type Stack } from '../game/items';
+import { InventoryUi } from '../game/inventory-ui';
 
 /** Целый зум: при дробном пиксели карты не легли бы на пиксели экрана. */
 const ZOOM = 3;
@@ -32,8 +33,9 @@ export class GameScene extends MapScene {
   player!: Player;
   private monsters: Monster[] = [];
   private hud!: Hud;
+  private inventory!: InventoryUi;
   private loot: Loot[] = [];
-  /** Сумка игрока. Пока без окна — но добыча уже копится. */
+  /** Сумка игрока. */
   bag: (Stack | null)[] = new Array(BAG_SIZE).fill(null);
 
   constructor() {
@@ -66,7 +68,19 @@ export class GameScene extends MapScene {
     this.spawnMonsters(tall, x, y, walls);
 
     this.hud = new Hud();
-    this.events.once('shutdown', () => this.hud.destroy());
+
+    this.inventory = new InventoryUi();
+    this.inventory.setBag(this.bag);
+    this.inventory.onUse = (index) => this.useItem(index);
+
+    // I открывает и закрывает сумку. Игру не останавливаем: пауки не ждут, пока
+    // ты роешься в грибах, — иначе сумка станет способом переждать бой.
+    this.input.keyboard?.on('keydown-I', () => this.inventory.toggle());
+
+    this.events.once('shutdown', () => {
+      this.hud.destroy();
+      this.inventory.destroy();
+    });
 
     const cam = this.cameras.main;
     cam.setZoom(ZOOM);
@@ -199,10 +213,42 @@ export class GameScene extends MapScene {
       this.loot.splice(i, 1);
       const name = ITEMS[l.id].name;
       const taken = l.qty - left;
+      // Если сумка открыта, подобранное должно появиться в ней сразу.
+      this.inventory.render();
       l.flyTo(px, py, () => {
         this.damageNumber(px, py - 44, 0, '#d8c07a', `${name}${taken > 1 ? ` ×${taken}` : ''}`);
       });
     }
+  }
+
+  /** Применить предмет из ячейки: съесть гриб, выпить зелье. */
+  private useItem(index: number): void {
+    const stack = this.bag[index];
+    if (!stack) return;
+
+    const def = ITEMS[stack.id];
+    if (!def.use || this.player.isDead) return;
+
+    // Полным здоровьем не разбрасываемся: съеденный впустую гриб — обида.
+    const needHp = def.use.hp && this.player.hp < this.player.hpMax;
+    const needMp = def.use.mp && this.player.mp < this.player.mpMax;
+    if (!needHp && !needMp) {
+      this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#b0a08a', 'не нужно');
+      return;
+    }
+
+    takeOne(this.bag, index);
+
+    if (def.use.hp) {
+      this.player.hp = Math.min(this.player.hpMax, this.player.hp + def.use.hp);
+      this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#8ad46a', `+${def.use.hp}`);
+    }
+    if (def.use.mp) {
+      this.player.mp = Math.min(this.player.mpMax, this.player.mp + def.use.mp);
+      this.damageNumber(this.player.sprite.x, this.player.sprite.y - 56, 0, '#5ba3e0', `+${def.use.mp}`);
+    }
+
+    this.inventory.render();
   }
 
   private gainXp(amount: number): void {
