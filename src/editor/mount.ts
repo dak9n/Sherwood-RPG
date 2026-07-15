@@ -40,6 +40,11 @@ export function mountEditor(game: Phaser.Game): void {
   game.scale.refresh();
   scene.fitCamera();
 
+  // Панель можно тянуть за края — канвас при этом меняет ширину, и Phaser опять
+  // об этом не узнает. Зум и положение камеры не трогаем: их настраивает
+  // пользователь, и сбрасывать их на каждую подгонку панели незачем.
+  window.addEventListener('resize', () => game.scale.refresh());
+
   const overlay = new Overlay(scene, state);
   let tool: Tool = 'brush';
 

@@ -1,14 +1,41 @@
+/** Размеры панели помним между заходами: настраивать их заново каждый раз — мучение. */
+const SIZES_KEY = 'editor-sizes';
+
+const MIN_PANEL = 220;
+const MIN_SECTION = 80;
+
 const CSS = `
   /* minmax(0, 1fr), а не 1fr: иначе колонка не сожмётся меньше канваса,
-     который держит свою ширину атрибутом, и панель уедет за край экрана. */
-  body.editing { display: grid; grid-template-columns: minmax(0, 1fr) 300px; }
+     который держит свою ширину атрибутом, и панель уедет за край экрана.
+     Ширину панели держит переменная — её двигает тяга на левом крае. */
+  body.editing { display: grid; grid-template-columns: minmax(0, 1fr) var(--panel-w, 300px); }
   body.editing #game { width: 100%; height: 100vh; min-width: 0; }
 
   #editor {
+    position: relative;
     height: 100vh; overflow: hidden; display: flex; flex-direction: column;
     background: #20272b; color: #cfd8dc; border-left: 1px solid #0d1114;
     font: 12px/1.45 system-ui, sans-serif; user-select: none;
   }
+
+  /* Тяга ширины: узкая полоса по левому краю панели. Вынесена за край на 3px,
+     чтобы попасть в неё было легко — целиться в 1px границы невозможно. */
+  #ed-grip-w {
+    position: absolute; left: -3px; top: 0; bottom: 0; width: 7px;
+    cursor: col-resize; z-index: 5;
+  }
+  #ed-grip-w:hover, #ed-grip-w.dragging { background: #63a35455; }
+
+  /* Тяга высоты: полоса между слоями и тайлами. */
+  #ed-grip-h {
+    height: 7px; margin: -3px 0; cursor: row-resize; z-index: 5; position: relative;
+  }
+  #ed-grip-h:hover, #ed-grip-h.dragging { background: #63a35455; }
+
+  /* Пока тянем — курсор не должен прыгать на текст под мышью. */
+  body.ed-resizing { cursor: col-resize; }
+  body.ed-resizing.rows { cursor: row-resize; }
+  body.ed-resizing * { pointer-events: none; }
   #editor h2 {
     margin: 0; padding: 7px 10px; font-size: 11px; font-weight: 600;
     letter-spacing: .06em; text-transform: uppercase; color: #7d8f99;
@@ -27,7 +54,9 @@ const CSS = `
 
   #ed-tools { display: flex; gap: 4px; padding: 8px; flex-wrap: wrap; border-bottom: 1px solid #0d1114; }
 
-  #ed-layers { overflow-y: auto; max-height: 34vh; border-bottom: 1px solid #0d1114; }
+  /* Высоту слоёв держит переменная — её двигает тяга между секциями.
+     Тайлы забирают остаток: flex: 1 ниже. */
+  #ed-layers { overflow-y: auto; height: var(--layers-h, 34vh); flex: none; border-bottom: 1px solid #0d1114; }
   .ed-layer {
     display: flex; align-items: center; gap: 6px; padding: 2px 8px; cursor: pointer;
   }
@@ -85,6 +114,97 @@ export interface Shell {
   setStatus(left: string, right: string, cls?: string): void;
 }
 
+/**
+ * Тяги: левый край панели двигает её ширину, полоса между слоями и тайлами —
+ * их высоты. Размеры запоминаются.
+ *
+ * Игру это не задевает: канвас в соседней колонке грида, он подстроится сам.
+ * А вот камере сцены надо сказать — Phaser следит за окном, а не за разметкой,
+ * и смены ширины колонки не замечает. Этим занимается mount.
+ */
+function setupResizers(root: HTMLDivElement): void {
+  const sizes = loadSizes();
+  const apply = (): void => {
+    document.body.style.setProperty('--panel-w', `${sizes.panelW}px`);
+    document.body.style.setProperty('--layers-h', `${sizes.layersH}px`);
+  };
+  apply();
+
+  const gripW = root.querySelector<HTMLDivElement>('#ed-grip-w')!;
+  const gripH = root.querySelector<HTMLDivElement>('#ed-grip-h')!;
+
+  const drag = (
+    grip: HTMLDivElement,
+    rows: boolean,
+    onMove: (e: PointerEvent) => void,
+  ): void => {
+    grip.addEventListener('pointerdown', (e: PointerEvent) => {
+      e.preventDefault();
+      // Захват указателя: иначе, стоит увести мышь за пределы тяги, она «отцепится».
+      grip.setPointerCapture(e.pointerId);
+      grip.classList.add('dragging');
+      document.body.classList.add('ed-resizing');
+      if (rows) document.body.classList.add('rows');
+
+      const move = (ev: PointerEvent): void => {
+        onMove(ev);
+        apply();
+        // Канвас поменял размер — сообщаем игре, иначе карта останется в старых границах.
+        window.dispatchEvent(new Event('resize'));
+      };
+      const up = (): void => {
+        grip.classList.remove('dragging');
+        document.body.classList.remove('ed-resizing', 'rows');
+        grip.removeEventListener('pointermove', move);
+        grip.removeEventListener('pointerup', up);
+        saveSizes(sizes);
+      };
+
+      grip.addEventListener('pointermove', move);
+      grip.addEventListener('pointerup', up);
+    });
+  };
+
+  drag(gripW, false, (e) => {
+    // Панель прижата к правому краю окна, поэтому ширина — это расстояние от курсора до края.
+    const width = window.innerWidth - e.clientX;
+    // Не даём ужать панель в ноль и не даём съесть весь экран под неё.
+    sizes.panelW = Math.max(MIN_PANEL, Math.min(width, window.innerWidth - 200));
+  });
+
+  drag(gripH, true, (e) => {
+    const top = root.querySelector<HTMLDivElement>('#ed-layers')!.getBoundingClientRect().top;
+    const height = e.clientY - top;
+    // Тайлам тоже надо оставить место, иначе палитра схлопнется в щель.
+    sizes.layersH = Math.max(MIN_SECTION, Math.min(height, window.innerHeight - 260));
+  });
+}
+
+interface Sizes {
+  panelW: number;
+  layersH: number;
+}
+
+function loadSizes(): Sizes {
+  const fallback = { panelW: 300, layersH: Math.round(window.innerHeight * 0.34) };
+  try {
+    const saved = JSON.parse(localStorage.getItem(SIZES_KEY) ?? 'null');
+    if (!saved) return fallback;
+    return { panelW: saved.panelW ?? fallback.panelW, layersH: saved.layersH ?? fallback.layersH };
+  } catch {
+    // Испорченная запись не должна мешать открыть редактор.
+    return fallback;
+  }
+}
+
+function saveSizes(sizes: Sizes): void {
+  try {
+    localStorage.setItem(SIZES_KEY, JSON.stringify(sizes));
+  } catch {
+    // Приватный режим или переполненное хранилище — размеры просто не запомнятся.
+  }
+}
+
 export function buildShell(): Shell {
   const style = document.createElement('style');
   style.textContent = CSS;
@@ -94,14 +214,18 @@ export function buildShell(): Shell {
   const root = document.createElement('div');
   root.id = 'editor';
   root.innerHTML = `
+    <div id="ed-grip-w" title="Потяните, чтобы сделать панель шире или уже"></div>
     <div id="ed-tools"></div>
     <h2 class="action">Слои <button id="ed-add-layer" class="head-btn" title="Новый слой поверх активного">＋</button></h2>
     <div id="ed-layers"></div>
+    <div id="ed-grip-h" title="Потяните, чтобы поделить высоту между слоями и тайлами"></div>
     <h2>Тайлы</h2>
     <div id="ed-palette"></div>
     <div id="ed-status"><span id="ed-status-left"></span><span id="ed-status-right"></span></div>
   `;
   document.body.append(root);
+
+  setupResizers(root);
 
   const left = root.querySelector<HTMLSpanElement>('#ed-status-left')!;
   const right = root.querySelector<HTMLSpanElement>('#ed-status-right')!;
