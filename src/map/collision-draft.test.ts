@@ -6,7 +6,6 @@ import type { GameMap } from './types.ts';
 
 const WATER_ID = 1; // Water_detilazation
 const LAND_ID = 500; // Water_coasts — вопреки имени земля
-const OBJ_ID = 1100; // Objects
 
 function docFrom(layers: { name: string; rows: string[] }[], legend: Record<string, number>): MapDoc {
   const width = layers[0].rows[0].length;
