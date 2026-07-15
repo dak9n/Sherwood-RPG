@@ -10,7 +10,7 @@
  * панель редактора: та ужимает канвас, и сцене приходится пересчитывать камеру.
  */
 
-const UI = 'assets/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/character_panel.png';
+const UI = 'assets/interface/PNG/character_panel.png';
 
 /**
  * Раскладка внутри character_panel.png (измерено по пикселям).
