@@ -60,6 +60,11 @@ export function mountEditor(game: Phaser.Game): void {
     overlay.setGrid(gridOn);
     gridBtn.setAttribute('aria-pressed', String(gridOn));
   });
+  const dimBtn = btn('Затемнить', 'Вкл/выкл затемнение всех слоёв, кроме активного — видно, что именно правишь', () => {
+    dimInactive = !dimInactive;
+    dimBtn.setAttribute('aria-pressed', String(dimInactive));
+    applyDim();
+  });
   const undoBtn = btn('↶', 'Отменить (Ctrl+Z)', () => state.undo());
   const redoBtn = btn('↷', 'Вернуть (Ctrl+Shift+Z)', () => state.redo());
   btn('Размер', 'Изменить размер карты', () => doResize());
@@ -67,6 +72,8 @@ export function mountEditor(game: Phaser.Game): void {
 
   let gridOn = true;
   gridBtn.setAttribute('aria-pressed', 'true');
+  let dimInactive = false;
+  dimBtn.setAttribute('aria-pressed', 'false');
 
   function setTool(next: Tool): void {
     tool = next;
@@ -132,9 +139,23 @@ export function mountEditor(game: Phaser.Game): void {
     redoBtn.disabled = !state.canRedo;
   }
 
+  // Затемнение неактивных слоёв — чисто экранный эффект (alpha в Phaser), в файл
+  // не пишется. Помогает видеть, что правишь, когда слоёв два десятка. Скрытые
+  // «глазом» слои это не трогает: у них visible=false, alpha им не важен.
+  const DIM_ALPHA = 0.25;
+  function applyDim(): void {
+    const layers = state.view.layers;
+    for (let i = 0; i < layers.length; i++) {
+      layers[i].setAlpha(dimInactive && i !== state.activeLayer ? DIM_ALPHA : 1);
+    }
+  }
+
   state.onChange(() => {
     redrawLayers();
     refreshStatus();
+    // Пересборка карты (add/delete слоя) даёт новые слои с alpha=1 — приглушаем
+    // заново; смена активного слоя — переносим подсветку на него.
+    applyDim();
   });
 
   // Сохранение
