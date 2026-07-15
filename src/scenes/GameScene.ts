@@ -222,7 +222,6 @@ export class GameScene extends MapScene {
       this.player.hpMax,
       this.player.mp,
       this.player.mpMax,
-      this.player.level,
       this.player.xp,
       xpToNext(this.player.level),
     );

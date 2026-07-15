@@ -56,17 +56,6 @@ const CSS = `
     transition: width .12s linear;
     overflow: hidden;
   }
-  #hud .lvl {
-    position: absolute; left: 12px; top: ${12 + PANEL.h * SCALE + 4}px;
-    font-size: 11px;
-  }
-  #hud .nums {
-    position: absolute; left: ${12 + PANEL.w * SCALE + 8}px; top: 16px;
-    display: flex; flex-direction: column; gap: 6px;
-    font-variant-numeric: tabular-nums;
-  }
-  #hud .nums .hp { color: #e05c4a; }
-  #hud .nums .mp { color: #5ba3e0; }
   #hud .death {
     position: absolute; inset: 0; display: none;
     align-items: center; justify-content: center;
@@ -79,9 +68,6 @@ export class Hud {
   private root: HTMLDivElement;
   private style: HTMLStyleElement;
   private fills: Record<'hp' | 'mp' | 'xp', HTMLDivElement>;
-  private lvlEl: HTMLDivElement;
-  private hpNum: HTMLSpanElement;
-  private mpNum: HTMLSpanElement;
   private last = '';
 
   constructor() {
@@ -103,10 +89,6 @@ export class Hud {
       <div class="panel">
         ${bar('hp')}${bar('mp')}${bar('xp')}
       </div>
-      <div class="lvl">ур. 1</div>
-      <div class="nums">
-        <span class="hp"></span><span class="mp"></span>
-      </div>
       <div class="death">ТЫ ПОГИБ</div>
     `;
     document.body.append(this.root);
@@ -116,14 +98,15 @@ export class Hud {
       mp: this.root.querySelector('.fill.mp')!,
       xp: this.root.querySelector('.fill.xp')!,
     };
-    this.lvlEl = this.root.querySelector('.lvl')!;
-    this.hpNum = this.root.querySelector('.nums .hp')!;
-    this.mpNum = this.root.querySelector('.nums .mp')!;
   }
 
-  set(hp: number, hpMax: number, mp: number, mpMax: number, level: number, xp = 0, xpNext = 1): void {
+  /**
+   * Состояние героя показывают только полоски: длина читается с одного взгляда,
+   * а цифры на экране лишь мешали смотреть на лес.
+   */
+  set(hp: number, hpMax: number, mp: number, mpMax: number, xp = 0, xpNext = 1): void {
     // Трогаем DOM, только когда есть что менять: set зовётся каждый кадр.
-    const key = `${Math.ceil(hp)}/${hpMax}/${Math.floor(mp)}/${mpMax}/${level}/${Math.floor(xp)}`;
+    const key = `${Math.ceil(hp)}/${hpMax}/${Math.floor(mp)}/${mpMax}/${Math.floor(xp)}/${xpNext}`;
     if (key === this.last) return;
     this.last = key;
 
@@ -131,10 +114,6 @@ export class Hud {
     this.fills.hp.style.width = `${BARS.hp.w * frac(hp, hpMax)}px`;
     this.fills.mp.style.width = `${BARS.mp.w * frac(mp, mpMax)}px`;
     this.fills.xp.style.width = `${BARS.xp.w * frac(xp, xpNext)}px`;
-
-    this.lvlEl.textContent = `ур. ${level}`;
-    this.hpNum.textContent = `${Math.ceil(Math.max(0, hp))}/${hpMax}`;
-    this.mpNum.textContent = `${Math.floor(Math.max(0, mp))}/${mpMax}`;
   }
 
   showDeath(on: boolean): void {
