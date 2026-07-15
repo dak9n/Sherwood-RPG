@@ -1,26 +1,14 @@
 import Phaser from 'phaser';
-import { usedFrames } from './sprite-frames';
+import { createDirAnims } from './anims';
+import { dirFromVelocity, DIRS_HERO, type Dir } from './dir';
+import { hitRect, rollDamage, type Rect } from './combat';
+import { HERO } from './creatures';
 
 const SHEETS = 'assets/characters/PNG/Swordsman_lvl1/With_shadow/';
 const PREFIX = 'Swordsman_lvl1_';
 
 /** Кадр в листе — 64x64, персонаж внутри примерно 20x30 и стоит на нижней трети. */
 const FRAME = 64;
-
-/**
- * Ряды в спрайт-листах идут в этом порядке. Проверено глазами по кадрам:
- * 0 — анфас с двумя глазами, 1 и 2 — профили в разные стороны, 3 — спина.
- */
-const DIRS = ['down', 'left', 'right', 'up'] as const;
-export type Dir = (typeof DIRS)[number];
-
-/**
- * Ширина сетки листа. Сколько кадров в ряду НАРИСОВАНО — считается по картинке:
- * у idle ряд «вверх» заполнен только на 4 кадра из 12.
- */
-const SHEET_COLS = { idle: 12, walk: 6 } as const;
-
-const SPEED = 70;
 
 /**
  * Глубина слоёв карты — индекс*10 (см. buildTilemap). Слои объектов идут
@@ -36,29 +24,65 @@ const SPEED = 70;
 const DEPTH_ABOVE = 300;
 const DEPTH_BEHIND = 215;
 
+type State = 'idle' | 'walk' | 'attack' | 'dead';
+
+export interface Strike {
+  rect: Rect;
+  damage: number;
+  heavy: boolean;
+}
+
 export class Player {
   readonly sprite: Phaser.Physics.Arcade.Sprite;
-  private keys: Record<string, Phaser.Input.Keyboard.Key>;
+
+  hp = HERO.hp;
+  hpMax = HERO.hp;
+  mp = HERO.mp;
+  mpMax = HERO.mp;
+  level = 1;
+  xp = 0;
+
+  private keys!: Record<string, Phaser.Input.Keyboard.Key>;
   private dir: Dir = 'down';
-  /** Клетка -> низ большого дерева в пикселях. Пусто, пока не задано. */
+  private state: State = 'idle';
+  /** Не бить дважды за один взмах. */
+  private didHit = false;
+  private heavySwing = false;
+  private invulnUntil = 0;
+  private lastHurtAt = -Infinity;
+
   private tallObjects: Map<number, number> = new Map();
   private mapWidth = 0;
   private tileW = 16;
   private tileH = 16;
 
   static preload(scene: Phaser.Scene): void {
-    scene.load.spritesheet('sw-idle', `${SHEETS}${PREFIX}Idle_with_shadow.png`, {
-      frameWidth: FRAME,
-      frameHeight: FRAME,
-    });
-    scene.load.spritesheet('sw-walk', `${SHEETS}${PREFIX}Walk_with_shadow.png`, {
-      frameWidth: FRAME,
-      frameHeight: FRAME,
-    });
+    const sheet = (name: string) =>
+      scene.load.spritesheet(`sw-${name.toLowerCase()}`, `${SHEETS}${PREFIX}${name}_with_shadow.png`, {
+        frameWidth: FRAME,
+        frameHeight: FRAME,
+      });
+
+    sheet('Idle');
+    sheet('Walk');
+    sheet('attack');
+    sheet('Death');
   }
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
-    Player.createAnims(scene);
+  constructor(
+    private scene: Phaser.Scene,
+    x: number,
+    y: number,
+    private onStrike: (strike: Strike) => void,
+  ) {
+    createDirAnims(scene, 'sw', DIRS_HERO, {
+      idle: { texture: 'sw-idle', cols: 12, frameRate: 8, loop: true },
+      walk: { texture: 'sw-walk', cols: 6, frameRate: 10, loop: true },
+      // 8 кадров при 16 к/с = 500 мс на взмах. Удар — на 4-м, то есть через
+      // четверть секунды: это и есть пауза между ударами, отдельного таймера нет.
+      attack: { texture: 'sw-attack', cols: 8, frameRate: 16, loop: false },
+      death: { texture: 'sw-death', cols: 7, frameRate: 10, loop: false },
+    });
 
     this.sprite = scene.physics.add.sprite(x, y, 'sw-idle');
     // Точка персонажа — его ноги: так он правильно заходит за деревья и
@@ -71,34 +95,55 @@ export class Player {
     const body = this.sprite.body as Phaser.Physics.Arcade.Body;
     body.setSize(12, 8);
     body.setOffset(FRAME / 2 - 6, 40);
+    // Пауки толкают друг друга, но не игрока.
+    body.setImmovable(true);
 
     this.sprite.setDepth(DEPTH_ABOVE);
     this.play('idle');
 
     const kb = scene.input.keyboard!;
-    this.keys = kb.addKeys('W,A,S,D,UP,LEFT,DOWN,RIGHT') as Record<string, Phaser.Input.Keyboard.Key>;
+    this.keys = kb.addKeys('W,A,S,D,UP,LEFT,DOWN,RIGHT,SPACE,SHIFT', false) as Record<
+      string,
+      Phaser.Input.Keyboard.Key
+    >;
+
+    // Подписываемся один раз, а не на каждый взмах.
+    this.sprite.on(Phaser.Animations.Events.ANIMATION_UPDATE, this.onAnimFrame, this);
+    this.sprite.on(Phaser.Animations.Events.ANIMATION_COMPLETE, this.onAnimDone, this);
   }
 
-  private static createAnims(scene: Phaser.Scene): void {
-    if (scene.anims.exists('idle-down')) return;
+  /**
+   * Момент удара. Ловим по номеру кадра В ЛИСТЕ, а не по позиции в анимации:
+   * пустые кадры из анимации выкидываются, и позиции сдвигаются — урон уехал бы
+   * на замах, что незаметно глазом, но ощущается как «не попадает».
+   */
+  private onAnimFrame(anim: Phaser.Animations.Animation, frame: Phaser.Animations.AnimationFrame): void {
+    if (this.state !== 'attack' || this.didHit) return;
+    if (!anim.key.startsWith('sw-attack-')) return;
 
-    for (const [row, dir] of DIRS.entries()) {
-      for (const [kind, cols] of Object.entries(SHEET_COLS) as [keyof typeof SHEET_COLS, number][]) {
-        const key = kind === 'idle' ? 'sw-idle' : 'sw-walk';
-        const frames = usedFrames(scene, key, row, cols);
+    const row = DIRS_HERO.indexOf(this.dir);
+    if (frame.textureFrame !== row * 8 + HERO.hitFrame) return;
 
-        scene.anims.create({
-          key: `${kind}-${dir}`,
-          frames: frames.map((frame) => ({ key, frame })),
-          frameRate: kind === 'walk' ? 10 : 8,
-          repeat: -1,
-        });
-      }
+    this.didHit = true;
+    const reach = this.heavySwing ? HERO.reach + 8 : HERO.reach;
+    const width = this.heavySwing ? HERO.hitW + 8 : HERO.hitW;
+    const base = rollDamage(HERO.dmgMin + (this.level - 1), HERO.dmgMax + (this.level - 1));
+
+    this.onStrike({
+      rect: hitRect(this.sprite.x, this.sprite.y, this.dir, reach, width),
+      damage: Math.round(this.heavySwing ? base * HERO.heavyMul : base),
+      heavy: this.heavySwing,
+    });
+  }
+
+  private onAnimDone(anim: Phaser.Animations.Animation): void {
+    if (anim.key.startsWith('sw-attack-') && this.state === 'attack') {
+      this.state = 'idle';
     }
   }
 
-  private play(kind: 'idle' | 'walk'): void {
-    this.sprite.anims.play(`${kind}-${this.dir}`, true);
+  private play(kind: 'idle' | 'walk' | 'attack' | 'death'): void {
+    this.sprite.anims.play(`sw-${kind}-${this.dir}`, kind !== 'attack');
   }
 
   /** Сказать игроку, где большие деревья, чтобы он умел за ними прятаться. */
@@ -124,33 +169,121 @@ export class Player {
     this.sprite.setDepth(behind ? DEPTH_BEHIND : DEPTH_ABOVE);
   }
 
-  update(): void {
-    const k = this.keys;
-    const left = k.A.isDown || k.LEFT.isDown;
-    const right = k.D.isDown || k.RIGHT.isDown;
-    const up = k.W.isDown || k.UP.isDown;
-    const down = k.S.isDown || k.DOWN.isDown;
+  /** Урон по игроку. Возвращает false, если попадание съела неуязвимость. */
+  takeDamage(amount: number, now: number): boolean {
+    if (this.state === 'dead' || now < this.invulnUntil) return false;
 
-    const vx = (right ? 1 : 0) - (left ? 1 : 0);
-    const vy = (down ? 1 : 0) - (up ? 1 : 0);
+    this.hp -= amount;
+    this.invulnUntil = now + HERO.iframes;
+    this.lastHurtAt = now;
+
+    // Вспышка — половина ощущения «попали». Ввод при этом НЕ блокируем:
+    // три паука иначе дают вечный стан и смерть без права шевельнуться.
+    this.sprite.setTintFill(0xffffff);
+    this.scene.time.delayedCall(60, () => this.sprite.clearTint());
+
+    if (this.hp <= 0) this.die();
+    return true;
+  }
+
+  private die(): void {
+    this.hp = 0;
+    this.state = 'dead';
+    (this.sprite.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+    this.play('death');
+  }
+
+  get isDead(): boolean {
+    return this.state === 'dead';
+  }
+
+  respawn(x: number, y: number, now: number): void {
+    this.sprite.setPosition(x, y);
+    this.hp = this.hpMax;
+    this.mp = this.mpMax;
+    this.state = 'idle';
+    this.dir = 'down';
+    // Пара секунд неуязвимости: иначе воскреснуть можно прямо в зубы пауку.
+    this.invulnUntil = now + 2000;
+    this.sprite.clearTint();
+    this.sprite.setAlpha(1);
+    this.play('idle');
+  }
+
+  addXp(amount: number): boolean {
+    this.xp += amount;
+    return false;
+  }
+
+  update(_time: number, delta: number): void {
+    const now = this.scene.time.now;
+    this.regen(delta, now);
+    this.blinkWhileInvulnerable(now);
+
+    if (this.state === 'dead') return;
 
     const body = this.sprite.body as Phaser.Physics.Arcade.Body;
-    body.setVelocity(vx * SPEED, vy * SPEED);
+
+    if (this.state === 'attack') {
+      // Во время взмаха стоим: иначе зона удара уедет из-под анимации.
+      body.setVelocity(0, 0);
+      this.updateDepth();
+      return;
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(this.keys.SPACE)) {
+      this.startAttack();
+      return;
+    }
+
+    const k = this.keys;
+    const vx = (k.D.isDown || k.RIGHT.isDown ? 1 : 0) - (k.A.isDown || k.LEFT.isDown ? 1 : 0);
+    const vy = (k.S.isDown || k.DOWN.isDown ? 1 : 0) - (k.W.isDown || k.UP.isDown ? 1 : 0);
+
+    body.setVelocity(vx * HERO.speed, vy * HERO.speed);
     // По диагонали иначе выходило бы в 1.41 раза быстрее, чем по прямой.
-    body.velocity.normalize().scale(SPEED);
+    body.velocity.normalize().scale(HERO.speed);
 
     this.updateDepth();
 
     if (!vx && !vy) {
+      this.state = 'idle';
       this.play('idle');
       return;
     }
 
-    // Горизонтальное направление важнее: при ходьбе по диагонали персонаж
-    // смотрит вбок, а не назад — так читается лучше.
-    if (vx) this.dir = vx > 0 ? 'right' : 'left';
-    else this.dir = vy > 0 ? 'down' : 'up';
-
+    this.dir = dirFromVelocity(vx, vy, this.dir);
+    this.state = 'walk';
     this.play('walk');
+  }
+
+  private startAttack(): void {
+    // Тяжёлый удар тратит ману. Обычный бесплатный: кончившаяся мана не должна
+    // отнимать у игрока единственное действие.
+    const heavy = this.keys.SHIFT.isDown && this.mp >= HERO.heavyCost;
+    if (heavy) this.mp -= HERO.heavyCost;
+
+    this.heavySwing = heavy;
+    this.didHit = false;
+    this.state = 'attack';
+    (this.sprite.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+    this.play('attack');
+  }
+
+  private regen(delta: number, now: number): void {
+    const seconds = delta / 1000;
+    this.mp = Math.min(this.mpMax, this.mp + HERO.mpRegen * seconds);
+
+    // Здоровье возвращается, только если давно не били: иначе оно односторонний
+    // ресурс на 100 единиц и смерть — вопрос арифметики.
+    if (this.state !== 'dead' && now - this.lastHurtAt > HERO.regenDelay) {
+      this.hp = Math.min(this.hpMax, this.hp + HERO.hpRegen * seconds);
+    }
+  }
+
+  private blinkWhileInvulnerable(now: number): void {
+    if (this.state === 'dead') return;
+    const invuln = now < this.invulnUntil;
+    this.sprite.setAlpha(invuln ? (Math.floor(now / 80) % 2 ? 0.45 : 1) : 1);
   }
 }
