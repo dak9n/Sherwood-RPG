@@ -1,5 +1,6 @@
 import { MapScene } from './MapScene';
 import { Player } from '../game/player';
+import { findTallObjects } from '../game/tall-objects';
 
 /**
  * Сцена игры. Всё про геймплей — здесь и в src/game/.
@@ -24,6 +25,10 @@ export class GameScene extends MapScene {
     // и вниз, поэтому центр карты — пустое поле.
     const { x, y } = this.drawnCenter();
     this.player = new Player(this, x, y);
+
+    // Большие деревья ищем один раз: карта в игре не меняется.
+    const tall = findTallObjects(this.doc);
+    this.player.setTallObjects(tall, this.doc.width, this.doc.map.tileWidth, this.doc.map.tileHeight);
 
     const cam = this.cameras.main;
     cam.setZoom(3);

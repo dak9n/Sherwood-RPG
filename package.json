@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && vite build",
     "preview": "vite preview",
-    "test": "node --experimental-strip-types --test src/map/*.test.ts",
+    "test": "node --experimental-strip-types --test src/map/*.test.ts src/game/*.test.ts",
     "convert-map": "node tools/convert-map.mjs"
   },
   "repository": {

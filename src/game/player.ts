@@ -18,10 +18,29 @@ const SHEET_COLS = { idle: 12, walk: 6 } as const;
 
 const SPEED = 70;
 
+/**
+ * Глубина слоёв карты — индекс*10 (см. buildTilemap). Слои объектов идут
+ * последними, поэтому:
+ *
+ * DEPTH_ABOVE — поверх всей карты: так игрок ходит по траве, камням, пням,
+ * кустам и тростнику, не ныряя за них.
+ * DEPTH_BEHIND — под слоями объектов: включается, только когда игрок зашёл
+ * за большое дерево.
+ *
+ * Числа привязаны к текущему порядку слоёв: переставят слои — пересчитать.
+ */
+const DEPTH_ABOVE = 300;
+const DEPTH_BEHIND = 215;
+
 export class Player {
   readonly sprite: Phaser.Physics.Arcade.Sprite;
   private keys: Record<string, Phaser.Input.Keyboard.Key>;
   private dir: Dir = 'down';
+  /** Клетка -> низ большого дерева в пикселях. Пусто, пока не задано. */
+  private tallObjects: Map<number, number> = new Map();
+  private mapWidth = 0;
+  private tileW = 16;
+  private tileH = 16;
 
   static preload(scene: Phaser.Scene): void {
     scene.load.spritesheet('sw-idle', `${SHEETS}${PREFIX}Idle_with_shadow.png`, {
@@ -49,12 +68,7 @@ export class Player {
     body.setSize(12, 8);
     body.setOffset(FRAME / 2 - 6, 40);
 
-    // Глубина слоёв карты — индекс*10 (см. buildTilemap). 215 ставит игрока под
-    // деревья и тростник (objects2/1/3, reeds — это 220..250) и над травой.
-    // Число привязано к текущему порядку слоёв: переставят слои — пересчитать.
-    // Правильное решение — сортировка по Y, но она нужна только когда за деревом
-    // надо будет прятаться по-настоящему.
-    this.sprite.setDepth(215);
+    this.sprite.setDepth(DEPTH_ABOVE);
     this.play('idle');
 
     const kb = scene.input.keyboard!;
@@ -85,6 +99,29 @@ export class Player {
     this.sprite.anims.play(`${kind}-${this.dir}`, true);
   }
 
+  /** Сказать игроку, где большие деревья, чтобы он умел за ними прятаться. */
+  setTallObjects(tall: Map<number, number>, mapWidth: number, tileW: number, tileH: number): void {
+    this.tallObjects = tall;
+    this.mapWidth = mapWidth;
+    this.tileW = tileW;
+    this.tileH = tileH;
+  }
+
+  /**
+   * За большим деревом прячемся, всё остальное обходим поверху.
+   *
+   * Прячемся только когда ноги выше низа дерева: иначе, стоя перед стволом,
+   * игрок оказался бы за кроной, хотя визуально он ближе к зрителю.
+   */
+  private updateDepth(): void {
+    const x = Math.floor(this.sprite.x / this.tileW);
+    const y = Math.floor(this.sprite.y / this.tileH);
+    const baseY = this.tallObjects.get(y * this.mapWidth + x);
+
+    const behind = baseY !== undefined && this.sprite.y < baseY;
+    this.sprite.setDepth(behind ? DEPTH_BEHIND : DEPTH_ABOVE);
+  }
+
   update(): void {
     const k = this.keys;
     const left = k.A.isDown || k.LEFT.isDown;
@@ -99,6 +136,8 @@ export class Player {
     body.setVelocity(vx * SPEED, vy * SPEED);
     // По диагонали иначе выходило бы в 1.41 раза быстрее, чем по прямой.
     body.velocity.normalize().scale(SPEED);
+
+    this.updateDepth();
 
     if (!vx && !vy) {
       this.play('idle');
