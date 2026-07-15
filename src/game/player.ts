@@ -107,6 +107,14 @@ export class Player {
       Phaser.Input.Keyboard.Key
     >;
 
+    // Мышью бить привычнее, чем пробелом: левая — взмах, правая — тяжёлый.
+    // Удар идёт в сторону курсора, поэтому разворачиваться перед ударом не нужно.
+    scene.input.on(Phaser.Input.Events.POINTER_DOWN, (p: Phaser.Input.Pointer) => {
+      if (this.state === 'attack' || this.state === 'dead') return;
+      this.faceTo(p.worldX, p.worldY);
+      this.startAttack(p.rightButtonDown());
+    });
+
     // Подписываемся один раз, а не на каждый взмах.
     this.sprite.on(Phaser.Animations.Events.ANIMATION_UPDATE, this.onAnimFrame, this);
     this.sprite.on(Phaser.Animations.Events.ANIMATION_COMPLETE, this.onAnimDone, this);
@@ -232,7 +240,7 @@ export class Player {
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.keys.SPACE)) {
-      this.startAttack();
+      this.startAttack(this.keys.SHIFT.isDown);
       return;
     }
 
@@ -257,10 +265,15 @@ export class Player {
     this.play('walk');
   }
 
-  private startAttack(): void {
+  /** Развернуться к точке — перед ударом мышью. */
+  private faceTo(x: number, y: number): void {
+    this.dir = dirFromVelocity(x - this.sprite.x, y - this.sprite.y, this.dir);
+  }
+
+  private startAttack(wantHeavy: boolean): void {
     // Тяжёлый удар тратит ману. Обычный бесплатный: кончившаяся мана не должна
     // отнимать у игрока единственное действие.
-    const heavy = this.keys.SHIFT.isDown && this.mp >= HERO.heavyCost;
+    const heavy = wantHeavy && this.mp >= HERO.heavyCost;
     if (heavy) this.mp -= HERO.heavyCost;
 
     this.heavySwing = heavy;
