@@ -1,3 +1,4 @@
+import Phaser from 'phaser';
 import { MapScene } from './MapScene';
 import { Player, type Strike } from '../game/player';
 import { Monster } from '../game/monster';
@@ -5,9 +6,16 @@ import { findTallObjects } from '../game/tall-objects';
 import { pickSpawns } from '../game/spawn';
 import { MONSTERS, SPAWNS, xpToNext } from '../game/creatures';
 import { Hud } from '../game/hud';
+import { draftCollision } from '../map/collision-draft';
 
 /** Целый зум: при дробном пиксели карты не легли бы на пиксели экрана. */
 const ZOOM = 3;
+
+/**
+ * Чем помечаем стену в невидимом слое физики. Годится любой существующий номер
+ * тайла: слой не рисуется, важно лишь, что клетка не пуста.
+ */
+const WALL_TILE = 1;
 
 /**
  * Сцена игры. Всё про геймплей — здесь и в src/game/.
@@ -40,7 +48,8 @@ export class GameScene extends MapScene {
     const tall = findTallObjects(this.doc);
     this.player.setTallObjects(tall, this.doc.width, this.doc.map.tileWidth, this.doc.map.tileHeight);
 
-    this.spawnMonsters(tall, x, y);
+    const walls = this.buildCollision(tall);
+    this.spawnMonsters(tall, x, y, walls);
 
     this.hud = new Hud();
     this.events.once('shutdown', () => this.hud.destroy());
@@ -56,8 +65,48 @@ export class GameScene extends MapScene {
     this.followPlayer();
   }
 
-  private spawnMonsters(tall: Map<number, number>, px: number, py: number): void {
-    const points = pickSpawns(this.doc, new Set(tall.keys()), SPAWNS, { x: px, y: py });
+  /**
+   * Невидимый слой стен для физики.
+   *
+   * Проходимость берём из карты, а если её ещё не размечали — считаем по самой
+   * картинке (вода, обрыв за краем нарисованного, стволы деревьев). Так игра
+   * играется сразу, а редактор потом позволит уточнить руками.
+   */
+  private buildCollision(tall: Map<number, number>): Phaser.Tilemaps.TilemapLayer {
+    const marked = this.doc.map.collision.some((v) => v !== 0);
+    if (!marked) {
+      const draft = draftCollision(this.doc, tall, this.doc.map.tileHeight);
+      this.doc.map.collision = draft.collision;
+      console.log(`Проходимость посчитана: ${draft.walkable} клеток из ${draft.walkable + draft.blocked}`);
+    }
+
+    const layer = this.view.map.createBlankLayer('__collision', this.view.map.tilesets)!;
+
+    // Пишем индекс напрямую, минуя applyCell: тот занёс бы тайл в анимационную
+    // группу, и стены замигали бы вместе с водой.
+    for (let y = 0; y < this.doc.height; y++) {
+      for (let x = 0; x < this.doc.width; x++) {
+        if (this.doc.canWalk(x, y)) continue;
+        const tile = layer.getTileAt(x, y, true);
+        if (tile) tile.index = WALL_TILE;
+      }
+    }
+
+    // Сталкиваемся со всем, что не пусто. recalculateFaces обязателен: без него
+    // физика не увидит грани и пропустит сквозь стену.
+    layer.setCollisionByExclusion([-1], true, true);
+    layer.setVisible(false);
+    return layer;
+  }
+
+  private spawnMonsters(tall: Map<number, number>, px: number, py: number, walls: Phaser.Tilemaps.TilemapLayer): void {
+    const blocked = new Set(tall.keys());
+    // Не селим на стенах: паук, замурованный в воде, будет вечно биться о берег.
+    for (let i = 0; i < this.doc.width * this.doc.height; i++) {
+      if (!this.doc.canWalk(i % this.doc.width, Math.floor(i / this.doc.width))) blocked.add(i);
+    }
+
+    const points = pickSpawns(this.doc, blocked, SPAWNS, { x: px, y: py });
     for (const p of points) {
       this.monsters.push(new Monster(this, MONSTERS[p.kind], p.x, p.y));
     }
@@ -67,6 +116,10 @@ export class GameScene extends MapScene {
     const group = this.physics.add.group(this.monsters.map((m) => m.sprite));
     this.physics.add.collider(group, group);
     this.physics.add.collider(this.player.sprite, group);
+
+    // В стены упираются и игрок, и пауки — иначе погоня пойдёт через пруд.
+    this.physics.add.collider(this.player.sprite, walls);
+    this.physics.add.collider(group, walls);
   }
 
   /** Игрок махнул мечом: кому досталось. */

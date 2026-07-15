@@ -9,6 +9,10 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "noEmit": true,
+    // Явные расширения в импортах нужны, чтобы модуль могли выполнить и браузер
+    // (через Vite), и тесты (node --experimental-strip-types): node без
+    // расширения файл не найдёт.
+    "allowImportingTsExtensions": true,
     "lib": ["ES2022", "DOM"],
     "types": ["vite/client"]
   },
