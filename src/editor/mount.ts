@@ -10,10 +10,11 @@ import { askResize } from './resize-dialog';
 import { buildShell } from './ui/shell';
 import { buildLayers } from './ui/layers';
 import { buildPalette, revealBrush } from './ui/palette';
-import { WORLD_READY, type WorldScene } from '../scenes/WorldScene';
+import { WORLD_READY } from '../scenes/MapScene';
+import type { EditorScene } from '../scenes/EditorScene';
 
 export function mountEditor(game: Phaser.Game): void {
-  const scene = game.scene.getScene('world') as WorldScene;
+  const scene = game.scene.getScene('world') as EditorScene;
 
   // Ждём именно готовности карты, а не запуска сцены: тайлсеты грузятся вторым
   // проходом уже после create, и до его конца doc с view не существуют.

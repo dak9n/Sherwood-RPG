@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
-import { WorldScene } from './scenes/WorldScene';
+import { GameScene } from './scenes/GameScene';
+import { EditorScene } from './scenes/EditorScene';
 
-/** В редакторе игрок не нужен: он ловил бы клики кисти и мешал смотреть карту. */
+/** Игра и редактор — две разные сцены, вместе они не запускаются никогда. */
 const editMode = import.meta.env.DEV && new URLSearchParams(location.search).has('edit');
 
 const game = new Phaser.Game({
@@ -19,10 +20,7 @@ const game = new Phaser.Game({
     default: 'arcade',
     arcade: { gravity: { x: 0, y: 0 } },
   },
-  scene: [WorldScene],
-  callbacks: {
-    preBoot: (g) => g.registry.set('editMode', editMode),
-  },
+  scene: [editMode ? EditorScene : GameScene],
 });
 
 if (import.meta.env.DEV) {
