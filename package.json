@@ -1,0 +1,28 @@
+{
+  "name": "mynewgame",
+  "version": "1.0.0",
+  "description": "Тайловая 2D-игра: карта леса на Phaser",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "convert-map": "node tools/convert-map.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dak9n/mynewgame.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dak9n/mynewgame/issues"
+  },
+  "homepage": "https://github.com/dak9n/mynewgame#readme",
+  "dependencies": {
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.1.4"
+  },
+  "private": true,
+  "type": "module"
+}
