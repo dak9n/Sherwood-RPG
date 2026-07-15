@@ -1,144 +1,287 @@
-import { ITEMS, type Icon, type Stack, type Tab } from './items';
+import { ITEMS, RARITY_NAME, rarityOf, type Icon, type Rarity, type Stack, type Tab } from './items';
 import { SLOTS, totalBonuses, type Equipped } from './equipment';
 import { HERO } from './creatures';
 
 /**
  * Окно инвентаря. Открывается на I.
  *
- * Рисуется DOM-ом поверх канваса, как и панель героя: камера игры увеличена
- * втрое, и всё, что рисуется внутри сцены, раздулось бы вместе с ней.
+ * Рисуется DOM-ом поверх канваса, а не внутри сцены: камера игры увеличена
+ * втрое, и всё, нарисованное в сцене, раздулось бы вместе с ней.
  *
- * Само окно — CSS, а не картинка: слот в наборе оказался одним сплошным цветом
- * (проверено — 14x14 пикселей ровно одного тона), поэтому сетка любого размера
- * бесплатна и выглядит как тот же набор. Из графики берутся только иконки.
+ * Вся рама — настоящая графика набора, а не похожие прямоугольники на CSS.
+ * Куски вырезаны из листов скриптом tools/cut-ui.mjs в assets/interface/ui/ и
+ * тянутся девятислайсом (border-image). Отдельные файлы нужны потому, что
+ * border-image умеет растягивать только целую картинку — кусок общего листа он
+ * не берёт.
+ *
+ * Плоскими цветами остались ровно те места, которые плоские и в наборе: ячейка
+ * на бежевой странице — сплошной #CDA677 (проверено: 196 из 196 пикселей), а на
+ * тёмной — белая полупрозрачная накладка.
  */
 
-/** Цвета взяты пипеткой из Inventory.png — окно должно быть из того же набора. */
+/** Цвета взяты с листов набора пипеткой, а не подобраны на глаз. */
 const C = {
-  frame: '#000000',
-  title: '#478773',
-  bg: '#cda677',
-  slot: '#9d775d',
-  slotHover: '#b98f6a',
-  text: '#2b1d12',
+  ink: '#f0e0c8',
+  inkDark: '#2b1d12',
+  page: '#e5d6a1',
+  slotBeige: '#cda677',
+  /** Ячейка на тёмной странице: в наборе это белая накладка с альфой 26/255. */
+  slotDark: 'rgba(255, 255, 255, 0.102)',
+  gold: '#e0c48a',
+  good: '#8ad46a',
+  bad: '#e08a6a',
+  /** Трава нашей карты. Тот самый тайл, которым нарисована вся суша леса. */
+  grass: '#7aad55',
 } as const;
+
+/**
+ * Рамки редкости. Цвет обязан отражать, как трудно вещь достать (см. items.ts).
+ * Тона тёмные не случайно: рамка лежит на песочной ячейке #cda677, и светло
+ * зелёный на ней просто терялся.
+ */
+const RARITY_COLOR: Record<Rarity, string> = {
+  common: '#6b4f3a',
+  uncommon: '#2f7a35',
+  rare: '#2b5ea8',
+  epic: '#7b3ca8',
+};
+
+const UI = 'assets/interface/ui';
 
 const SHEETS: Record<Icon['sheet'], string> = {
   icons: 'assets/interface/PNG/Icons.png',
   Objects: 'assets/tilesets/Objects.png',
 };
 
+/** Кадр героя для портрета: мечник анфас, поза покоя. */
+const PORTRAIT = {
+  sheet: 'assets/characters/PNG/Swordsman_lvl1/With_shadow/Swordsman_lvl1_Idle_with_shadow.png',
+  // Плотный bbox внутри кадра 64x64 — вокруг него в кадре одна пустота.
+  x: 19, y: 20, w: 20, h: 27,
+  // Только целое кратное: на дробном пиксели мечника поехали бы.
+  zoom: 8,
+} as const;
+
 const COLS = 7;
 const ROWS = 5;
-/** Слот 16px мелковат для мыши — увеличиваем втрое, как и панель героя. */
+/** Во сколько раз увеличены рамки набора. Только целое: дробное размажет пиксели. */
 const SCALE = 3;
-const SLOT = 18;
+/**
+ * Ячейки крупнее рам: 14px из набора — это мелко и для мыши, и для глаза. Заодно
+ * ширина сетки сходится с полосой вкладок, и на странице не остаётся пустоты.
+ */
+const SLOT_SCALE = 4;
+const SLOT = 14 * SLOT_SCALE;
+const GAP = 2 * SLOT_SCALE;
+/** Вкладки с рамкой в полный масштаб не влезали в ширину сетки. */
+const TAB_SCALE = 2;
 
-const TABS: { id: Tab | 'all'; label: string }[] = [
-  { id: 'all', label: 'Все' },
-  { id: 'weapon', label: 'Оружие' },
-  { id: 'armor', label: 'Броня' },
-  { id: 'resource', label: 'Ресурсы' },
-  { id: 'food', label: 'Еда' },
+/** Клетка листа иконок. Ряды 11-16 не трогаем: там сетка 32x32 (см. items.ts). */
+const ico = (col: number, row: number): Icon => ({ sheet: 'icons', x: col * 16, y: row * 16, w: 16, h: 16 });
+
+const TABS: { id: Tab | 'all'; label: string; icon: Icon }[] = [
+  { id: 'all', label: 'Все', icon: ico(3, 7) },
+  { id: 'weapon', label: 'Оружие', icon: ico(0, 8) },
+  { id: 'armor', label: 'Броня', icon: ico(5, 6) },
+  { id: 'resource', label: 'Ресурсы', icon: ico(5, 15) },
+  { id: 'food', label: 'Еда', icon: ico(5, 5) },
 ];
+
+/**
+ * Иконки характеристик берём из монохромного набора (ряды 0-5) — он коричнево
+ * золотой и лежит на бежевой панели как родной. Цветные иконки предметов рядом
+ * с ним смотрелись бы чужими.
+ */
+const STAT_ICON = {
+  hp: ico(5, 0),      // сердце
+  mp: ico(4, 1),      // самоцвет
+  dmg: ico(1, 0),     // скрещённые мечи
+  def: ico(0, 3),     // щит
+  speed: ico(5, 4),   // стрелка вправо
+  regen: ico(2, 4),   // стрелка вверх
+} as const;
+
+/** Подсказка пустого слота: та же иконка предмета, только погашенная. */
+const SLOT_GHOST: Record<string, Icon> = {
+  helm: ico(4, 6),
+  amulet: ico(0, 9),
+  body: ico(5, 6),
+  ring: ico(5, 8),
+  weapon: ico(0, 8),
+  shield: ico(1, 8),
+  boots: ico(2, 8),
+};
+
+/** Слева от портрета и справа — как в любой RPG. */
+const LEFT_SLOTS = ['helm', 'amulet', 'body', 'ring'];
+const RIGHT_SLOTS = ['weapon', 'shield', 'boots'];
 
 const CSS = `
   #inv {
     position: absolute; inset: 0; z-index: 20; display: none;
     align-items: center; justify-content: center;
-    font: 12px/1 system-ui, sans-serif; color: ${C.text};
+    font: 12px/1 system-ui, sans-serif; color: ${C.ink};
     /* Растянут на весь экран, но кликов не ловит: игра не на паузе, и мимо окна
        удар должен доходить до пауков. Ловит только само окно — см. .win. */
     pointer-events: none;
+    -webkit-font-smoothing: none;
   }
   #inv.open { display: flex; }
-  /* Клики ловит только окно: мимо окна — по игре, чтобы не блокировать её зря. */
+  #inv i { image-rendering: pixelated; display: block; }
+
+  /* Окно целиком — кусок набора: зелёная шапка и коричневое тело одной рамой. */
   #inv .win {
     pointer-events: auto;
-    background: ${C.bg}; border: 3px solid ${C.frame};
-    box-shadow: 0 8px 32px rgba(0,0,0,.6), inset 0 0 0 2px #b0854f;
-    padding: 0 0 10px; border-radius: 2px;
+    border-image: url(${UI}/window.png) 16 5 5 5 fill / ${16 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px repeat;
+    border-width: ${16 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px;
+    border-style: solid;
+    image-rendering: pixelated;
+    position: relative;
+    filter: drop-shadow(0 10px 24px rgba(0, 0, 0, .55));
   }
+  /* Заголовок ложится поверх шапки, которая уже нарисована в рамке окна. */
   #inv .title {
-    background: ${C.title}; color: #eaf6f0; border-bottom: 3px solid ${C.frame};
-    padding: 6px 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
-    display: flex; justify-content: space-between; align-items: center; gap: 24px;
+    position: absolute; top: -${13 * SCALE}px; left: 0; right: 0;
+    text-align: center; font-weight: 700; font-size: 14px;
+    letter-spacing: .1em; text-transform: uppercase;
+    color: #eaf6f0; text-shadow: 1px 1px 0 #294040;
   }
   #inv .close {
-    cursor: pointer; width: 18px; height: 18px; line-height: 16px; text-align: center;
-    background: #a33b2e; border: 2px solid ${C.frame}; color: #fff; border-radius: 2px;
+    position: absolute; top: -${13 * SCALE}px; right: 0;
+    width: ${9 * SCALE}px; height: ${9 * SCALE}px; cursor: pointer;
+    background: url(${UI}/close.png) no-repeat center / 100% 100%;
+    image-rendering: pixelated;
   }
-  #inv .close:hover { background: #c04a3a; }
+  #inv .close:hover { filter: brightness(1.25); }
+  #inv .close:active { transform: translateY(1px); }
 
-  #inv .tabs { display: flex; gap: 4px; padding: 8px 10px 0; }
-  #inv .tab {
-    cursor: pointer; padding: 3px 8px; border: 2px solid ${C.frame}; border-radius: 2px;
-    background: ${C.slot}; color: #f0e0c8;
-  }
-  #inv .tab:hover { background: ${C.slotHover}; }
-  #inv .tab[aria-selected="true"] { background: ${C.title}; }
+  /* stretch: обе колонки одной высоты, иначе под сумкой зияла бы пустая рама. */
+  #inv .body { display: flex; gap: ${4 * SCALE}px; align-items: stretch; }
 
-  #inv .grid {
-    display: grid; grid-template-columns: repeat(${COLS}, ${SLOT * SCALE}px);
-    gap: 4px; padding: 10px;
+  /* --- Панель персонажа (левая страница) --- */
+  #inv .hero {
+    display: flex; flex-direction: column; gap: ${3 * SCALE}px;
+    border-image: url(${UI}/panel_dark.png) 2 3 4 3 fill / ${2 * SCALE}px ${3 * SCALE}px ${4 * SCALE}px ${3 * SCALE}px repeat;
+    border-width: ${2 * SCALE}px ${3 * SCALE}px ${4 * SCALE}px ${3 * SCALE}px;
+    border-style: solid; image-rendering: pixelated;
+    padding: ${2 * SCALE}px;
   }
+  #inv .who { text-align: center; }
+  #inv .who b { font-size: 14px; color: ${C.gold}; text-shadow: 1px 1px 0 #3e1f1d; }
+  #inv .who span { display: block; margin-top: 3px; font-size: 11px; color: ${C.ink}; }
+  #inv .xpbar {
+    position: relative; height: ${3 * SCALE}px; margin-top: 4px;
+    background: #3e1f1d; border: 1px solid #241010; border-radius: 1px; overflow: hidden;
+  }
+  #inv .xpbar i { height: 100%; background: linear-gradient(#e0c48a, #a07f2d); transition: width .2s; }
+  #inv .xpnum {
+    text-align: center; font-size: 10px; margin-top: 3px; color: #d8c0a0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Слоты — портрет — слоты, как на образце. */
+  #inv .doll { display: flex; gap: ${2 * SCALE}px; justify-content: center; }
+  #inv .col { display: flex; flex-direction: column; gap: ${2 * SCALE}px; }
+  #inv .portrait {
+    flex: 1; position: relative; background: ${C.grass};
+    border: ${SCALE}px solid #3e1f1d; box-shadow: inset 0 0 0 ${SCALE}px #70492a;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+  }
+  /* Мечник из игрового листа, увеличенный целым кратным — иначе поедут пиксели. */
+  #inv .portrait i {
+    width: ${PORTRAIT.w}px; height: ${PORTRAIT.h}px;
+    background: url(${PORTRAIT.sheet}) -${PORTRAIT.x}px -${PORTRAIT.y}px;
+    transform: scale(${PORTRAIT.zoom});
+  }
+
   #inv .slot {
-    width: ${SLOT * SCALE}px; height: ${SLOT * SCALE}px;
-    background: ${C.slot}; border: 2px solid #6b4f3a; border-radius: 2px;
-    position: relative; cursor: default;
+    width: ${SLOT}px; height: ${SLOT}px; position: relative; cursor: default;
+    background: ${C.slotDark};
   }
   #inv .slot.has { cursor: pointer; }
-  #inv .slot.has:hover { background: ${C.slotHover}; border-color: #e0c48a; }
-  /* Иконка кладётся куском листа: пиксели не сглаживаем. */
-  #inv .slot i {
+  #inv .slot.has:hover { background: rgba(255, 255, 255, .22); }
+  #inv .slot > i.item {
     position: absolute; inset: 0; margin: auto;
-    image-rendering: pixelated;
-    transform: scale(${SCALE}); transform-origin: center;
+    width: 16px; height: 16px; transform: scale(${SLOT_SCALE - 1});
   }
+  #inv .slot > i.ghost { opacity: .3; filter: grayscale(1); }
+  /* Подпись НАД гнездом, как на образце: внутри она налезала бы на иконку. */
+  #inv .eqslot { display: flex; flex-direction: column; gap: 2px; }
+  #inv .eqslot > .lbl {
+    font-size: 9px; color: #d8c0a0; text-shadow: 1px 1px 0 #3e1f1d;
+    white-space: nowrap; text-align: center;
+  }
+
+  /* --- Характеристики: бежевая панель, монохромные иконки, тёмный текст --- */
+  #inv .stats {
+    border-image: url(${UI}/panel_beige.png) 2 5 5 5 fill / ${2 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px repeat;
+    border-width: ${2 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px;
+    border-style: solid; image-rendering: pixelated;
+    color: ${C.inkDark};
+    display: grid; grid-template-columns: 1fr 1fr; gap: 3px ${3 * SCALE}px;
+    padding: ${SCALE}px ${2 * SCALE}px;
+  }
+  #inv .stat { display: flex; align-items: center; gap: 5px; font-size: 11px; }
+  #inv .stat i { width: 16px; height: 16px; flex: none; }
+  #inv .stat span { flex: 1; }
+  #inv .stat b { font-weight: 700; font-variant-numeric: tabular-nums; }
+  #inv .plus { color: #2f7a2f; }
+  #inv .minus { color: #a33b2e; }
+
+  /* --- Сумка (правая страница) --- */
+  #inv .bagside { display: flex; flex-direction: column; }
+  #inv .tabs { display: flex; gap: ${TAB_SCALE}px; padding-left: ${2 * SCALE}px; }
+  #inv .tab {
+    display: flex; align-items: center; gap: 3px; cursor: pointer;
+    padding: ${2 * TAB_SCALE}px ${2 * TAB_SCALE}px ${TAB_SCALE}px;
+    border-image: url(${UI}/tab_off.png) 4 5 1 5 fill / ${4 * TAB_SCALE}px ${5 * TAB_SCALE}px ${TAB_SCALE}px ${5 * TAB_SCALE}px repeat;
+    border-width: ${4 * TAB_SCALE}px ${5 * TAB_SCALE}px ${TAB_SCALE}px ${5 * TAB_SCALE}px;
+    border-style: solid; image-rendering: pixelated;
+    font-size: 11px; color: ${C.ink}; position: relative; top: ${2 * TAB_SCALE}px;
+  }
+  #inv .tab i { width: 16px; height: 16px; flex: none; }
+  #inv .tab:hover { filter: brightness(1.12); }
+  /* Выбранная вкладка поднимается и прирастает к странице — как в наборе. */
+  #inv .tab[aria-selected="true"] {
+    border-image-source: url(${UI}/tab_on.png);
+    top: 0; padding-bottom: ${3 * TAB_SCALE}px; color: #eaf6f0;
+  }
+
+  #inv .page {
+    flex: 1;
+    border-image: url(${UI}/panel_beige.png) 2 5 5 5 fill / ${2 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px repeat;
+    border-width: ${2 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px;
+    border-style: solid; image-rendering: pixelated;
+    padding: ${2 * SCALE}px;
+  }
+  #inv .grid {
+    display: grid; grid-template-columns: repeat(${COLS}, ${SLOT}px);
+    gap: ${GAP}px; justify-content: center;
+  }
+  #inv .grid .slot { background: ${C.slotBeige}; }
+  #inv .grid .slot.has:hover { filter: brightness(1.12); }
+  /* Рамка редкости: обещание, что вещь чего-то стоит. */
+  #inv .grid .slot.r-uncommon { box-shadow: inset 0 0 0 2px ${RARITY_COLOR.uncommon}; }
+  #inv .grid .slot.r-rare { box-shadow: inset 0 0 0 2px ${RARITY_COLOR.rare}; }
+  #inv .grid .slot.r-epic { box-shadow: inset 0 0 0 2px ${RARITY_COLOR.epic}; }
   #inv .qty {
     position: absolute; right: 2px; bottom: 1px;
     font-size: 11px; font-weight: 700; color: #fff;
     text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000;
-    font-variant-numeric: tabular-nums;
-  }
-  #inv .hint {
-    padding: 0 12px; height: 16px; color: #6b4f3a; font-size: 11px;
+    font-variant-numeric: tabular-nums; pointer-events: none;
   }
 
-  /* Панель персонажа слева, сумка справа — как в любой RPG. */
-  #inv .body { display: flex; gap: 10px; padding: 10px; align-items: flex-start; }
-  #inv .hero {
-    background: ${C.slot}; border: 2px solid #6b4f3a; border-radius: 2px;
-    padding: 8px; display: flex; flex-direction: column; gap: 8px; color: #f0e0c8;
+  #inv .foot { display: flex; align-items: center; gap: ${2 * SCALE}px; margin-top: ${2 * SCALE}px; }
+  #inv .btn {
+    cursor: pointer; font-size: 11px; color: #eaf6f0; text-shadow: 1px 1px 0 #294040;
+    padding: ${SCALE}px ${3 * SCALE}px;
+    border-image: url(${UI}/button.png) 4 3 3 3 fill / ${4 * SCALE}px ${3 * SCALE}px ${3 * SCALE}px ${3 * SCALE}px repeat;
+    border-width: ${4 * SCALE}px ${3 * SCALE}px ${3 * SCALE}px ${3 * SCALE}px;
+    border-style: solid; image-rendering: pixelated;
   }
-  #inv .hero h3 {
-    margin: 0; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #e0c48a;
-  }
-  /* Портрет — тот же кружок, что в панели героя на карте. */
-  #inv .portrait {
-    width: 30px; height: 30px; margin: 0 auto;
-    background-image: url(assets/interface/PNG/character_panel.png);
-    background-position: -3px -2px;
-    image-rendering: pixelated; transform: scale(2); transform-origin: top center;
-  }
-  #inv .lvl { text-align: center; margin-top: 34px; font-size: 12px; }
-  #inv .xpbar {
-    height: 6px; background: #3a2a1c; border: 1px solid #2b1d12; border-radius: 3px; overflow: hidden;
-  }
-  #inv .xpbar i { display: block; height: 100%; background: linear-gradient(#e0b45c, #a37a2b); }
-
-  /* Гнёзда экипировки такие же, как в сумке: разный размер читался бы как разный смысл. */
-  #inv .eq { display: grid; grid-template-columns: repeat(2, ${SLOT * SCALE}px); gap: 4px; justify-content: center; }
-  #inv .eq .lbl {
-    position: absolute; bottom: 2px; left: 0; right: 0; text-align: center;
-    font-size: 9px; color: #d8c0a0; white-space: nowrap;
-    text-shadow: 1px 1px 0 #000; pointer-events: none;
-  }
-
-  #inv .stats { font-size: 11px; display: grid; gap: 3px; }
-  #inv .stats div { display: flex; justify-content: space-between; gap: 10px; }
-  #inv .stats b { font-weight: 600; }
-  #inv .stats .plus { color: #8ad46a; }
+  #inv .btn:hover { filter: brightness(1.15); }
+  #inv .btn:active { transform: translateY(1px); }
+  #inv .hint { flex: 1; font-size: 11px; color: #e5d6a1; min-height: 14px; }
 `;
 
 /** Что окно должно знать о герое, чтобы показать характеристики. */
@@ -157,12 +300,12 @@ export interface HeroView {
 export class InventoryUi {
   private root: HTMLDivElement;
   private style: HTMLStyleElement;
-  private grid: HTMLDivElement;
-  private hint: HTMLDivElement;
-  private eq!: HTMLDivElement;
+  private grid!: HTMLDivElement;
+  private hint!: HTMLDivElement;
   private stats!: HTMLDivElement;
-  private lvl!: HTMLDivElement;
+  private lvl!: HTMLElement;
   private xpFill!: HTMLElement;
+  private xpNum!: HTMLElement;
   private tab: Tab | 'all' = 'all';
   private bag: (Stack | null)[] = [];
   private equipped: Equipped = {};
@@ -176,6 +319,8 @@ export class InventoryUi {
   onEquip: (index: number) => void = () => {};
   /** Снять надетое. */
   onUnequip: (slot: string) => void = () => {};
+  /** Разложить сумку. */
+  onSort: () => void = () => {};
 
   constructor() {
     this.style = document.createElement('style');
@@ -186,41 +331,75 @@ export class InventoryUi {
     this.root.id = 'inv';
     this.root.innerHTML = `
       <div class="win">
-        <div class="title"><span>Инвентарь</span><span class="close" title="Закрыть (I)">✕</span></div>
+        <div class="title">Инвентарь</div>
+        <div class="close" title="Закрыть (I)"></div>
         <div class="body">
           <div class="hero">
-            <h3>Персонаж</h3>
-            <div><div class="portrait"></div><div class="lvl"></div></div>
-            <div class="xpbar"><i></i></div>
-            <div class="eq"></div>
-            <h3>Характеристики</h3>
+            <div class="who">
+              <b>Мечник</b>
+              <span class="lvl"></span>
+              <div class="xpbar"><i></i></div>
+              <div class="xpnum"></div>
+            </div>
+            <div class="doll">
+              <div class="col" data-col="left"></div>
+              <div class="portrait"><i></i></div>
+              <div class="col" data-col="right"></div>
+            </div>
             <div class="stats"></div>
           </div>
-          <div>
+          <div class="bagside">
             <div class="tabs"></div>
-            <div class="grid"></div>
-            <div class="hint"></div>
+            <div class="page"><div class="grid"></div></div>
+            <div class="foot">
+              <div class="btn sort">Разложить</div>
+              <div class="hint"></div>
+            </div>
           </div>
         </div>
       </div>
     `;
     document.body.append(this.root);
 
-    this.grid = this.root.querySelector('.grid')!;
-    this.hint = this.root.querySelector('.hint')!;
-    this.eq = this.root.querySelector('.eq')!;
-    this.stats = this.root.querySelector('.stats')!;
-    this.lvl = this.root.querySelector('.lvl')!;
-    this.xpFill = this.root.querySelector('.xpbar i')!;
-    this.buildEquipSlots();
-    this.root.querySelector('.close')!.addEventListener('click', () => this.close());
+    this.grid = this.q('.grid');
+    this.hint = this.q('.hint');
+    this.stats = this.q('.stats');
+    this.lvl = this.q('.lvl');
+    this.xpFill = this.q('.xpbar i');
+    this.xpNum = this.q('.xpnum');
 
-    const tabs = this.root.querySelector('.tabs')!;
+    this.q('.close').addEventListener('click', () => this.close());
+    this.q('.btn.sort').addEventListener('click', () => this.onSort());
+
+    this.buildTabs();
+    this.buildEquipSlots();
+    this.buildBagSlots();
+  }
+
+  private q<T extends HTMLElement = HTMLDivElement>(sel: string): T {
+    const el = this.root.querySelector<T>(sel);
+    if (!el) throw new Error(`инвентарь: нет элемента ${sel}`);
+    return el;
+  }
+
+  /** Кусок листа как фон: так рисуются все иконки. */
+  private iconEl(icon: Icon, cls: string): HTMLElement {
+    const el = document.createElement('i');
+    el.className = cls;
+    el.style.width = `${icon.w}px`;
+    el.style.height = `${icon.h}px`;
+    el.style.backgroundImage = `url(${SHEETS[icon.sheet]})`;
+    el.style.backgroundPosition = `-${icon.x}px -${icon.y}px`;
+    return el;
+  }
+
+  private buildTabs(): void {
+    const tabs = this.q('.tabs');
     for (const t of TABS) {
-      const el = document.createElement('span');
+      const el = document.createElement('div');
       el.className = 'tab';
-      el.textContent = t.label;
       el.setAttribute('aria-selected', String(t.id === this.tab));
+      el.append(this.iconEl(t.icon, 'tabico'), Object.assign(document.createElement('span'), { textContent: t.label }));
       el.onclick = () => {
         this.tab = t.id;
         for (const other of tabs.children) other.setAttribute('aria-selected', String(other === el));
@@ -228,26 +407,34 @@ export class InventoryUi {
       };
       tabs.append(el);
     }
-
-    this.buildSlots();
   }
 
-  private buildSlots(): void {
+  private buildEquipSlots(): void {
+    for (const side of ['left', 'right'] as const) {
+      const col = this.q(`.col[data-col="${side}"]`);
+      const ids = side === 'left' ? LEFT_SLOTS : RIGHT_SLOTS;
+      for (const id of ids) {
+        const wrap = document.createElement('div');
+        wrap.className = 'eqslot';
+        wrap.append(Object.assign(document.createElement('span'), {
+          className: 'lbl',
+          textContent: SLOTS.find((s) => s.id === id)!.label,
+        }));
+        const slot = document.createElement('div');
+        slot.className = 'slot';
+        slot.dataset.slot = id;
+        wrap.append(slot);
+        col.append(wrap);
+      }
+    }
+  }
+
+  private buildBagSlots(): void {
     for (let i = 0; i < COLS * ROWS; i++) {
       const slot = document.createElement('div');
       slot.className = 'slot';
       slot.dataset.i = String(i);
       this.grid.append(slot);
-    }
-  }
-
-  private buildEquipSlots(): void {
-    for (const s of SLOTS) {
-      const slot = document.createElement('div');
-      slot.className = 'slot';
-      slot.dataset.slot = s.id;
-      slot.title = s.label;
-      this.eq.append(slot);
     }
   }
 
@@ -263,41 +450,60 @@ export class InventoryUi {
     this.hero = get;
   }
 
-  /** Кусок листа как фон: так рисуются все иконки предметов. */
-  private iconEl(icon: Icon): HTMLElement {
-    const img = document.createElement('i');
-    img.style.width = `${icon.w}px`;
-    img.style.height = `${icon.h}px`;
-    img.style.backgroundImage = `url(${SHEETS[icon.sheet]})`;
-    img.style.backgroundPosition = `-${icon.x}px -${icon.y}px`;
-    return img;
+  /** Строка для подсказки: что предмет даёт. */
+  private describe(id: string): string {
+    const def = ITEMS[id];
+    if (!def) return '';
+
+    const parts: string[] = [];
+    if (def.use?.hp) parts.push(`+${def.use.hp} здоровья`);
+    if (def.use?.mp) parts.push(`+${def.use.mp} маны`);
+
+    const b = def.bonus;
+    const sign = (n: number): string => (n > 0 ? `+${n}` : String(n));
+    if (b?.dmg) parts.push(`${sign(b.dmg)} к атаке`);
+    if (b?.def) parts.push(`${sign(b.def)} к защите`);
+    if (b?.speed) parts.push(`${sign(b.speed)} к скорости`);
+    if (b?.hp) parts.push(`${sign(b.hp)} к здоровью`);
+    if (b?.mp) parts.push(`${sign(b.mp)} к мане`);
+
+    const head = `${def.name} — ${RARITY_NAME[rarityOf(id)].toLowerCase()}`;
+    return parts.length ? `${head}. ${parts.join(', ')}` : head;
   }
 
   private renderEquip(): void {
-    for (const el of this.eq.children) {
-      const slot = el as HTMLDivElement;
-      const id = this.equipped[slot.dataset.slot as keyof Equipped];
-      const label = SLOTS.find((s) => s.id === slot.dataset.slot)!.label;
+    for (const el of this.root.querySelectorAll<HTMLDivElement>('.col .slot')) {
+      const key = el.dataset.slot as keyof Equipped;
+      const id = this.equipped[key];
+      const label = SLOTS.find((s) => s.id === key)!.label;
 
-      slot.innerHTML = '';
-      slot.classList.toggle('has', !!id);
-      slot.onclick = null;
+      el.innerHTML = '';
+      el.classList.toggle('has', !!id);
+      el.onclick = null;
+      el.onmouseenter = null;
 
       if (!id) {
-        // Пустой слот подписан: иначе непонятно, что сюда вообще надевается.
-        const lbl = document.createElement('span');
-        lbl.className = 'lbl';
-        lbl.textContent = label;
-        slot.append(lbl);
-        slot.title = label;
+        // Пустое гнездо показывает погашенную иконку: иначе непонятно, что сюда
+        // вообще надевается. Подпись стоит над гнездом (см. buildEquipSlots).
+        el.append(this.iconEl(SLOT_GHOST[key], 'item ghost'));
+        el.title = `${label} — пусто`;
         continue;
       }
 
       const def = ITEMS[id];
-      slot.append(this.iconEl(def.icon));
-      slot.title = `${def.name} — снять`;
-      slot.onclick = () => this.onUnequip(slot.dataset.slot!);
+      el.append(this.iconEl(def.icon, 'item'));
+      el.title = `${def.name} — снять`;
+      el.onclick = () => this.onUnequip(key);
+      el.onmouseenter = () => {
+        this.hint.textContent = this.describe(id);
+      };
     }
+  }
+
+  private statRow(icon: Icon, name: string, value: string, extra = '', title = ''): string {
+    const i = this.iconEl(icon, '');
+    const t = title ? ` title="${title}"` : '';
+    return `<div class="stat"${t}>${i.outerHTML}<span>${name}</span><b>${value}${extra}</b></div>`;
   }
 
   /**
@@ -314,44 +520,34 @@ export class InventoryUi {
     if (!h) return;
 
     const b = totalBonuses(this.equipped);
-    const key = `${h.hp | 0}/${h.hpMax}/${h.mp | 0}/${h.mpMax}/${h.level}/${h.xp | 0}/${JSON.stringify(b)}`;
+    const key = `${Math.ceil(h.hp)}/${h.hpMax}/${Math.floor(h.mp)}/${h.mpMax}/${h.level}/${Math.floor(h.xp)}/${JSON.stringify(b)}`;
     if (key === this.statsKey) return;
     this.statsKey = key;
 
-    const plus = (n: number): string => (n ? ` <span class="plus">+${n}</span>` : '');
-
     this.lvl.textContent = `Уровень ${h.level}`;
     this.xpFill.style.width = `${Math.min(100, (h.xp / h.xpNext) * 100)}%`;
+    this.xpNum.textContent = `${Math.floor(h.xp)} / ${h.xpNext}`;
+
+    // Прибавку от вещей показываем отдельным числом: игрок должен видеть, что
+    // изменилось именно из-за надетого.
+    const mark = (n: number): string =>
+      n > 0 ? ` <span class="plus">+${n}</span>` : n < 0 ? ` <span class="minus">${n}</span>` : '';
 
     // Показываем только то, что работает. Сила, ловкость и удача из чужих игр
     // были бы числами, которые ни на что не влияют.
-    this.stats.innerHTML = `
-      <div><span>Здоровье</span><b>${Math.ceil(h.hp)} / ${h.hpMax}${plus(b.hp)}</b></div>
-      <div><span>Мана</span><b>${Math.floor(h.mp)} / ${h.mpMax}${plus(b.mp)}</b></div>
-      <div><span>Атака</span><b>${h.dmgMin + b.dmg}–${h.dmgMax + b.dmg}${plus(b.dmg)}</b></div>
-      <div><span>Защита</span><b>${b.def}</b></div>
-      <div><span>Скорость</span><b>${HERO.speed + b.speed}</b></div>
-      <div><span>Опыт</span><b>${Math.floor(h.xp)} / ${h.xpNext}</b></div>
-    `;
-  }
-
-  /** Строка для подсказки под сумкой: что предмет даёт. */
-  private describe(id: string): string {
-    const def = ITEMS[id];
-    if (!def) return '';
-
-    const parts: string[] = [];
-    if (def.use?.hp) parts.push(`+${def.use.hp} здоровья`);
-    if (def.use?.mp) parts.push(`+${def.use.mp} маны`);
-
-    const b = def.bonus;
-    if (b?.dmg) parts.push(`${b.dmg > 0 ? '+' : ''}${b.dmg} к атаке`);
-    if (b?.def) parts.push(`${b.def > 0 ? '+' : ''}${b.def} к защите`);
-    if (b?.speed) parts.push(`${b.speed > 0 ? '+' : ''}${b.speed} к скорости`);
-    if (b?.hp) parts.push(`${b.hp > 0 ? '+' : ''}${b.hp} к здоровью`);
-    if (b?.mp) parts.push(`${b.mp > 0 ? '+' : ''}${b.mp} к мане`);
-
-    return parts.length ? `${def.name}: ${parts.join(', ')}` : def.name;
+    this.stats.innerHTML = [
+      this.statRow(STAT_ICON.hp, 'Здоровье', `${Math.ceil(h.hp)} / ${h.hpMax}`, mark(b.hp)),
+      this.statRow(STAT_ICON.dmg, 'Атака', `${h.dmgMin + b.dmg}–${h.dmgMax + b.dmg}`, mark(b.dmg)),
+      this.statRow(STAT_ICON.mp, 'Мана', `${Math.floor(h.mp)} / ${h.mpMax}`, mark(b.mp)),
+      this.statRow(STAT_ICON.def, 'Защита', String(b.def)),
+      this.statRow(STAT_ICON.speed, 'Скорость', String(HERO.speed + b.speed), mark(b.speed)),
+      // Про здоровье оговорка обязательна: в бою оно не растёт, и молчать об
+      // этом — значит обещать лечение, которого не будет.
+      this.statRow(
+        STAT_ICON.regen, 'Восстановление', `${HERO.hpRegen}/с`, '',
+        `${HERO.hpRegen} здоровья в секунду, но только если по вам не били ${HERO.regenDelay / 1000} с. Мана растёт всегда: ${HERO.mpRegen}/с.`,
+      ),
+    ].join('');
   }
 
   get isOpen(): boolean {
@@ -381,17 +577,17 @@ export class InventoryUi {
 
     // Вкладка не переставляет предметы, а прячет лишние: иначе ячейка под курсором
     // означала бы разное в разных вкладках, и клик попадал бы не туда.
-    const shown = this.bag.map((s, i) =>
-      s && (this.tab === 'all' || ITEMS[s.id]?.tab === this.tab) ? { stack: s, index: i } : null,
-    );
-    const list = shown.filter(Boolean) as { stack: Stack; index: number }[];
+    const list = this.bag
+      .map((s, i) => (s ? { stack: s, index: i } : null))
+      .filter((e): e is { stack: Stack; index: number } => !!e)
+      .filter((e) => this.tab === 'all' || ITEMS[e.stack.id]?.tab === this.tab);
 
     for (const [n, el] of [...this.grid.children].entries()) {
       const slot = el as HTMLDivElement;
       const entry = list[n];
 
       slot.innerHTML = '';
-      slot.classList.toggle('has', !!entry);
+      slot.className = 'slot';
       slot.onclick = null;
       slot.onmouseenter = null;
       slot.title = '';
@@ -399,18 +595,19 @@ export class InventoryUi {
       if (!entry) continue;
 
       const def = ITEMS[entry.stack.id];
-      slot.append(this.iconEl(def.icon));
+      const rarity = rarityOf(entry.stack.id);
+      slot.classList.add('has', `r-${rarity}`);
+      slot.append(this.iconEl(def.icon, 'item'));
 
       if (entry.stack.qty > 1) {
-        const qty = document.createElement('span');
-        qty.className = 'qty';
-        qty.textContent = String(entry.stack.qty);
-        slot.append(qty);
+        slot.append(Object.assign(document.createElement('span'), {
+          className: 'qty',
+          textContent: String(entry.stack.qty),
+        }));
       }
 
       const action = def.slot ? 'надеть' : def.use ? 'применить' : '';
       slot.title = action ? `${def.name} — ${action}` : def.name;
-
       slot.onmouseenter = () => {
         this.hint.textContent = this.describe(def.id);
       };

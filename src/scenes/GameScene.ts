@@ -8,7 +8,7 @@ import { HERO, MONSTERS, SPAWNS, xpToNext, rollDrop } from '../game/creatures';
 import { Hud } from '../game/hud';
 import { draftCollision } from '../map/collision-draft';
 import { Loot, registerItemFrames } from '../game/loot';
-import { addToBag, takeOne, ITEMS, type Stack, type EquipSlot } from '../game/items';
+import { addToBag, takeOne, sortBag, ITEMS, type Stack, type EquipSlot } from '../game/items';
 import { InventoryUi } from '../game/inventory-ui';
 import { equipFromBag, unequip, totalBonuses, type Equipped } from '../game/equipment';
 
@@ -90,6 +90,10 @@ export class GameScene extends MapScene {
     this.inventory.onUse = (index) => this.useItem(index);
     this.inventory.onEquip = (index) => this.equipItem(index);
     this.inventory.onUnequip = (slot) => this.unequipItem(slot as EquipSlot);
+    this.inventory.onSort = () => {
+      sortBag(this.bag);
+      this.inventory.render();
+    };
 
     // I открывает и закрывает сумку. Игру не останавливаем: пауки не ждут, пока
     // ты роешься в грибах, — иначе сумка станет способом переждать бой.
