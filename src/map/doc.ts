@@ -9,7 +9,13 @@ import type { GameMap } from './types';
  * запекло бы в файл случайные кадры воды.
  */
 export class MapDoc {
-  constructor(readonly map: GameMap) {}
+  // Поле объявлено явно, а не через `constructor(readonly map)`: сокращённую
+  // запись не понимает node --experimental-strip-types, на котором идут тесты.
+  readonly map: GameMap;
+
+  constructor(map: GameMap) {
+    this.map = map;
+  }
 
   get width(): number {
     return this.map.width;

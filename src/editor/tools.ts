@@ -74,7 +74,9 @@ export function installTools(
     const { x, y } = cellUnder(p);
     if (!state.doc.inBounds(x, y)) return;
 
-    if (p.event instanceof MouseEvent && p.event.shiftKey && p.leftButtonDown()) {
+    // Пипетка: Alt как в фотошопе и Aseprite, Shift — потому что уже привыкли.
+    const picking = p.event instanceof MouseEvent && (p.event.altKey || p.event.shiftKey);
+    if (picking && p.leftButtonDown()) {
       pick(x, y);
       return;
     }
