@@ -1,5 +1,6 @@
 import type { Tileset } from '../../map/types';
 import type { Brush, EditorState } from '../state';
+import { applySizes, dragSize, sizes, MIN_TILES } from './sizes';
 
 const ZOOM = 2;
 const TILE = 16;
@@ -12,13 +13,16 @@ const TILE = 16;
  * Выделение протяжкой даёт кисть-штамп: дерево 5x5 из Objects ставится одним
  * движением, иначе «дорисовать втрое большую площадь» — это тысячи кликов.
  */
+/** Сколько места под превью есть на самом деле. 40px — заголовок тайлсета и тяга. */
+const roomFor = (host: HTMLElement): number => Math.max(MIN_TILES, host.clientHeight - 40);
+
 export function buildPalette(host: HTMLElement, state: EditorState): void {
   for (const ts of state.doc.map.tilesets) {
-    host.append(tilesetBlock(ts, state));
+    host.append(tilesetBlock(ts, state, host));
   }
 }
 
-function tilesetBlock(ts: Tileset, state: EditorState): HTMLElement {
+function tilesetBlock(ts: Tileset, state: EditorState, host: HTMLElement): HTMLElement {
   const block = document.createElement('div');
 
   const head = document.createElement('div');
@@ -48,8 +52,32 @@ function tilesetBlock(ts: Tileset, state: EditorState): HTMLElement {
   wrap.append(img, sel);
   body.append(wrap);
 
+  // Тяга высоты превью. У каждого тайлсета своя, но размер общий: настраивать
+  // высоту заново на каждом из 39 тайлсетов — то же мучение, от которого мы
+  // избавлялись, когда запоминали размеры панели.
+  const grip = document.createElement('div');
+  grip.className = 'ed-ts-grip';
+  grip.title = 'Потяните вниз, чтобы видеть больше тайлов, вверх — чтобы меньше';
+  grip.hidden = true;
+
+  dragSize(grip, { rows: true }, (e) => {
+    const top = body.getBoundingClientRect().top;
+    // Выше видимой части палитры растягивать нечего: больше тайлов всё равно не
+    // покажется — превью просто начало бы прокручиваться ещё и снаружи.
+    sizes.tilesH = Math.max(MIN_TILES, Math.min(e.clientY - top, roomFor(host)));
+  });
+
   head.onclick = () => {
     body.hidden = !body.hidden;
+    // Тяга без открытого превью тянула бы пустоту.
+    grip.hidden = body.hidden;
+    if (body.hidden) return;
+
+    // Подрезаем высоту под то, что реально помещается — именно здесь, а не при
+    // сборке палитры: там панель ещё не разложена и меряется неверно. Иначе
+    // первая же протяжка ужимала бы превью вместо того, чтобы растить.
+    sizes.tilesH = Math.min(sizes.tilesH, roomFor(host));
+    applySizes();
   };
 
   const cellAt = (e: MouseEvent) => ({
@@ -109,7 +137,7 @@ function tilesetBlock(ts: Tileset, state: EditorState): HTMLElement {
     anchor = null;
   };
 
-  block.append(head, body);
+  block.append(head, body, grip);
   return block;
 }
 

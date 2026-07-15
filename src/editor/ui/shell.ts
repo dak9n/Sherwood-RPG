@@ -1,8 +1,4 @@
-/** Размеры панели помним между заходами: настраивать их заново каждый раз — мучение. */
-const SIZES_KEY = 'editor-sizes';
-
-const MIN_PANEL = 220;
-const MIN_SECTION = 80;
+import { applySizes, dragSize, sizes, MIN_PANEL, MIN_SECTION } from './sizes';
 
 const CSS = `
   /* minmax(0, 1fr), а не 1fr: иначе колонка не сожмётся меньше канваса,
@@ -88,8 +84,30 @@ const CSS = `
     background: #262e33; border-top: 1px solid #0d1114; color: #9fb0ba;
   }
   .ed-ts-head:hover { color: #fff; }
-  .ed-ts-body { padding: 4px; background: #14181b; overflow: auto; max-height: 260px; }
+  /* Высоту превью держит переменная — её двигает тяга под ним. Раньше тут стоял
+     жёсткий потолок 260px, и у высоких тайлсетов (у деревни 1152px) было видно
+     меньше четверти картинки, без всякой возможности растянуть. */
+  .ed-ts-body { padding: 4px; background: #14181b; overflow: auto; max-height: var(--tiles-h, 260px); }
   .ed-ts-body img { image-rendering: pixelated; display: block; cursor: crosshair; }
+
+  /* Тяга высоты превью: полоса под открытым тайлсетом. Толще прочих и с
+     насечкой — её ищут глазами, а не наводят наугад по курсору.
+
+     sticky обязателен: превью высокое, и обычная полоса под ним уезжала бы под
+     нижний край палитры — чем сильнее растянул, тем дальше. Прилипнув к низу,
+     тяга остаётся под рукой всегда. */
+  .ed-ts-grip {
+    position: sticky; bottom: 0; z-index: 2;
+    height: 9px; cursor: row-resize; background: #262e33;
+    border-top: 1px solid #0d1114; border-bottom: 1px solid #0d1114;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ed-ts-grip::before {
+    content: ''; width: 28px; height: 3px; border-radius: 2px; background: #55656e;
+  }
+  .ed-ts-grip:hover { background: #2f3a41; }
+  .ed-ts-grip:hover::before { background: #8fd47a; }
+  .ed-ts-grip.dragging { background: #63a35455; }
   .ed-ts-wrap { position: relative; display: inline-block; }
   .ed-sel {
     position: absolute; border: 1px solid #7cf; background: rgba(120,200,255,.25);
@@ -115,94 +133,32 @@ export interface Shell {
 }
 
 /**
- * Тяги: левый край панели двигает её ширину, полоса между слоями и тайлами —
- * их высоты. Размеры запоминаются.
+ * Тяги каркаса: левый край панели двигает её ширину, полоса между слоями и
+ * тайлами — их высоты. Третья тяга — высота превью тайлсета — живёт в палитре.
  *
  * Игру это не задевает: канвас в соседней колонке грида, он подстроится сам.
  * А вот камере сцены надо сказать — Phaser следит за окном, а не за разметкой,
  * и смены ширины колонки не замечает. Этим занимается mount.
  */
 function setupResizers(root: HTMLDivElement): void {
-  const sizes = loadSizes();
-  const apply = (): void => {
-    document.body.style.setProperty('--panel-w', `${sizes.panelW}px`);
-    document.body.style.setProperty('--layers-h', `${sizes.layersH}px`);
-  };
-  apply();
+  applySizes();
 
   const gripW = root.querySelector<HTMLDivElement>('#ed-grip-w')!;
   const gripH = root.querySelector<HTMLDivElement>('#ed-grip-h')!;
 
-  const drag = (
-    grip: HTMLDivElement,
-    rows: boolean,
-    onMove: (e: PointerEvent) => void,
-  ): void => {
-    grip.addEventListener('pointerdown', (e: PointerEvent) => {
-      e.preventDefault();
-      // Захват указателя: иначе, стоит увести мышь за пределы тяги, она «отцепится».
-      grip.setPointerCapture(e.pointerId);
-      grip.classList.add('dragging');
-      document.body.classList.add('ed-resizing');
-      if (rows) document.body.classList.add('rows');
-
-      const move = (ev: PointerEvent): void => {
-        onMove(ev);
-        apply();
-        // Канвас поменял размер — сообщаем игре, иначе карта останется в старых границах.
-        window.dispatchEvent(new Event('resize'));
-      };
-      const up = (): void => {
-        grip.classList.remove('dragging');
-        document.body.classList.remove('ed-resizing', 'rows');
-        grip.removeEventListener('pointermove', move);
-        grip.removeEventListener('pointerup', up);
-        saveSizes(sizes);
-      };
-
-      grip.addEventListener('pointermove', move);
-      grip.addEventListener('pointerup', up);
-    });
-  };
-
-  drag(gripW, false, (e) => {
+  dragSize(gripW, { notifyGame: true }, (e) => {
     // Панель прижата к правому краю окна, поэтому ширина — это расстояние от курсора до края.
     const width = window.innerWidth - e.clientX;
     // Не даём ужать панель в ноль и не даём съесть весь экран под неё.
     sizes.panelW = Math.max(MIN_PANEL, Math.min(width, window.innerWidth - 200));
   });
 
-  drag(gripH, true, (e) => {
+  dragSize(gripH, { rows: true }, (e) => {
     const top = root.querySelector<HTMLDivElement>('#ed-layers')!.getBoundingClientRect().top;
     const height = e.clientY - top;
     // Тайлам тоже надо оставить место, иначе палитра схлопнется в щель.
-    sizes.layersH = Math.max(MIN_SECTION, Math.min(height, window.innerHeight - 260));
+    sizes.layersH = Math.max(MIN_SECTION, Math.min(height, window.innerHeight - MIN_SECTION * 2));
   });
-}
-
-interface Sizes {
-  panelW: number;
-  layersH: number;
-}
-
-function loadSizes(): Sizes {
-  const fallback = { panelW: 300, layersH: Math.round(window.innerHeight * 0.34) };
-  try {
-    const saved = JSON.parse(localStorage.getItem(SIZES_KEY) ?? 'null');
-    if (!saved) return fallback;
-    return { panelW: saved.panelW ?? fallback.panelW, layersH: saved.layersH ?? fallback.layersH };
-  } catch {
-    // Испорченная запись не должна мешать открыть редактор.
-    return fallback;
-  }
-}
-
-function saveSizes(sizes: Sizes): void {
-  try {
-    localStorage.setItem(SIZES_KEY, JSON.stringify(sizes));
-  } catch {
-    // Приватный режим или переполненное хранилище — размеры просто не запомнятся.
-  }
 }
 
 export function buildShell(): Shell {
