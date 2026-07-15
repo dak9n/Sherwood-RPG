@@ -2,6 +2,9 @@ import { MapScene } from './MapScene';
 import { Player } from '../game/player';
 import { findTallObjects } from '../game/tall-objects';
 
+/** Целый зум: при дробном пиксели карты не легли бы на пиксели экрана. */
+const ZOOM = 3;
+
 /**
  * Сцена игры. Всё про геймплей — здесь и в src/game/.
  *
@@ -31,13 +34,41 @@ export class GameScene extends MapScene {
     this.player.setTallObjects(tall, this.doc.width, this.doc.map.tileWidth, this.doc.map.tileHeight);
 
     const cam = this.cameras.main;
-    cam.setZoom(3);
-    cam.startFollow(this.player.sprite, true, 0.1, 0.1);
+    cam.setZoom(ZOOM);
     cam.setBounds(0, 0, this.doc.width * this.doc.map.tileWidth, this.doc.height * this.doc.map.tileHeight);
+
+    // Своё округление камеры (см. followPlayer). Родное выключаем: оно живёт в
+    // preRender и делает Math.floor до целого мирового пикселя — то есть до трёх
+    // экранных при зуме 3 — независимо от того, следует камера за кем-то или нет.
+    cam.setRoundPixels(false);
+
+    // startFollow не используем по той же причине: он вдобавок пишет округлённое
+    // значение обратно, и следующий шаг плавности считается уже от него.
+    this.followPlayer();
   }
 
   protected onUpdate(): void {
     this.player.update();
+    this.followPlayer();
+  }
+
+  /**
+   * Камера идёт за игроком, вставая на целые ЭКРАННЫЕ пиксели.
+   *
+   * Родное следование Phaser округляет прокрутку до целого мирового пикселя,
+   * то есть до трёх экранных при зуме 3. Вдобавок с плавностью 0.1 шаг камеры
+   * (0.08 пикселя за кадр) целиком съедался округлением: камера стояла,
+   * копила отставание и прыгала рывком. Отсюда и дёрганая карта на диагонали.
+   *
+   * Округление до экранного пикселя (треть мирового) сохраняет чёткость
+   * пиксель-арта — карта не встаёт между пикселями экрана — и при этом даёт
+   * шаг втрое мельче, то есть плавное движение.
+   */
+  private followPlayer(): void {
+    const cam = this.cameras.main;
+    cam.centerOn(this.player.sprite.x, this.player.sprite.y);
+    cam.scrollX = Math.round(cam.scrollX * ZOOM) / ZOOM;
+    cam.scrollY = Math.round(cam.scrollY * ZOOM) / ZOOM;
   }
 
   /** Центр области, где вообще что-то нарисовано. */
