@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { usedFrames } from './sprite-frames';
 
 const SHEETS = 'assets/characters/PNG/Swordsman_lvl1/With_shadow/';
 const PREFIX = 'Swordsman_lvl1_';
@@ -13,7 +14,10 @@ const FRAME = 64;
 const DIRS = ['down', 'left', 'right', 'up'] as const;
 export type Dir = (typeof DIRS)[number];
 
-/** Сколько кадров в ряду у каждой анимации. */
+/**
+ * Ширина сетки листа. Сколько кадров в ряду НАРИСОВАНО — считается по картинке:
+ * у idle ряд «вверх» заполнен только на 4 кадра из 12.
+ */
 const SHEET_COLS = { idle: 12, walk: 6 } as const;
 
 const SPEED = 70;
@@ -81,13 +85,11 @@ export class Player {
     for (const [row, dir] of DIRS.entries()) {
       for (const [kind, cols] of Object.entries(SHEET_COLS) as [keyof typeof SHEET_COLS, number][]) {
         const key = kind === 'idle' ? 'sw-idle' : 'sw-walk';
-        const start = row * cols;
-        // У idle последний ряд короче остальных — берём столько кадров, сколько есть.
-        const end = start + cols - 1;
+        const frames = usedFrames(scene, key, row, cols);
 
         scene.anims.create({
           key: `${kind}-${dir}`,
-          frames: scene.anims.generateFrameNumbers(key, { start, end }),
+          frames: frames.map((frame) => ({ key, frame })),
           frameRate: kind === 'walk' ? 10 : 8,
           repeat: -1,
         });
