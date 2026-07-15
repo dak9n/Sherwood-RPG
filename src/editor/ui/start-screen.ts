@@ -1,4 +1,5 @@
 import { mapNameError } from '../../map/name';
+import { deleteMap } from '../save';
 
 export type StartChoice =
   | { kind: 'open'; name: string }
@@ -20,6 +21,11 @@ const CSS = `
     border-radius:3px; padding:7px 10px; cursor:pointer; }
   .mm .item:hover { background:#33505e; }
   .mm .empty { color:#7d8f99; padding:6px 2px; }
+  .mm .map-row { display:flex; gap:4px; }
+  .mm .map-row .item { flex:1; }
+  .mm .map-del { font:inherit; background:#2a3237; color:#cfd8dc; border:1px solid #0d1114;
+    border-radius:3px; padding:0 9px; cursor:pointer; }
+  .mm .map-del:hover { background:#5a2f2f; color:#fff; }
   .mm label { display:block; margin:8px 0 2px; color:#8a9aa4; font-size:12px; }
   .mm input { width:100%; box-sizing:border-box; font:inherit; padding:5px 7px; background:#12171a;
     color:#dfe7eb; border:1px solid #3a464d; border-radius:3px; }
@@ -65,19 +71,47 @@ export function startScreen(maps: string[]): Promise<StartChoice> {
 
     const list = document.createElement('div');
     list.className = 'list';
-    if (maps.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'empty';
-      empty.textContent = 'Пока нет ни одной карты.';
-      list.append(empty);
+    const current = [...maps]; // меняется при удалении — список перерисовываем
+
+    function renderList(): void {
+      list.textContent = '';
+      if (current.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'empty';
+        empty.textContent = 'Пока нет ни одной карты.';
+        list.append(empty);
+        return;
+      }
+      for (const name of current) {
+        const mapRow = document.createElement('div');
+        mapRow.className = 'map-row';
+
+        const open = document.createElement('button');
+        open.className = 'item';
+        open.textContent = name;
+        open.onclick = () => done({ kind: 'open', name });
+        mapRow.append(open);
+
+        // forest — карта игры, её удалять нельзя (сервер тоже откажет).
+        if (name !== 'forest') {
+          const del = document.createElement('button');
+          del.className = 'map-del';
+          del.textContent = '🗑';
+          del.title = `Удалить карту «${name}»`;
+          del.onclick = async () => {
+            if (!confirm(`Удалить карту «${name}»?\nФайл уйдёт в .map-backups — восстановить можно.`)) return;
+            const res = await deleteMap(name);
+            if (!res.ok) return void alert(`Не удалось удалить: ${res.error ?? ''}`);
+            const at = current.indexOf(name);
+            if (at !== -1) current.splice(at, 1);
+            renderList();
+          };
+          mapRow.append(del);
+        }
+        list.append(mapRow);
+      }
     }
-    for (const name of maps) {
-      const item = document.createElement('button');
-      item.className = 'item';
-      item.textContent = name;
-      item.onclick = () => done({ kind: 'open', name });
-      list.append(item);
-    }
+    renderList();
     wrap.append(list);
 
     const row = document.createElement('div');
@@ -86,7 +120,7 @@ export function startScreen(maps: string[]): Promise<StartChoice> {
     newBtn.className = 'b go';
     newBtn.textContent = 'Новая карта';
     newBtn.onclick = async () => {
-      const made = await askNewMap(maps);
+      const made = await askNewMap(current); // current учитывает удаления
       if (made) done({ kind: 'new', ...made });
     };
     row.append(newBtn);

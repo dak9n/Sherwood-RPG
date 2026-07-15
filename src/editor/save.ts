@@ -21,6 +21,22 @@ export async function fetchMaps(): Promise<string[]> {
   return Array.isArray(body.maps) ? body.maps : [];
 }
 
+/** Удаляет карту <name>.json (сервер перед этим кладёт её в .map-backups). forest удалить нельзя. */
+export async function deleteMap(name: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch('/__delete-map', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    if (res.status === 200) return { ok: true };
+    const body = await res.json().catch(() => ({}));
+    return { ok: false, error: body.error ?? `сервер ответил ${res.status}` };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
 async function readResult(res: Response): Promise<SaveResult> {
   const body = await res.json().catch(() => ({}));
   if (res.status === 200) return { ok: true, revision: body.revision, backup: body.backup ?? null };

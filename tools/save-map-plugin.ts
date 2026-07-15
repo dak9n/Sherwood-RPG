@@ -209,6 +209,34 @@ export function saveMapPlugin(): Plugin {
           })
           .catch((e: Error) => send(res, 400, { error: e.message }));
       });
+
+      server.middlewares.use('/__delete-map', (req, res, next) => {
+        if (req.method !== 'POST') return next();
+        if (!req.headers['content-type']?.includes('application/json')) {
+          return send(res, 415, { error: 'нужен content-type: application/json' });
+        }
+        readBody(req)
+          .then((raw) => {
+            let payload: { name?: string };
+            try {
+              payload = JSON.parse(raw);
+            } catch (e) {
+              return send(res, 400, { error: `тело не разобралось как json: ${(e as Error).message}` });
+            }
+            const name = safeName(payload.name);
+            if (name === null) return send(res, 400, { error: 'недопустимое имя карты' });
+            if (name === DEFAULT_MAP) return send(res, 400, { error: 'карту игры forest удалять нельзя' });
+
+            const mapPath = mapPathFor(mapsDir, name);
+            if (!existsSync(mapPath)) return send(res, 404, { error: 'карты с таким именем нет' });
+
+            // Перед удалением — бэкап: снести файл насовсем страшнее, чем перезаписать.
+            const saved = backup(mapPath, backupDir, name);
+            unlinkSync(mapPath);
+            send(res, 200, { ok: true, backup: saved });
+          })
+          .catch((e: Error) => send(res, 400, { error: e.message }));
+      });
     },
   };
 }
