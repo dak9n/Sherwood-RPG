@@ -14,6 +14,9 @@ const CSS = `
     letter-spacing: .06em; text-transform: uppercase; color: #7d8f99;
     background: #1a2024; border-bottom: 1px solid #0d1114;
   }
+  #editor h2.action { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  #editor h2 .head-btn { text-transform: none; letter-spacing: 0; padding: 1px 8px; font-size: 13px; line-height: 16px; }
+  #editor h2 .head-btn:hover { color: #fff; }
   #editor button {
     font: inherit; color: inherit; background: #2f383e; border: 1px solid #0d1114;
     border-radius: 3px; padding: 3px 8px; cursor: pointer;
@@ -35,6 +38,15 @@ const CSS = `
   .ed-layer .eye { width: 18px; text-align: center; opacity: .75; }
   .ed-layer .eye:hover { opacity: 1; }
   .ed-layer.hidden .nm { opacity: .4; text-decoration: line-through; }
+  /* Карандаш и корзина проявляются по наведению на строку: постоянные иконки на 26 слоёв — визуальный шум. */
+  .ed-layer .edit, .ed-layer .del { width: 16px; text-align: center; opacity: 0; cursor: pointer; }
+  .ed-layer:hover .edit, .ed-layer:hover .del { opacity: .5; }
+  .ed-layer .edit:hover, .ed-layer .del:hover { opacity: 1; }
+  .ed-layer input.rn {
+    flex: 1; min-width: 0; font: inherit; color: #fff; background: #12171a;
+    border: 1px solid #63a354; border-radius: 2px; padding: 0 3px; outline: none;
+  }
+  .ed-layer input.rn.bad { border-color: #e2705f; }
 
   #ed-palette { flex: 1; overflow-y: auto; }
   .ed-ts-head {
@@ -63,6 +75,7 @@ const CSS = `
 export interface Shell {
   tools: HTMLDivElement;
   layers: HTMLDivElement;
+  addLayer: HTMLButtonElement;
   palette: HTMLDivElement;
   setStatus(left: string, right: string, cls?: string): void;
 }
@@ -77,7 +90,7 @@ export function buildShell(): Shell {
   root.id = 'editor';
   root.innerHTML = `
     <div id="ed-tools"></div>
-    <h2>Слои</h2>
+    <h2 class="action">Слои <button id="ed-add-layer" class="head-btn" title="Новый слой поверх активного">＋</button></h2>
     <div id="ed-layers"></div>
     <h2>Тайлы</h2>
     <div id="ed-palette"></div>
@@ -91,6 +104,7 @@ export function buildShell(): Shell {
   return {
     tools: root.querySelector<HTMLDivElement>('#ed-tools')!,
     layers: root.querySelector<HTMLDivElement>('#ed-layers')!,
+    addLayer: root.querySelector<HTMLButtonElement>('#ed-add-layer')!,
     palette: root.querySelector<HTMLDivElement>('#ed-palette')!,
     setStatus(l, r, cls = '') {
       left.textContent = l;

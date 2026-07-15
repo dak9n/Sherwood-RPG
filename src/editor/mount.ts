@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { MapDoc } from '../map/doc';
 import { resizeMap } from '../map/resize';
+import { withLayerAdded, withLayerRemoved, suggestLayerName } from '../map/layers';
 import { EditorState } from './state';
 import { installTools, type Tool } from './tools';
 import { Overlay } from './overlay';
@@ -32,8 +33,12 @@ export function mountEditor(game: Phaser.Game): void {
   const overlay = new Overlay(scene, state);
   let tool: Tool = 'brush';
 
-  const redrawLayers = buildLayers(shell.layers, state);
+  const redrawLayers = buildLayers(shell.layers, state, {
+    onDelete: deleteLayer,
+    onRename: (i, name) => state.renameLayer(i, name),
+  });
   buildPalette(shell.palette, state);
+  shell.addLayer.onclick = addLayer;
 
   // Кнопки
   const btn = (label: string, title: string, onClick: () => void): HTMLButtonElement => {
@@ -200,6 +205,32 @@ export function mountEditor(game: Phaser.Game): void {
 
     redrawLayers();
     refreshStatus();
+  }
+
+  // Слои. Добавление и удаление структурны — как ресайз, они пересобирают проекцию
+  // Phaser (у неё нет вставки/удаления слоя на лету) и потому чистят историю.
+  function addLayer(): void {
+    const insertAt = state.activeLayer + 1; // над активным, как в графических редакторах
+    const doc = new MapDoc(withLayerAdded(state.doc.map, suggestLayerName(state.doc.map), insertAt));
+    scene.rebuild(doc);
+    state.relayer(doc, scene.view, insertAt); // новый слой сразу активный
+  }
+
+  function deleteLayer(index: number): void {
+    if (state.doc.layers.length <= 1) return; // последний слой удалять нельзя
+    const filled = state.doc.countFilled(index);
+    if (
+      filled > 0 &&
+      !confirm(
+        `Слой «${state.doc.layers[index].name}»: ${filled} тайлов будут потеряны безвозвратно.\n` +
+          'Undo это не вернёт. Удалить слой?',
+      )
+    ) {
+      return;
+    }
+    const doc = new MapDoc(withLayerRemoved(state.doc.map, index));
+    scene.rebuild(doc);
+    state.relayer(doc, scene.view, index); // relayer сам поджимает индекс под укоротившийся список
   }
 
   // Горячие клавиши

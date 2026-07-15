@@ -102,15 +102,33 @@ export class EditorState {
   }
 
   /**
-   * После смены размера карты история клеточных правок бессмысленна: старые
-   * координаты указывают в другую сетку. Стек чистится целиком.
+   * Пересобрать состояние на новую пару doc/view после структурной правки —
+   * ресайза, добавления или удаления слоя. История клеточных правок при этом
+   * бессмысленна: её координаты и номера слоёв указывают в старую сетку, поэтому
+   * стек чистится целиком.
    */
-  resetAfterResize(doc: MapDoc, view: MapView): void {
+  relayer(doc: MapDoc, view: MapView, activeLayer: number): void {
     this.doc = doc;
     this.view = view;
     this.undoStack.length = 0;
     this.redoStack.length = 0;
-    this.activeLayer = Math.min(this.activeLayer, doc.layers.length - 1);
+    this.activeLayer = Math.max(0, Math.min(activeLayer, doc.layers.length - 1));
+    this.dirty = true;
+    this.emit();
+  }
+
+  /** После смены размера активный слой сохраняем, лишь поджимая под новый список. */
+  resetAfterResize(doc: MapDoc, view: MapView): void {
+    this.relayer(doc, view, this.activeLayer);
+  }
+
+  /**
+   * Переименование — не структурная правка: номера слоёв и клетки на месте,
+   * поэтому история переживает его, а проекцию Phaser пересобирать не нужно —
+   * имя лишь подпись, на экране его нет.
+   */
+  renameLayer(index: number, name: string): void {
+    this.doc.map.layers[index].name = name;
     this.dirty = true;
     this.emit();
   }
@@ -122,6 +140,9 @@ export class EditorState {
   }
 
   setActiveLayer(index: number): void {
+    // Клик по уже активному слою не должен гонять полную перерисовку списка:
+    // она рвёт двойной клик по имени (элемент заменяется между кликами).
+    if (index === this.activeLayer) return;
     this.activeLayer = index;
     this.emit();
   }

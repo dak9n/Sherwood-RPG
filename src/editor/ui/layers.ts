@@ -1,4 +1,15 @@
 import type { EditorState } from '../state';
+import { layerNameError } from '../../map/layers';
+
+/**
+ * Что панель слоёв умеет делать снаружи. Переименование и удаление меняют
+ * структуру карты, поэтому исполняет их mount (там есть сцена для пересборки),
+ * а панель только собирает UI и зовёт эти колбэки.
+ */
+export interface LayerListOps {
+  onDelete: (index: number) => void;
+  onRename: (index: number, name: string) => void;
+}
 
 /**
  * Список слоёв. Показан в обратном порядке — верхний слой карты сверху,
@@ -7,13 +18,76 @@ import type { EditorState } from '../state';
  * «Глаз» здесь скрывает слой только на экране и в документ не пишет. Поле
  * visible — часть формата, игра его читает: если гасить слой в файле, чтобы
  * заглянуть под него, и нажать сохранение, друг получит карту без объектов.
+ *
+ * Двойной клик по имени переименовывает слой, 🗑 — удаляет.
  */
-export function buildLayers(host: HTMLElement, state: EditorState): () => void {
+export function buildLayers(host: HTMLElement, state: EditorState, ops: LayerListOps): () => void {
   const rows: HTMLDivElement[] = [];
+
+  /** Инлайн-редактор имени. Проверку уникальности держим здесь: только тут видно поле ввода, куда вернуть фокус при ошибке. */
+  function startRename(index: number, nameEl: HTMLSpanElement): void {
+    const input = document.createElement('input');
+    input.className = 'rn';
+    input.value = state.doc.layers[index].name;
+    nameEl.replaceWith(input);
+    input.focus();
+    input.select();
+
+    // Успешный commit зовёт onRename → перерисовку → input исчезает и стреляет blur.
+    // Флаг гасит это повторное срабатывание.
+    let closed = false;
+
+    const cancel = (): void => {
+      if (closed) return;
+      closed = true;
+      render(); // вернуть подпись
+    };
+
+    const commit = (): void => {
+      if (closed) return;
+      const value = input.value.trim();
+      if (value === state.doc.layers[index].name) return cancel(); // без изменений — просто закрыть, не пачкая dirty
+      const err = layerNameError(state.doc.map, index, value);
+      if (err) {
+        input.classList.add('bad');
+        input.title = err;
+        return; // остаёмся в поле — пусть поправят
+      }
+      closed = true; // до onRename: он перерисует список и уберёт input
+      ops.onRename(index, value);
+    };
+
+    input.onkeydown = (e: KeyboardEvent): void => {
+      // Иначе Ctrl+Z, E, G и прочие хоткеи редактора сработают прямо во время ввода имени.
+      e.stopPropagation();
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commit();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        cancel();
+      }
+    };
+    // Клик мимо принимает годное имя, а негодное молча откатывает — держать
+    // невидимое поле в фокусе с ошибкой хуже, чем потерять недопечатанное имя.
+    input.onblur = (): void => {
+      const value = input.value.trim();
+      if (value !== state.doc.layers[index].name && !layerNameError(state.doc.map, index, value)) {
+        if (closed) return;
+        closed = true;
+        ops.onRename(index, value);
+      } else {
+        cancel();
+      }
+    };
+    input.onmousedown = (e: MouseEvent): void => e.stopPropagation(); // клик в поле не выбирает слой
+  }
 
   function render(): void {
     host.textContent = '';
     rows.length = 0;
+
+    const canDelete = state.doc.layers.length > 1; // последний слой удалять нельзя — карта станет невалидной
 
     for (let i = state.doc.layers.length - 1; i >= 0; i--) {
       const layer = state.doc.layers[i];
@@ -36,12 +110,39 @@ export function buildLayers(host: HTMLElement, state: EditorState): () => void {
       const name = document.createElement('span');
       name.className = 'nm';
       name.textContent = layer.name;
+      name.title = 'Двойной клик — переименовать';
+      name.ondblclick = (e) => {
+        e.stopPropagation();
+        startRename(i, name);
+      };
 
       const count = document.createElement('span');
       count.className = 'ct';
       count.textContent = String(state.doc.countFilled(i));
 
-      row.append(eye, name, count);
+      const edit = document.createElement('span');
+      edit.className = 'edit';
+      edit.textContent = '✎';
+      edit.title = 'Переименовать слой';
+      edit.onclick = (e) => {
+        e.stopPropagation();
+        startRename(i, name);
+      };
+
+      row.append(eye, name, count, edit);
+
+      if (canDelete) {
+        const del = document.createElement('span');
+        del.className = 'del';
+        del.textContent = '🗑';
+        del.title = 'Удалить слой';
+        del.onclick = (e) => {
+          e.stopPropagation();
+          ops.onDelete(i);
+        };
+        row.append(del);
+      }
+
       row.onclick = () => state.setActiveLayer(i);
       host.append(row);
       rows.push(row);

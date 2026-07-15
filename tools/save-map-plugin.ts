@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, readdirSync, unlinkSync, renameSync, openSync, fsyncSync, closeSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, copyFileSync, readdirSync, unlinkSync, renameSync, openSync, writeSync, fsyncSync, closeSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import type { Plugin, ViteDevServer } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -67,11 +67,15 @@ function writeAtomic(path: string, text: string, tmpDir: string): void {
   mkdirSync(dirname(path), { recursive: true });
 
   const tmp = resolve(tmpDir, 'forest.tmp.json');
-  writeFileSync(tmp, text, 'utf8');
-
-  const fd = openSync(tmp, 'r');
-  fsyncSync(fd);
-  closeSync(fd);
+  // Пишем и fsync-аем через один дескриптор: fsync по 'r'-дескриптору
+  // на Windows падает с EPERM — FlushFileBuffers требует права записи.
+  const fd = openSync(tmp, 'w');
+  try {
+    writeSync(fd, text, null, 'utf8');
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
 
   renameSync(tmp, path);
 }
