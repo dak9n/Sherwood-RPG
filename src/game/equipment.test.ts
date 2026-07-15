@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { totalBonuses, equipFromBag, unequip, SLOTS, type Equipped } from './equipment.ts';
+import { totalBonuses, equipFromBag, unequip, slotWearing, SLOTS, type Equipped } from './equipment.ts';
 import { ITEMS, addToBag, type Stack } from './items.ts';
 
 const bag = (size = 5): (Stack | null)[] => new Array(size).fill(null);
@@ -100,4 +100,12 @@ test('меч заметно меняет бой, а не для галочки',
   // Базовый урон героя 8-12. Прибавка должна быть видна.
   const b = totalBonuses({ weapon: 'sword_blue' });
   assert.ok(b.dmg >= 5, `+${b.dmg} к урону при базовых 8-12 — незаметно`);
+});
+
+test('находим, в каком слоте надет предмет', () => {
+  const eq: Equipped = { weapon: 'sword_blue', helm: 'helm' };
+  assert.equal(slotWearing(eq, 'sword_blue'), 'weapon');
+  assert.equal(slotWearing(eq, 'helm'), 'helm');
+  assert.equal(slotWearing(eq, 'sword'), undefined, 'обычный меч не надет');
+  assert.equal(slotWearing({}, 'sword'), undefined);
 });

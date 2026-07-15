@@ -42,6 +42,16 @@ export function totalBonuses(eq: Equipped): Bonuses {
   return sum;
 }
 
+/**
+ * В каком слоте надет этот предмет прямо сейчас. undefined — не надет.
+ *
+ * Нужно панели быстрого доступа: надетый меч лежит не в сумке, и без этой
+ * проверки панель показывала бы его как потерянный.
+ */
+export function slotWearing(eq: Equipped, id: string): EquipSlot | undefined {
+  return (Object.keys(eq) as EquipSlot[]).find((s) => eq[s] === id);
+}
+
 export interface EquipResult {
   ok: boolean;
   /** Что сняли, если слот был занят: вернётся в сумку. */

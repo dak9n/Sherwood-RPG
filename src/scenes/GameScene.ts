@@ -10,7 +10,9 @@ import { draftCollision } from '../map/collision-draft';
 import { Loot, registerItemFrames } from '../game/loot';
 import { addToBag, takeOne, sortBag, ITEMS, type Stack, type EquipSlot } from '../game/items';
 import { InventoryUi } from '../game/inventory-ui';
-import { equipFromBag, unequip, totalBonuses, type Equipped } from '../game/equipment';
+import { HotbarUi } from '../game/hotbar-ui';
+import { bind, swap, unbind, findInBag, emptyHotbar, type Hotbar } from '../game/hotbar';
+import { equipFromBag, unequip, totalBonuses, slotWearing, type Equipped } from '../game/equipment';
 
 /** Целый зум: при дробном пиксели карты не легли бы на пиксели экрана. */
 const ZOOM = 3;
@@ -35,11 +37,14 @@ export class GameScene extends MapScene {
   private monsters: Monster[] = [];
   private hud!: Hud;
   private inventory!: InventoryUi;
+  private hotbar!: HotbarUi;
   private loot: Loot[] = [];
   /** Сумка игрока. */
   bag: (Stack | null)[] = new Array(BAG_SIZE).fill(null);
   /** Надетое. */
   equipped: Equipped = {};
+  /** Что привязано к клавишам 1-9 и 0. Хранит вид предмета, а не место в сумке. */
+  quick: Hotbar = emptyHotbar();
 
   constructor() {
     super('world');
@@ -92,16 +97,35 @@ export class GameScene extends MapScene {
     this.inventory.onUnequip = (slot) => this.unequipItem(slot as EquipSlot);
     this.inventory.onSort = () => {
       sortBag(this.bag);
-      this.inventory.render();
+      this.refreshBags();
     };
+
+    this.hotbar = new HotbarUi();
+    this.hotbar.setData(this.quick, this.bag, this.equipped);
+    this.hotbar.onTrigger = (slot) => this.useQuick(slot);
+    this.hotbar.onBind = (slot, id) => {
+      bind(this.quick, slot, id);
+      this.hotbar.render();
+    };
+    this.hotbar.onSwap = (from, to) => {
+      swap(this.quick, from, to);
+      this.hotbar.render();
+    };
+    this.hotbar.onClear = (slot) => {
+      unbind(this.quick, slot);
+      this.hotbar.render();
+    };
+    this.hotbar.render();
 
     // I открывает и закрывает сумку. Игру не останавливаем: пауки не ждут, пока
     // ты роешься в грибах, — иначе сумка станет способом переждать бой.
     this.input.keyboard?.on('keydown-I', () => this.inventory.toggle());
+    this.bindQuickKeys();
 
     this.events.once('shutdown', () => {
       this.hud.destroy();
       this.inventory.destroy();
+      this.hotbar.destroy();
     });
 
     const cam = this.cameras.main;
@@ -236,7 +260,7 @@ export class GameScene extends MapScene {
       const name = ITEMS[l.id].name;
       const taken = l.qty - left;
       // Если сумка открыта, подобранное должно появиться в ней сразу.
-      this.inventory.render();
+      this.refreshBags();
       l.flyTo(px, py, () => {
         this.damageNumber(px, py - 44, 0, '#d8c07a', `${name}${taken > 1 ? ` ×${taken}` : ''}`);
       });
@@ -270,7 +294,56 @@ export class GameScene extends MapScene {
       this.damageNumber(this.player.sprite.x, this.player.sprite.y - 56, 0, '#5ba3e0', `+${def.use.mp}`);
     }
 
+    this.refreshBags();
+  }
+
+  /**
+   * Сумка изменилась. Одно место на оба окна: панель внизу показывает остаток
+   * тех же предметов, и обновлять её отдельно означало бы рано или поздно забыть.
+   */
+  private refreshBags(): void {
     this.inventory.render();
+    this.hotbar.render();
+  }
+
+  /** Клавиши 1-9 и 0 — ячейки панели быстрого доступа. */
+  private bindQuickKeys(): void {
+    const keys = ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE'];
+    keys.forEach((k, i) => this.input.keyboard?.on(`keydown-${k}`, () => this.useQuick(i)));
+    // Ноль — десятая ячейка, как подписано на планке.
+    this.input.keyboard?.on('keydown-ZERO', () => this.useQuick(9));
+  }
+
+  /**
+   * Ячейка панели делает с предметом ровно то же, что сделал бы клик по нему в
+   * сумке: еду съедает, вещь надевает. Одно правило вместо двух — гадать, какая
+   * клавиша на что, игроку незачем.
+   */
+  private useQuick(slot: number): void {
+    if (this.player.isDead) return;
+
+    const id = this.quick[slot];
+    if (!id) return;
+
+    // Надетое снимается той же клавишей, что надела: как и клик по гнезду в окне.
+    const worn = slotWearing(this.equipped, id);
+    if (worn) {
+      this.hotbar.flash(slot);
+      this.unequipItem(worn);
+      return;
+    }
+
+    const index = findInBag(this.quick, slot, this.bag);
+    if (index < 0) {
+      // Молчать нельзя: игрок жмёт клавишу и должен понять, почему ничего нет.
+      // Без глагола намеренно — иначе «меч кончился» и «зелье кончилось».
+      this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#b0a08a', `${ITEMS[id].name} — нет в сумке`);
+      return;
+    }
+
+    this.hotbar.flash(slot);
+    if (ITEMS[id].slot) this.equipItem(index);
+    else this.useItem(index);
   }
 
   /** Надеть вещь из ячейки сумки. */
@@ -279,7 +352,7 @@ export class GameScene extends MapScene {
     if (!res.ok) return;
 
     this.applyGear();
-    this.inventory.render();
+    this.refreshBags();
   }
 
   /** Снять надетое обратно в сумку. */
@@ -292,7 +365,7 @@ export class GameScene extends MapScene {
     }
 
     this.applyGear();
-    this.inventory.render();
+    this.refreshBags();
   }
 
   /** Пересчитать прибавки от вещей. Одно место — иначе бонусы разъедутся. */

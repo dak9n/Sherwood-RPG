@@ -1,5 +1,7 @@
 import { ITEMS, RARITY_NAME, rarityOf, type Icon, type Rarity, type Stack, type Tab } from './items';
 import { SLOTS, totalBonuses, type Equipped } from './equipment';
+import { canBind } from './hotbar';
+import { DND } from './dnd';
 import { HERO } from './creatures';
 
 /**
@@ -590,6 +592,8 @@ export class InventoryUi {
       slot.className = 'slot';
       slot.onclick = null;
       slot.onmouseenter = null;
+      slot.ondragstart = null;
+      slot.draggable = false;
       slot.title = '';
 
       if (!entry) continue;
@@ -611,6 +615,16 @@ export class InventoryUi {
       slot.onmouseenter = () => {
         this.hint.textContent = this.describe(def.id);
       };
+
+      // На панель внизу вещь попадает перетаскиванием. Тащим ВИД предмета, а не
+      // номер ячейки: номер живёт до первой раскладки сумки.
+      if (canBind(def.id)) {
+        slot.draggable = true;
+        slot.ondragstart = (e) => {
+          e.dataTransfer?.setData(DND.item, def.id);
+          if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
+        };
+      }
 
       // Вещь надевается, еда применяется — одним и тем же кликом: гадать, какая
       // кнопка на что, игроку незачем.
