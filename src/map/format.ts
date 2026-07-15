@@ -26,7 +26,9 @@ export function serialize(map: GameMap): string {
     '\n  ],\n' +
     '  "layers": [\n' +
     layers +
-    '\n  ]\n' +
+    '\n  ],\n' +
+    // Проходимость — своей строкой, как слои: git покажет её правку отдельно.
+    `  "collision": ${JSON.stringify(map.collision)}\n` +
     '}\n'
   );
 }

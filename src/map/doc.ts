@@ -1,4 +1,26 @@
-import type { GameMap } from './types';
+import type { GameMap, Pass } from './types';
+
+/** Не задано — в игре это стена. */
+export const UNSET = 0;
+/** Можно идти. */
+export const WALK = 1;
+/** Стена: вода, дерево, обрыв. */
+export const BLOCK = 2;
+
+/**
+ * Дополняет карту проходимостью, если её нет: старые карты (version 1) её не
+ * знали. Всё в нулях — «не задано», то есть пока стена; размечать будет
+ * черновик и рука.
+ *
+ * Файл на диске это не трогает: миграция живёт в памяти до первого сохранения.
+ */
+export function ensureCollision(map: GameMap): GameMap {
+  if (!Array.isArray(map.collision) || map.collision.length !== map.width * map.height) {
+    map.collision = new Array<number>(map.width * map.height).fill(UNSET);
+  }
+  map.version = 2;
+  return map;
+}
 
 /**
  * Документ карты — источник правды в редакторе.
@@ -45,6 +67,22 @@ export class MapDoc {
   setRaw(layerIndex: number, x: number, y: number, raw: number): void {
     if (!this.inBounds(x, y)) return;
     this.map.layers[layerIndex].data[this.index(x, y)] = raw;
+  }
+
+  /** Проходимость клетки. За границами — стена. */
+  getPass(x: number, y: number): Pass {
+    if (!this.inBounds(x, y)) return BLOCK;
+    return (this.map.collision[this.index(x, y)] ?? UNSET) as Pass;
+  }
+
+  setPass(x: number, y: number, value: Pass): void {
+    if (!this.inBounds(x, y)) return;
+    this.map.collision[this.index(x, y)] = value;
+  }
+
+  /** Можно ли игроку в клетку. Всё, кроме явного «можно», — стена. */
+  canWalk(x: number, y: number): boolean {
+    return this.getPass(x, y) === WALK;
   }
 
   /** Верхний непустой слой в клетке — для пипетки. -1, если пусто везде. */

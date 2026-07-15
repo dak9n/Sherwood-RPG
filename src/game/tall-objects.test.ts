@@ -15,7 +15,7 @@ function docFrom(layers: string[][]): MapDoc {
   const height = layers[0].length;
 
   const map: GameMap = {
-    version: 1,
+    version: 2,
     width,
     height,
     tileWidth: 16,
@@ -29,6 +29,7 @@ function docFrom(layers: string[][]): MapDoc {
       visible: true,
       data: rows.flatMap((row) => [...row].map((ch) => (ch === '#' ? OBJ : ch === 'g' ? GRASS : 0))),
     })),
+    collision: new Array(width * height).fill(1),
   };
   return new MapDoc(map);
 }

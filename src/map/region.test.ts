@@ -14,7 +14,7 @@ function docFrom(rows: string[]): MapDoc {
   const data = rows.flatMap((row, y) => [...row].map((ch, x) => (ch === '.' ? 0 : 100 + y * width + x)));
 
   const map: GameMap = {
-    version: 1,
+    version: 2,
     width,
     height,
     tileWidth: 16,
@@ -23,6 +23,7 @@ function docFrom(rows: string[]): MapDoc {
       { name: 't', image: 't.png', imageWidth: 16, imageHeight: 16, columns: 1, tileCount: 10000, firstId: 1, animations: {} },
     ],
     layers: [{ name: 'objects', visible: true, data }],
+    collision: new Array(width * height).fill(1),
   };
   return new MapDoc(map);
 }

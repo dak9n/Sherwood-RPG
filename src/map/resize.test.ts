@@ -6,7 +6,7 @@ import type { GameMap } from './types.ts';
 /** Карта 3x2 с узнаваемыми числами: 1 2 3 / 4 5 6 */
 function makeMap(): GameMap {
   return {
-    version: 1,
+    version: 2,
     width: 3,
     height: 2,
     tileWidth: 16,
@@ -24,6 +24,8 @@ function makeMap(): GameMap {
       },
     ],
     layers: [{ name: 'a', visible: true, data: [1, 2, 3, 4, 5, 6] }],
+    // проходимость: вся первая строка проходима, вторая — стена
+    collision: [1, 1, 1, 2, 2, 2],
   };
 }
 
@@ -103,4 +105,24 @@ test('пустые клетки не считаются потерянными',
   src.layers[0].data = [0, 0, 0, 4, 5, 6];
   const { dropped } = resizeMap(src, { left: 0, right: 0, top: -1, bottom: 0 });
   assert.equal(dropped, 0);
+});
+
+test('проходимость едет вместе со слоями, а не остаётся старой длины', () => {
+  const { map } = resizeMap(makeMap(), { left: 1, right: 0, top: 2, bottom: 0 });
+
+  assert.equal(map.collision.length, map.width * map.height, 'длина по новому размеру');
+  // строка «проходимо» уехала на (1,2)..(3,2) вслед за тайлами 1 2 3
+  assert.equal(map.collision[2 * map.width + 1], 1);
+  assert.equal(map.collision[2 * map.width + 3], 1);
+  // строка «стена» — под ней
+  assert.equal(map.collision[3 * map.width + 1], 2);
+  // дорисованная область — «не задано», то есть стена, пока не разметят
+  assert.equal(map.collision[0], 0);
+});
+
+test('обрезка режет проходимость там же, где и тайлы', () => {
+  const { map } = resizeMap(makeMap(), { left: -1, right: 0, top: 0, bottom: 0 });
+
+  assert.equal(map.collision.length, 2 * 2);
+  assert.deepEqual(map.collision, [1, 1, 2, 2]);
 });

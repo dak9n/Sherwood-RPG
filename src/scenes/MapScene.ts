@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { GameMap } from '../map/types';
-import { MapDoc } from '../map/doc';
+import { MapDoc, ensureCollision } from '../map/doc';
 import { buildTilemap, updateAnimations, type MapView } from '../map/view';
 
 const MAP_KEY = 'forest';
@@ -29,7 +29,9 @@ export abstract class MapScene extends Phaser.Scene {
   }
 
   create(): void {
-    const data = this.cache.json.get(MAP_KEY) as GameMap;
+    // Карта на диске может быть ещё первой версии, без проходимости — дополняем
+    // в памяти. На диск это попадёт при первом сохранении из редактора.
+    const data = ensureCollision(this.cache.json.get(MAP_KEY) as GameMap);
 
     // Картинки тайлсетов известны только из карты, поэтому это отдельный, второй
     // проход загрузки. Добавлять их из колбэка первого прохода нельзя: если очередь

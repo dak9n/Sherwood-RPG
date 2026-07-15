@@ -17,7 +17,9 @@ export function validateMap(map: unknown): string[] {
   const m = map as Record<string, unknown>;
 
   if (!m || typeof m !== 'object') return ['карта не объект'];
-  if (m.version !== 1) errors.push(`version должен быть 1, а не ${JSON.stringify(m.version)}`);
+  // Версия 2 добавила проходимость. Отказ громкий и специально: код, который
+  // о ней не знает, сохранил бы карту без неё и стёр бы работу молча.
+  if (m.version !== 2) errors.push(`version должен быть 2, а не ${JSON.stringify(m.version)}`);
 
   const isPositiveInt = (v: unknown): v is number => Number.isInteger(v) && (v as number) > 0;
   for (const key of ['width', 'height', 'tileWidth', 'tileHeight']) {
@@ -42,6 +44,17 @@ export function validateMap(map: unknown): string[] {
     from: ts.firstId,
     to: ts.firstId + ts.tileCount - 1,
   }));
+
+  if (!Array.isArray(m.collision)) {
+    errors.push('нет проходимости (collision)');
+  } else if (m.collision.length !== width * height) {
+    errors.push(`проходимость: ${m.collision.length} клеток вместо ${width * height} (${width}x${height})`);
+  } else {
+    const bad = (m.collision as unknown[]).findIndex((v) => v !== 0 && v !== 1 && v !== 2);
+    if (bad !== -1) {
+      errors.push(`проходимость, клетка ${bad}: ${JSON.stringify(m.collision[bad])} — должно быть 0, 1 или 2`);
+    }
+  }
 
   if (!Array.isArray(m.layers) || m.layers.length === 0) {
     errors.push('нет слоёв');
