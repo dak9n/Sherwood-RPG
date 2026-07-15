@@ -18,4 +18,10 @@ const game = new Phaser.Game({
 if (import.meta.env.DEV) {
   // Чтобы можно было ковырять сцену из консоли браузера: game.scene.getScene('world')
   (globalThis as Record<string, unknown>).game = game;
+
+  // Редактор подключается только по ?edit и только в разработке. Динамический
+  // импорт нужен, чтобы он не попал в собранную игру.
+  if (new URLSearchParams(location.search).has('edit')) {
+    void import('./editor/mount').then((m) => m.mountEditor(game));
+  }
 }

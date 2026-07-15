@@ -4,8 +4,9 @@
   "description": "Тайловая 2D-игра: карта леса на Phaser",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && vite build",
     "preview": "vite preview",
+    "test": "node --experimental-strip-types --test src/map/*.test.ts",
     "convert-map": "node tools/convert-map.mjs"
   },
   "repository": {
@@ -20,6 +21,7 @@
     "phaser": "^3.90.0"
   },
   "devDependencies": {
+    "@types/node": "^26.1.1",
     "typescript": "^7.0.2",
     "vite": "^8.1.4"
   },

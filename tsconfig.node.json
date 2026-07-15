@@ -1,0 +1,13 @@
+{
+  // Код, который выполняет Node: конвертер, плагин дев-сервера, тесты.
+  // Типы node держим отдельно от игры — иначе браузерный код начнёт видеть
+  // NodeJS-глобалы, которых в нём никогда не будет.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "allowImportingTsExtensions": true
+  },
+  "include": ["tools", "vite.config.ts", "src/**/*.test.ts"],
+  "exclude": []
+}

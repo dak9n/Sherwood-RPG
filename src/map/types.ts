@@ -26,7 +26,7 @@ export interface Layer {
   visible: boolean;
   /**
    * Плоский массив width*height. 0 — пусто, иначе глобальный номер тайла.
-   * В трёх старших битах — флаги отражения (см. FLIP_* в render/gid.ts).
+   * В трёх старших битах — флаги отражения (см. FLIP_* в map/gid.ts).
    */
   data: number[];
 }

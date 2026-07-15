@@ -1,20 +1,19 @@
 import Phaser from 'phaser';
 import type { GameMap } from '../map/types';
+import { MapDoc } from '../map/doc';
+import { buildTilemap, updateAnimations, type MapView } from '../map/view';
 
 const MAP_KEY = 'forest';
 const MAP_URL = 'assets/maps/forest.json';
 const TILESET_URL = 'assets/tilesets/';
 
-/** Тайлы с одинаковым номером анимируются синхронно — держим их одной пачкой. */
-interface AnimatedGroup {
-  frames: { gid: number; duration: number }[];
-  tiles: Phaser.Tilemaps.Tile[];
-  frame: number;
-  elapsed: number;
-}
+/** Карта и тайлсеты загружены, doc и view готовы. */
+export const WORLD_READY = 'world-ready';
 
 export class WorldScene extends Phaser.Scene {
-  private animated: AnimatedGroup[] = [];
+  doc!: MapDoc;
+  view!: MapView;
+  ready = false;
 
   constructor() {
     super('world');
@@ -22,97 +21,61 @@ export class WorldScene extends Phaser.Scene {
 
   preload(): void {
     this.load.json(MAP_KEY, MAP_URL);
-
-    // Картинки тайлсетов перечислены в самой карте, поэтому грузим их после json.
-    this.load.once(`filecomplete-json-${MAP_KEY}`, () => {
-      const map = this.cache.json.get(MAP_KEY) as GameMap;
-      for (const ts of map.tilesets) {
-        this.load.image(ts.name, TILESET_URL + ts.image);
-      }
-    });
   }
 
   create(): void {
     const data = this.cache.json.get(MAP_KEY) as GameMap;
-    const map = this.make.tilemap({
-      tileWidth: data.tileWidth,
-      tileHeight: data.tileHeight,
-      width: data.width,
-      height: data.height,
-    });
 
-    const tilesets = data.tilesets.map((ts) =>
-      map.addTilesetImage(ts.name, ts.name, data.tileWidth, data.tileHeight, 0, 0, ts.firstId)!,
-    );
-
-    const framesByGid = this.collectAnimations(data);
-    const pending = new Map<number, Phaser.Tilemaps.Tile[]>();
-
-    for (const layerData of data.layers) {
-      const layer = map.createBlankLayer(layerData.name, tilesets)!;
-      layer.setVisible(layerData.visible);
-
-      for (let i = 0; i < layerData.data.length; i++) {
-        const raw = layerData.data[i];
-        if (!raw) continue;
-
-        const x = i % data.width;
-        const y = Math.floor(i / data.width);
-
-        // Флаги поворота Tiled кодируются в старших битах — разбирает Phaser.
-        const parsed = Phaser.Tilemaps.Parsers.Tiled.ParseGID(raw);
-        const tile = layer.putTileAt(parsed.gid, x, y);
-        tile.rotation = parsed.rotation;
-        tile.flipX = parsed.flipped;
-
-        if (framesByGid.has(parsed.gid)) {
-          const list = pending.get(parsed.gid) ?? [];
-          list.push(tile);
-          pending.set(parsed.gid, list);
-        }
-      }
-    }
-
-    this.animated = [...pending].map(([gid, tiles]) => ({
-      frames: framesByGid.get(gid)!,
-      tiles,
-      frame: 0,
-      elapsed: 0,
-    }));
-
-    this.setupCamera(data);
-
-    const animatedTiles = this.animated.reduce((n, g) => n + g.tiles.length, 0);
-    console.log(
-      `Карта ${data.width}x${data.height}, слоёв ${data.layers.length}, анимированных тайлов ${animatedTiles}`,
-    );
-  }
-
-  /** Глобальный номер тайла -> кадры анимации (тоже в глобальных номерах). */
-  private collectAnimations(data: GameMap): Map<number, { gid: number; duration: number }[]> {
-    const result = new Map<number, { gid: number; duration: number }[]>();
+    // Картинки тайлсетов известны только из карты, поэтому это отдельный, второй
+    // проход загрузки. Добавлять их из колбэка первого прохода нельзя: если очередь
+    // загрузчика к тому моменту опустела, он их не подхватит и молча встанет.
     for (const ts of data.tilesets) {
-      for (const [tileId, frames] of Object.entries(ts.animations)) {
-        result.set(ts.firstId + Number(tileId), frames.map((f) => ({
-          gid: ts.firstId + f.tileId,
-          duration: f.duration,
-        })));
-      }
+      this.load.image(ts.name, TILESET_URL + ts.image);
     }
-    return result;
+
+    this.load.once(Phaser.Loader.Events.COMPLETE, () => {
+      this.doc = new MapDoc(data);
+      this.view = buildTilemap(this, this.doc);
+      this.setupCamera();
+      this.ready = true;
+      this.events.emit(WORLD_READY);
+    });
+    this.load.start();
   }
 
-  private setupCamera(data: GameMap): void {
+  /** Пересобрать карту после смены размера: у Phaser нет ресайза тайлмапа. */
+  rebuild(doc: MapDoc): void {
+    this.view.map.destroy();
+    this.doc = doc;
+    this.view = buildTilemap(this, doc);
+  }
+
+  /**
+   * Вписать карту в текущий размер канваса. Публичный, потому что редактор
+   * забирает часть экрана под панель уже после старта сцены, и камеру нужно
+   * пересчитать заново.
+   */
+  fitCamera(): void {
     const cam = this.cameras.main;
-    const mapWidth = data.width * data.tileWidth;
-    const mapHeight = data.height * data.tileHeight;
+    const mapWidth = this.doc.width * this.doc.map.tileWidth;
+    const mapHeight = this.doc.height * this.doc.map.tileHeight;
 
-    cam.setZoom(Math.min(this.scale.width / mapWidth, this.scale.height / mapHeight));
+    const fit = Math.min(this.scale.width / mapWidth, this.scale.height / mapHeight);
+    cam.setZoom(Phaser.Math.Clamp(fit * 0.95, 0.25, 16));
     cam.centerOn(mapWidth / 2, mapHeight / 2);
+  }
 
-    // Перетаскивание карты мышью.
+  private setupCamera(): void {
+    const cam = this.cameras.main;
+    this.fitCamera();
+    this.input.mouse?.disableContextMenu();
+
+    // Панорама — средней кнопкой или пробелом с левой. Проверять Pointer.isDown нельзя:
+    // он истинен для любой кнопки, и тогда кисть в редакторе таскала бы карту.
+    const space = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
-      if (!p.isDown) return;
+      const panning = p.middleButtonDown() || (p.leftButtonDown() && space?.isDown);
+      if (!panning) return;
       cam.scrollX -= (p.x - p.prevPosition.x) / cam.zoom;
       cam.scrollY -= (p.y - p.prevPosition.y) / cam.zoom;
     });
@@ -128,15 +91,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    for (const group of this.animated) {
-      group.elapsed += delta;
-      const current = group.frames[group.frame];
-      if (group.elapsed < current.duration) continue;
-
-      group.elapsed -= current.duration;
-      group.frame = (group.frame + 1) % group.frames.length;
-      const gid = group.frames[group.frame].gid;
-      for (const tile of group.tiles) tile.index = gid;
-    }
+    if (!this.ready) return;
+    updateAnimations(this.view, delta);
   }
 }

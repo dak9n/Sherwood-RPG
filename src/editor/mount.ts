@@ -1,0 +1,214 @@
+import Phaser from 'phaser';
+import { MapDoc } from '../map/doc';
+import { resizeMap } from '../map/resize';
+import { EditorState } from './state';
+import { installTools, type Tool } from './tools';
+import { Overlay } from './overlay';
+import { saveMap, fetchRevision } from './save';
+import { askResize } from './resize-dialog';
+import { buildShell } from './ui/shell';
+import { buildLayers } from './ui/layers';
+import { buildPalette, revealBrush } from './ui/palette';
+import { WORLD_READY, type WorldScene } from '../scenes/WorldScene';
+
+export function mountEditor(game: Phaser.Game): void {
+  const scene = game.scene.getScene('world') as WorldScene;
+
+  // Ждём именно готовности карты, а не запуска сцены: тайлсеты грузятся вторым
+  // проходом уже после create, и до его конца doc с view не существуют.
+  if (!scene.ready) {
+    scene.events.once(WORLD_READY, () => mountEditor(game));
+    return;
+  }
+
+  const state = new EditorState(scene.doc, scene.view);
+  const shell = buildShell();
+
+  // Панель забирает часть экрана уже после старта сцены: Phaser сам этого не
+  // замечает — он слушает окно, а не разметку. Иначе карта останется в углу.
+  game.scale.refresh();
+  scene.fitCamera();
+
+  const overlay = new Overlay(scene, state);
+  let tool: Tool = 'brush';
+
+  const redrawLayers = buildLayers(shell.layers, state);
+  buildPalette(shell.palette, state);
+
+  // Кнопки
+  const btn = (label: string, title: string, onClick: () => void): HTMLButtonElement => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.title = title;
+    b.onclick = onClick;
+    shell.tools.append(b);
+    return b;
+  };
+
+  const brushBtn = btn('Кисть', 'Рисовать (ЛКМ)', () => setTool('brush'));
+  const eraserBtn = btn('Ластик', 'Стирать (ПКМ или этот режим)', () => setTool('eraser'));
+  const gridBtn = btn('Сетка', 'Показать сетку (при увеличении от 2x)', () => {
+    gridOn = !gridOn;
+    overlay.setGrid(gridOn);
+    gridBtn.setAttribute('aria-pressed', String(gridOn));
+  });
+  const undoBtn = btn('↶', 'Отменить (Ctrl+Z)', () => state.undo());
+  const redoBtn = btn('↷', 'Вернуть (Ctrl+Shift+Z)', () => state.redo());
+  btn('Размер', 'Изменить размер карты', () => doResize());
+  const saveBtn = btn('Сохранить', 'Записать карту в файл (Ctrl+S)', () => doSave());
+
+  let gridOn = true;
+  gridBtn.setAttribute('aria-pressed', 'true');
+
+  function setTool(next: Tool): void {
+    tool = next;
+    brushBtn.setAttribute('aria-pressed', String(next === 'brush'));
+    eraserBtn.setAttribute('aria-pressed', String(next === 'eraser'));
+  }
+  setTool('brush');
+
+  // Инструменты на карте
+  let hover = { x: -1, y: -1 };
+  installTools(scene, state, () => tool, {
+    onPick: () => revealBrush(shell.palette, state, state.brush),
+    onHover: (x, y) => {
+      hover = { x, y };
+      overlay.moveCursor(x, y);
+      refreshStatus();
+    },
+  });
+
+  scene.events.on('postupdate', () => overlay.draw());
+
+  // Статус
+  let saveNote = '';
+  let saveClass = '';
+
+  function refreshStatus(): void {
+    const layer = state.doc.layers[state.activeLayer]?.name ?? '?';
+    const raw = state.doc.inBounds(hover.x, hover.y) ? state.doc.getRaw(state.activeLayer, hover.x, hover.y) : 0;
+    const where = state.doc.inBounds(hover.x, hover.y) ? `${hover.x}:${hover.y}` : '—';
+    const brush = state.brush.w > 1 || state.brush.h > 1 ? ` · кисть ${state.brush.w}×${state.brush.h}` : '';
+
+    shell.setStatus(
+      `${layer} · ${where} · ${raw || 'пусто'}${brush}`,
+      saveNote || (state.dirty ? 'не сохранено' : 'сохранено'),
+      saveClass || (state.dirty ? 'save-dirty' : 'save-ok'),
+    );
+    undoBtn.disabled = !state.canUndo;
+    redoBtn.disabled = !state.canRedo;
+  }
+
+  state.onChange(() => {
+    redrawLayers();
+    refreshStatus();
+  });
+
+  // Сохранение
+  async function doSave(force = false): Promise<void> {
+    saveBtn.disabled = true;
+    saveNote = 'сохраняю…';
+    saveClass = '';
+    refreshStatus();
+
+    const res = await saveMap(state, { force });
+    saveBtn.disabled = false;
+
+    if (res.ok) {
+      state.markSaved(res.revision);
+      saveNote = '';
+      saveClass = '';
+      refreshStatus();
+      return;
+    }
+
+    if (res.kind === 'conflict') {
+      // Просто сказать «перезагрузите» — значит предложить потерять всё нарисованное.
+      const keep = confirm(
+        'Файл карты на диске изменился с тех пор, как редактор её загрузил.\n' +
+          'Это мог сделать git, конвертер или второй редактор.\n\n' +
+          'OK — записать мою версию поверх (старая уйдёт в .map-backups).\n' +
+          'Отмена — ничего не делать, ваши правки останутся в редакторе.',
+      );
+      if (keep) {
+        state.baseRevision = res.revision;
+        await doSave(true);
+        return;
+      }
+      saveNote = 'конфликт — не сохранено';
+      saveClass = 'save-err';
+      refreshStatus();
+      return;
+    }
+
+    saveNote = res.kind === 'invalid' ? `карта не прошла проверку (${res.errors.length})` : 'ошибка сохранения';
+    saveClass = 'save-err';
+    refreshStatus();
+    console.error('Сохранение не удалось:', res);
+  }
+
+  // Изменение размера
+  async function doResize(): Promise<void> {
+    const req = await askResize(state.doc);
+    if (!req) return;
+
+    if (req.dropped > 0) {
+      const where = Object.entries(req.droppedByLayer)
+        .map(([n, c]) => `  ${n}: ${c}`)
+        .join('\n');
+      if (!confirm(`Будет безвозвратно потеряно ${req.dropped} тайлов:\n${where}\n\nПродолжить?`)) return;
+    }
+
+    const { map } = resizeMap(state.doc.map, req.deltas);
+    const doc = new MapDoc(map);
+
+    // У Phaser нет ресайза тайлмапа — только пересборка.
+    scene.rebuild(doc);
+    state.resetAfterResize(doc, scene.view);
+
+    // Камера сдвигается вслед за картой, иначе она прыгнет под курсором.
+    scene.cameras.main.scrollX += req.deltas.left * map.tileWidth;
+    scene.cameras.main.scrollY += req.deltas.top * map.tileHeight;
+
+    redrawLayers();
+    refreshStatus();
+  }
+
+  // Горячие клавиши
+  window.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      void doSave();
+      return;
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) state.redo();
+      else state.undo();
+      return;
+    }
+    if (e.key === 'e') setTool(tool === 'eraser' ? 'brush' : 'eraser');
+    if (e.key === 'g') gridBtn.click();
+  });
+
+  window.addEventListener('beforeunload', (e) => {
+    if (!state.dirty) return;
+    // Правка любого src/*.ts перезагружает страницу — без этого несохранённая
+    // карта тихо исчезнет посреди работы над редактором.
+    e.preventDefault();
+    e.returnValue = '';
+  });
+
+  // Первая ревизия: карту грузит Phaser, заголовков ответа он наружу не отдаёт.
+  void fetchRevision().then((r) => {
+    state.baseRevision = r;
+    refreshStatus();
+  });
+
+  refreshStatus();
+
+  // Чтобы ковырять редактор из консоли браузера: editor.state, editor.save()
+  (globalThis as Record<string, unknown>).editor = { state, save: doSave, resize: doResize };
+
+  console.log('Редактор включён. ЛКМ — рисовать, ПКМ — стирать, Shift+ЛКМ — пипетка, Space+ЛКМ или СКМ — двигать карту.');
+}
