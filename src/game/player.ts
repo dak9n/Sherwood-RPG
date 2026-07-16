@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { createDirAnims } from './anims';
 import { dirFromVelocity, DIRS_HERO, type Dir } from './dir';
 import { hitRect, rollDamage, type Rect } from './combat';
+import { creatureDepth, DEPTH_ABOVE } from './depth';
 import { HERO } from './creatures';
 
 const SHEETS = 'assets/characters/PNG/Swordsman_lvl1/With_shadow/';
@@ -9,20 +10,6 @@ const PREFIX = 'Swordsman_lvl1_';
 
 /** Кадр в листе — 64x64, персонаж внутри примерно 20x30 и стоит на нижней трети. */
 const FRAME = 64;
-
-/**
- * Глубина слоёв карты — индекс*10 (см. buildTilemap). Слои объектов идут
- * последними, поэтому:
- *
- * DEPTH_ABOVE — поверх всей карты: так игрок ходит по траве, камням, пням,
- * кустам и тростнику, не ныряя за них.
- * DEPTH_BEHIND — под слоями объектов: включается, только когда игрок зашёл
- * за большое дерево.
- *
- * Числа привязаны к текущему порядку слоёв: переставят слои — пересчитать.
- */
-const DEPTH_ABOVE = 300;
-const DEPTH_BEHIND = 215;
 
 type State = 'idle' | 'walk' | 'attack' | 'dead';
 
@@ -120,6 +107,8 @@ export class Player {
     x: number,
     y: number,
     private onStrike: (strike: Strike) => void,
+    /** Сказать игроку, что на тяжёлый удар не хватило маны. */
+    private onNoMana: () => void = () => {},
   ) {
     createDirAnims(scene, 'sw', DIRS_HERO, {
       idle: { texture: 'sw-idle', cols: 12, frameRate: 8, loop: true },
@@ -219,12 +208,9 @@ export class Player {
    * игрок оказался бы за кроной, хотя визуально он ближе к зрителю.
    */
   private updateDepth(): void {
-    const x = Math.floor(this.sprite.x / this.tileW);
-    const y = Math.floor(this.sprite.y / this.tileH);
-    const baseY = this.tallObjects.get(y * this.mapWidth + x);
-
-    const behind = baseY !== undefined && this.sprite.y < baseY;
-    this.sprite.setDepth(behind ? DEPTH_BEHIND : DEPTH_ABOVE);
+    this.sprite.setDepth(
+      creatureDepth(this.sprite.x, this.sprite.y, this.tallObjects, this.mapWidth, this.tileW, this.tileH),
+    );
   }
 
   /** Урон по игроку. Возвращает false, если попадание съела неуязвимость. */
@@ -332,6 +318,10 @@ export class Player {
     // отнимать у игрока единственное действие.
     const heavy = wantHeavy && this.mp >= HERO.heavyCost;
     if (heavy) this.mp -= HERO.heavyCost;
+
+    // Молчать нельзя: без маны правая кнопка даёт ТУ ЖЕ анимацию, но в 2.5 раза
+    // слабее. Игрок видит взмах, не видит урона и решает, что игра сломалась.
+    if (wantHeavy && !heavy) this.onNoMana();
 
     this.heavySwing = heavy;
     this.didHit = false;

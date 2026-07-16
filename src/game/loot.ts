@@ -34,7 +34,11 @@ export class Loot {
   constructor(
     private scene: Phaser.Scene,
     readonly id: string,
-    readonly qty: number,
+    /**
+     * Сколько лежит. НЕ readonly: если в сумку влезла только часть стопки,
+     * остаток обязан остаться лежать, а не исчезнуть вместе с подобранным.
+     */
+    public qty: number,
     x: number,
     y: number,
   ) {

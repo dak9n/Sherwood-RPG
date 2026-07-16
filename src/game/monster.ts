@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { createDirAnims } from './anims';
+import { creatureDepth } from './depth';
 import { dirFromVelocity, DIRS_MOB, type Dir } from './dir';
 import { distSq, hitRect } from './combat';
 import type { MonsterStats } from './creatures';
@@ -26,6 +27,20 @@ export class Monster {
   private deadAt = 0;
   private bar: Phaser.GameObjects.Rectangle;
   private barBg: Phaser.GameObjects.Rectangle;
+
+  /** Большие деревья: чтобы паук прятался за ними так же, как игрок. */
+  private tallObjects: Map<number, number> = new Map();
+  private mapWidth = 0;
+  private tileW = 16;
+  private tileH = 16;
+
+  /** Сказать пауку, где большие деревья. Зовётся сценой один раз, как у игрока. */
+  setTallObjects(tall: Map<number, number>, mapWidth: number, tileW: number, tileH: number): void {
+    this.tallObjects = tall;
+    this.mapWidth = mapWidth;
+    this.tileW = tileW;
+    this.tileH = tileH;
+  }
 
   static preload(scene: Phaser.Scene, stats: MonsterStats): void {
     for (const anim of ['Idle', 'Walk', 'Run', 'Attack', 'Hurt', 'Death']) {
@@ -177,7 +192,12 @@ export class Monster {
 
   update(player: Player): void {
     const now = this.scene.time.now;
-    this.sprite.setDepth(this.sprite.y);
+    // Та же шкала, что у игрока. Раньше тут стоял sprite.y — мировые пиксели, —
+    // и паук с севера (y=408) рисовался поверх героя (300), а южнее 16-го ряда
+    // тайлов лез ещё и на кроны деревьев.
+    this.sprite.setDepth(
+      creatureDepth(this.sprite.x, this.sprite.y, this.tallObjects, this.mapWidth, this.tileW, this.tileH),
+    );
     this.updateBar();
 
     if (this.state === 'dead') {

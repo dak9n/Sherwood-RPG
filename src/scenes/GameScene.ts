@@ -74,7 +74,11 @@ export class GameScene extends MapScene {
     // Ставим в середину нарисованного леса, а не карты: холст расширяли вправо
     // и вниз, поэтому центр карты — пустое поле.
     const { x, y } = this.drawnCenter();
-    this.player = new Player(this, x, y, (strike) => this.playerStrike(strike));
+    this.player = new Player(
+      this, x, y,
+      (strike) => this.playerStrike(strike),
+      () => this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#5ba3e0', 'не хватает маны'),
+    );
 
     // Большие деревья ищем один раз: карта в игре не меняется.
     const tall = findTallObjects(this.doc);
@@ -216,7 +220,10 @@ export class GameScene extends MapScene {
 
     const points = pickSpawns(this.doc, blocked, SPAWNS, { x: px, y: py });
     for (const p of points) {
-      this.monsters.push(new Monster(this, MONSTERS[p.kind], p.x, p.y));
+      const m = new Monster(this, MONSTERS[p.kind], p.x, p.y);
+      // Пауки прячутся за деревьями по тем же правилам, что игрок.
+      m.setTallObjects(tall, this.doc.width, this.doc.map.tileWidth, this.doc.map.tileHeight);
+      this.monsters.push(m);
     }
 
     // Пауки расталкивают друг друга: иначе агрившиеся сойдутся в одну точку и
@@ -286,15 +293,25 @@ export class GameScene extends MapScene {
 
       const left = addToBag(this.bag, l.id, l.qty);
       if (left === l.qty) {
-        // Сумка полна — предмет остаётся лежать. Молча его терять нельзя.
+        // Сумка полна — предмет остаётся лежать целиком. Молча его терять нельзя.
         continue;
       }
 
-      this.loot.splice(i, 1);
       const name = ITEMS[l.id].name;
       const taken = l.qty - left;
       // Если сумка открыта, подобранное должно появиться в ней сразу.
       this.refreshBags();
+
+      if (left > 0) {
+        // Влезла только часть стопки. Остаток ОСТАЁТСЯ ЛЕЖАТЬ — раньше он тут же
+        // стирался вместе с предметом: сумка забирала часть, а с земли исчезало
+        // всё. Освободится место — доберём на следующем кадре.
+        l.qty = left;
+        this.damageNumber(px, py - 44, 0, '#d8c07a', `${name} ×${taken}, ещё ${left} — сумка полна`);
+        continue;
+      }
+
+      this.loot.splice(i, 1);
       l.flyTo(px, py, () => {
         this.damageNumber(px, py - 44, 0, '#d8c07a', `${name}${taken > 1 ? ` ×${taken}` : ''}`);
       });
