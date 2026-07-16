@@ -35,16 +35,26 @@ export interface ChaseInput {
   toHome2: number;
   /** Квадрат допуска: ближе этого к дому считаем, что пришёл. */
   homeTol2: number;
+  /**
+   * Задели монстра — стрелой или мечом. Тогда он гонится, даже если игрок дальше
+   * предела агрессии: издалека из лука его иначе не расшевелить (стрела бьёт
+   * дальше, чем паук замечает). Поводок всё равно главнее — уведут домой.
+   */
+  provoked?: boolean;
 }
 
 export function decideChase(input: ChaseInput, stats: ChaseStats): Chase {
-  const { mode, toPlayer2, toHome2, homeTol2 } = input;
+  const { mode, toPlayer2, toHome2, homeTol2, provoked } = input;
 
   // Возвращение прерывать нельзя: иначе снова начнётся дрожание на поводке.
   if (mode === 'leash') return toHome2 <= homeTol2 ? 'idle' : 'leash';
 
-  // Ушёл слишком далеко от дома — домой, что бы там ни делал игрок.
+  // Ушёл слишком далеко от дома — домой, что бы там ни делал игрок. Поводок
+  // главнее даже провокации: иначе задетый монстр ушёл бы за игроком через всю карту.
   if (toHome2 > stats.leash * stats.leash) return 'leash';
+
+  // Ударили — гонимся, не спрашивая про дальность агрессии.
+  if (provoked) return 'chase';
 
   if (mode === 'chase') return toPlayer2 > stats.deaggro * stats.deaggro ? 'idle' : 'chase';
   return toPlayer2 < stats.aggro * stats.aggro ? 'chase' : 'idle';

@@ -10,6 +10,10 @@ const TOL2 = 16 * 16;
 const decide = (mode: Chase, toPlayer: number, toHome: number): Chase =>
   decideChase({ mode, toPlayer2: toPlayer * toPlayer, toHome2: toHome * toHome, homeTol2: TOL2 }, STATS);
 
+/** То же, но монстр уже задет ударом. */
+const decideProv = (mode: Chase, toPlayer: number, toHome: number): Chase =>
+  decideChase({ mode, toPlayer2: toPlayer * toPlayer, toHome2: toHome * toHome, homeTol2: TOL2, provoked: true }, STATS);
+
 test('заметил игрока — погнался', () => {
   assert.equal(decide('idle', 90, 0), 'chase');
 });
@@ -53,6 +57,24 @@ test('поводок сильнее погони', () => {
   // Порядок проверок важен: сначала дом, потом игрок. Иначе паука утащат в озеро.
   assert.equal(decide('chase', 10, 200), 'leash', 'игрок вплотную, но поводок кончился');
   assert.equal(decide('idle', 10, 200), 'leash');
+});
+
+test('ЗАДЕЛИ ИЗ ЛУКА ИЗДАЛЕКА — гонится, хотя игрок дальше агрессии', () => {
+  // Стрела бьёт на 240, а замечает паук на 100 и держит до 170. Без провокации
+  // выстрел издалека наносил урон, но паук стоял столбом. Теперь бросается вслед.
+  assert.equal(decide('idle', 220, 0), 'idle', 'без провокации — стоит');
+  assert.equal(decideProv('idle', 220, 0), 'chase', 'задет — гонится несмотря на дальность');
+  assert.equal(decideProv('chase', 200, 0), 'chase', 'и не отпускает за деагро, пока задет');
+});
+
+test('поводок сильнее провокации: задетого всё равно уводят домой', () => {
+  // Иначе задетый монстр ушёл бы за игроком через всю карту в озеро.
+  assert.equal(decideProv('chase', 50, 200), 'leash', 'за поводком — домой, даже задетый');
+  assert.equal(decideProv('idle', 50, 200), 'leash');
+});
+
+test('возвращение домой не прерывается, даже если монстр задет', () => {
+  assert.equal(decideProv('leash', 30, 100), 'leash', 'идёт домой — провокация не сбивает');
 });
 
 test('у всех пауков в таблице поводок не короче деагро', () => {

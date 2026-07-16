@@ -25,6 +25,8 @@ export class Monster {
   private state: State = 'idle';
   private dir: Dir = 'down';
   private didHit = false;
+  /** Задели ударом — гонится за игроком даже издалека, пока поводок не уведёт домой. */
+  private provoked = false;
   private nextAttackAt = 0;
   private deadAt = 0;
   private bar: Phaser.GameObjects.Rectangle;
@@ -145,6 +147,11 @@ export class Monster {
       return;
     }
 
+    // Ударили — теперь гонится, откуда бы ни прилетело. Без этого выстрел из лука
+    // с дальнего расстояния наносил урон, но паук оставался стоять: агрессия
+    // включалась только по близости, а стрела бьёт дальше, чем паук замечает.
+    this.provoked = true;
+
     // Отбрасывание: видно, что попал.
     const angle = Math.atan2(this.sprite.y - fromY, this.sprite.x - fromX);
     (this.sprite.body as Phaser.Physics.Arcade.Body).setVelocity(Math.cos(angle) * 220, Math.sin(angle) * 220);
@@ -196,6 +203,7 @@ export class Monster {
   reset(): void {
     this.hp = this.stats.hp;
     this.state = 'idle';
+    this.provoked = false;
     this.dir = 'down';
     this.sprite.setPosition(this.homeX, this.homeY);
     this.sprite.setAlpha(1);
@@ -240,7 +248,13 @@ export class Monster {
     const home2 = distSq(this.sprite.x, this.sprite.y, this.homeX, this.homeY);
     const was = this.state;
     const mode = decideChase(
-      { mode: was === 'chase' || was === 'leash' ? was : 'idle', toPlayer2: d2, toHome2: home2, homeTol2: this.tileW * this.tileW },
+      {
+        mode: was === 'chase' || was === 'leash' ? was : 'idle',
+        toPlayer2: d2,
+        toHome2: home2,
+        homeTol2: this.tileW * this.tileW,
+        provoked: this.provoked,
+      },
       this.stats,
     );
 
@@ -248,6 +262,9 @@ export class Monster {
       // Возвращаемся домой ДО КОНЦА, не отвлекаясь на игрока. Раньше проверка
       // стояла в лоб («дальше поводка — шаг домой»), и паук дрожал на границе:
       // шаг домой — снова внутри — снова в погоню — снова за поводок.
+      // Поводок утянул домой — обида забыта: провокацию снимаем, иначе паук,
+      // едва долечившись, снова кинулся бы через всю карту.
+      this.provoked = false;
       this.state = 'leash';
       this.moveTo(this.homeX, this.homeY);
       this.bar.setVisible(false);
