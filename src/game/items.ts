@@ -49,7 +49,16 @@ export interface ItemDef {
   slot?: EquipSlot;
   /** Что даёт надетым. */
   bonus?: { dmg?: number; def?: number; speed?: number; hp?: number; mp?: number };
+  /**
+   * Оружие дальнего боя: надетым превращает взмах в выстрел стрелой в сторону
+   * курсора. Стрелы бесконечны — отдельного боезапаса нет (так решил заказчик).
+   */
+  ranged?: boolean;
 }
+
+/** Стреляет ли надетое этим оружие. Лук — да, меч — нет. */
+export const isRanged = (id: string | undefined): boolean =>
+  !!(id && Object.hasOwn(ITEMS, id) && ITEMS[id].ranged);
 
 /**
  * Иконка из набора интерфейса: там сетка 16x16.
@@ -97,6 +106,21 @@ export const ITEMS: Record<string, ItemDef> = {
   ore_copper: { id: 'ore_copper', name: 'Медный слиток', tab: 'resource', icon: ico(4, 16), stack: 99 },
   crystal: { id: 'crystal', name: 'Кристалл', tab: 'resource', icon: ico(5, 10), stack: 99, rarity: 'uncommon' },
 
+  // Меч новобранца — с ним герой начинает игру. Раньше меча не было вовсе:
+  // персонаж махал и наносил урон, а в сумке оружия не было, и это сбивало с
+  // толку. Бонус НУЛЕВОЙ намеренно: урон обычного взмаха уже заложен в HERO.dmg,
+  // и этот меч не добавляет силы, а лишь делает её видимой — оружием в руке.
+  sword_basic: {
+    id: 'sword_basic', name: 'Меч новобранца', tab: 'weapon',
+    icon: ico(1, 0), stack: 1, slot: 'weapon',
+  },
+  // Лук — оружие дальнего боя. Надетым превращает взмах в выстрел стрелой в
+  // сторону курсора. Урон чуть выше базового меча, но бить приходится издалека
+  // и целиться. Стрелы бесконечны (так решил заказчик).
+  bow: {
+    id: 'bow', name: 'Лук', tab: 'weapon',
+    icon: ico(3, 7), stack: 1, slot: 'weapon', ranged: true, bonus: { dmg: 2 }, rarity: 'uncommon',
+  },
   sword: {
     id: 'sword', name: 'Стальной меч', tab: 'weapon',
     icon: ico(0, 8), stack: 1, slot: 'weapon', bonus: { dmg: 3 }, rarity: 'uncommon',
@@ -195,6 +219,22 @@ export function takeOne(bag: (Stack | null)[], index: number): string | null {
 /** Сколько всего таких предметов в сумке. */
 export function countOf(bag: (Stack | null)[], id: string): number {
   return bag.reduce((n, s) => n + (s && s.id === id ? s.qty : 0), 0);
+}
+
+/**
+ * Сколько ещё таких предметов влезет в сумку: пустые ячейки плюс место в начатых
+ * стопках. Нужно магазину — проверить место ДО списания золота, не трогая сумку:
+ * addToBag кладёт по месту, а откатывать наполовину заполненную покупку — грязь.
+ */
+export function roomFor(bag: (Stack | null)[], id: string): number {
+  const def = Object.hasOwn(ITEMS, id) ? ITEMS[id] : undefined;
+  if (!def) return 0;
+  let room = 0;
+  for (const s of bag) {
+    if (!s) room += def.stack;
+    else if (s.id === id && s.qty < def.stack) room += def.stack - s.qty;
+  }
+  return room;
 }
 
 /** Порядок вкладок — по нему же раскладывается сумка. */

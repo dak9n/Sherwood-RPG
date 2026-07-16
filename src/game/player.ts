@@ -19,6 +19,30 @@ export interface Strike {
   heavy: boolean;
 }
 
+/** Выстрел из лука: откуда, под каким углом и с каким уроном полетит стрела. */
+export interface Shot {
+  x: number;
+  y: number;
+  angle: number;
+  damage: number;
+  heavy: boolean;
+}
+
+/**
+ * На сколько выше ног вылетает стрела — высота груди. Стрела и целится, и рождается
+ * из этой точки: если целиться от ног, а пускать от груди, выстрел уходил бы на эти
+ * же пиксели выше курсора и мазал по цели вровень с игроком.
+ */
+export const CHEST_OFFSET = 14;
+
+/** Угол полёта для стрельбы «от направления» (пробелом, без курсора). */
+const DIR_ANGLE: Record<Dir, number> = {
+  right: 0,
+  down: Math.PI / 2,
+  left: Math.PI,
+  up: -Math.PI / 2,
+};
+
 export class Player {
   readonly sprite: Phaser.Physics.Arcade.Sprite;
 
@@ -100,6 +124,10 @@ export class Player {
   /** Не бить дважды за один взмах. */
   private didHit = false;
   private heavySwing = false;
+  /** Надет ли лук: тогда взмах превращается в выстрел стрелой. Ставит сцена. */
+  private ranged = false;
+  /** Куда полетит стрела текущего замаха. Считаем при старте, чтобы курсор не «уехал». */
+  private shotAngle = 0;
   private invulnUntil = 0;
   private lastHurtAt = -Infinity;
 
@@ -128,6 +156,8 @@ export class Player {
     private onStrike: (strike: Strike) => void,
     /** Сказать игроку, что на тяжёлый удар не хватило маны. */
     private onNoMana: () => void = () => {},
+    /** Выпустить стрелу — когда надет лук. Сцена рождает снаряд. */
+    private onShoot: (shot: Shot) => void = () => {},
   ) {
     createDirAnims(scene, 'sw', DIRS_HERO, {
       idle: { texture: 'sw-idle', cols: 12, frameRate: 8, loop: true },
@@ -166,7 +196,13 @@ export class Player {
     scene.input.on(Phaser.Input.Events.POINTER_DOWN, (p: Phaser.Input.Pointer) => {
       if (this.state === 'attack' || this.state === 'dead') return;
       this.faceTo(p.worldX, p.worldY);
-      this.startAttack(p.rightButtonDown());
+      // Стрела летит точно в курсор, а не по одной из четырёх сторон: угол берём
+      // от ТОЧКИ ВЫЛЕТА (грудь, а не ноги) к точке клика, иначе выстрел уходит на
+      // высоту груди выше цели. Разворот на 4 стороны — только для анимации.
+      this.startAttack(
+        p.rightButtonDown(),
+        Math.atan2(p.worldY - (this.sprite.y - CHEST_OFFSET), p.worldX - this.sprite.x),
+      );
     });
 
     // Подписываемся один раз, а не на каждый взмах.
@@ -187,17 +223,26 @@ export class Player {
     if (frame.textureFrame !== row * 8 + HERO.hitFrame) return;
 
     this.didHit = true;
-    const reach = this.heavySwing ? HERO.reach + 8 : HERO.reach;
-    const width = this.heavySwing ? HERO.hitW + 8 : HERO.hitW;
     // Урон = база + уровень + оружие + вложенные очки. Меч должен чувствоваться
     // в первом же ударе. Ту же формулу показывает окно персонажа — они обязаны
-    // сходиться, иначе число на экране врёт.
+    // сходиться, иначе число на экране врёт. Лук считает так же: его прибавка —
+    // это gear.dmg надетого лука.
     const bonus = this.level - 1 + this.gear.dmg + this.points.dmg;
     const base = rollDamage(HERO.dmgMin + bonus, HERO.dmgMax + bonus);
+    const damage = Math.round(this.heavySwing ? base * HERO.heavyMul : base);
 
+    if (this.ranged) {
+      // Стрела вылетает от корпуса, а не от ног: иначе она стелется по земле.
+      // Та же высота, из которой считался угол прицела, — иначе выстрел мажет.
+      this.onShoot({ x: this.sprite.x, y: this.sprite.y - CHEST_OFFSET, angle: this.shotAngle, damage, heavy: this.heavySwing });
+      return;
+    }
+
+    const reach = this.heavySwing ? HERO.reach + 8 : HERO.reach;
+    const width = this.heavySwing ? HERO.hitW + 8 : HERO.hitW;
     this.onStrike({
       rect: hitRect(this.sprite.x, this.sprite.y, this.dir, reach, width),
-      damage: Math.round(this.heavySwing ? base * HERO.heavyMul : base),
+      damage,
       heavy: this.heavySwing,
     });
   }
@@ -299,7 +344,8 @@ export class Player {
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.keys.SPACE)) {
-      this.startAttack(this.keys.SHIFT.isDown);
+      // Пробелом целимся по направлению взгляда: курсора у клавиатуры нет.
+      this.startAttack(this.keys.SHIFT.isDown, DIR_ANGLE[this.dir]);
       return;
     }
 
@@ -332,7 +378,7 @@ export class Player {
     this.dir = dirFromVelocity(x - this.sprite.x, y - this.sprite.y, this.dir);
   }
 
-  private startAttack(wantHeavy: boolean): void {
+  private startAttack(wantHeavy: boolean, angle: number): void {
     // Тяжёлый удар тратит ману. Обычный бесплатный: кончившаяся мана не должна
     // отнимать у игрока единственное действие.
     const heavy = wantHeavy && this.mp >= HERO.heavyCost;
@@ -343,10 +389,20 @@ export class Player {
     if (wantHeavy && !heavy) this.onNoMana();
 
     this.heavySwing = heavy;
+    this.shotAngle = angle;
     this.didHit = false;
     this.state = 'attack';
     (this.sprite.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
     this.play('attack');
+  }
+
+  /**
+   * Сменилось оружие. Лук стреляет, меч бьёт вблизи. Анимация одна и та же
+   * (у мечника нет отдельной для лука), но на кадре удара мы либо рождаем стрелу,
+   * либо чертим зону взмаха.
+   */
+  setRanged(ranged: boolean): void {
+    this.ranged = ranged;
   }
 
   private regen(delta: number, now: number): void {

@@ -12,6 +12,7 @@ const base = (over: Partial<Progress> = {}): Progress => ({
   xp: 0,
   hp: 100,
   mp: 50,
+  gold: 0,
   bag: new Array(BAG).fill(null),
   equipped: {},
   quick: emptyHotbar(),
@@ -129,6 +130,23 @@ test('пропущенные поля не роняют разбор', () => {
   assert.equal(p.bag.length, BAG);
   assert.deepEqual(p.equipped, {});
   assert.equal(p.quick.length, emptyHotbar().length);
+});
+
+test('золото: туда-обратно и защита от порчи', () => {
+  assert.equal(parseSave(serializeProgress(base({ gold: 250 })), BAG)!.gold, 250, 'обычное значение цело');
+  assert.equal(parseSave(serializeProgress(base({ gold: -40 })), BAG)!.gold, 0, 'отрицательное золото — в ноль');
+  assert.equal(parseSave(serializeProgress(base({ gold: 12.7 })), BAG)!.gold, 12, 'дробное округляется вниз');
+  assert.equal(parseSave(serializeProgress(base({ gold: NaN as never })), BAG)!.gold, 0, 'NaN — в ноль');
+});
+
+test('сейв ПЕРВОЙ версии без золота читается (золото = 0), а не роняет загрузку', () => {
+  // Старый сейв поля gold не знал вовсе. Версию мы не поднимали — он обязан
+  // прогрузиться, иначе игроки с прогрессом потеряли бы его при обновлении.
+  const old = serializeProgress(base({ level: 4 })) as Record<string, unknown>;
+  delete old.gold;
+  const p = parseSave(old, BAG)!;
+  assert.equal(p.gold, 0, 'нет поля — читаем ноль');
+  assert.equal(p.level, 4, 'остальной прогресс на месте');
 });
 
 test('hp/mp очищаются до неотрицательных чисел', () => {

@@ -11,6 +11,8 @@
  */
 
 const UI = 'assets/interface/PNG/character_panel.png';
+/** Лист иконок — отсюда берём монету для счётчика золота. */
+const ICONS = 'assets/interface/PNG/Icons.png';
 
 /**
  * Раскладка внутри character_panel.png (измерено по пикселям).
@@ -62,13 +64,29 @@ const CSS = `
     background: rgba(20,0,0,.55); font-size: 28px; letter-spacing: .1em; color: #e05c4a;
   }
   #hud.dead .death { display: flex; }
+
+  /* Счётчик золота под панелью героя: монета из набора и число. Тратится в
+     магазине (O), падает с монстров. Только для взгляда — кликать нечем. */
+  #hud .gold {
+    position: absolute; left: 16px; top: ${12 + PANEL.h * SCALE + 6}px;
+    display: flex; align-items: center; gap: 5px;
+    font: 13px/1 monospace; color: #ffe08a;
+    text-shadow: 1px 1px 0 #000, -1px 0 0 #000, 1px 0 0 #000, 0 1px 0 #000;
+    background: rgba(20,24,27,.5); padding: 3px 9px 3px 6px; border-radius: 5px;
+  }
+  #hud .gold i {
+    width: 16px; height: 16px; image-rendering: pixelated;
+    background: url(${ICONS}) -0px -16px;
+  }
 `;
 
 export class Hud {
   private root: HTMLDivElement;
   private style: HTMLStyleElement;
   private fills: Record<'hp' | 'mp' | 'xp', HTMLDivElement>;
+  private goldEl!: HTMLSpanElement;
   private last = '';
+  private lastGold = -1;
 
   constructor() {
     this.style = document.createElement('style');
@@ -89,6 +107,7 @@ export class Hud {
       <div class="panel">
         ${bar('hp')}${bar('mp')}${bar('xp')}
       </div>
+      <div class="gold"><i></i><span class="num">0</span></div>
       <div class="death">ТЫ ПОГИБ</div>
     `;
     document.body.append(this.root);
@@ -98,6 +117,14 @@ export class Hud {
       mp: this.root.querySelector('.fill.mp')!,
       xp: this.root.querySelector('.fill.xp')!,
     };
+    this.goldEl = this.root.querySelector('.gold .num')!;
+  }
+
+  /** Обновить золото. Как и полоски — трогаем DOM только при изменении. */
+  setGold(gold: number): void {
+    if (gold === this.lastGold) return;
+    this.lastGold = gold;
+    this.goldEl.textContent = String(gold);
   }
 
   /**

@@ -1,5 +1,8 @@
 // С расширением: модуль выполняют и браузер, и тесты, а node без него не найдёт.
-import { ITEMS, type EquipSlot, type Stack } from './items.ts';
+import { ITEMS, countOf, type EquipSlot, type Stack } from './items.ts';
+
+/** Меч, с которым герой начинает игру. У каждого героя он есть — см. ensureStarterWeapon. */
+export const STARTER_WEAPON = 'sword_basic';
 
 /**
  * Надетые вещи. Логика чистая: ни Phaser, ни DOM — поэтому проверяется тестами.
@@ -61,6 +64,24 @@ export function totalBonuses(eq: Equipped): Bonuses {
  */
 export function slotWearing(eq: Equipped, id: string): EquipSlot | undefined {
   return (Object.keys(eq) as EquipSlot[]).find((s) => eq[s] === id);
+}
+
+/**
+ * Дать герою стартовый меч, если оружия у него нет.
+ *
+ * «У каждого героя есть меч» — так просил заказчик. Новый герой начинает с ним
+ * в руке; старым сейвам (сделанным до того, как меч вообще появился) он
+ * выдаётся при загрузке. Возвращает true, если меч пришлось выдать.
+ *
+ * Не выдаём второй, если такой меч уже лежит в сумке: иначе каждая загрузка
+ * плодила бы новобранческие мечи. Проверяем именно этот меч, а не «любое оружие»:
+ * пустое гнездо при мече в сумке значит, что игрок его снял, — вернём тот же.
+ */
+export function ensureStarterWeapon(eq: Equipped, bag: (Stack | null)[]): boolean {
+  if (eq.weapon) return false;
+  if (countOf(bag, STARTER_WEAPON) > 0) return false;
+  eq.weapon = STARTER_WEAPON;
+  return true;
 }
 
 export interface EquipResult {

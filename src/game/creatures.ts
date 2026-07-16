@@ -80,6 +80,8 @@ export interface MonsterStats {
    */
   leash: number;
   xp: number;
+  /** Сколько золота даёт за убийство: [минимум, максимум]. На него закупаются в магазине. */
+  gold: [number, number];
   /** Что с него падает. */
   drop: DropEntry[];
 }
@@ -116,7 +118,7 @@ export const MONSTERS: Record<string, MonsterStats> = {
     sheet: 'Mushroom1', key: 'm1',
     hp: 30, dmg: 3, speed: 50,
     aggro: 80, deaggro: 136, reach: 16, hitW: 18, hitFrame: 4,
-    cooldown: 1200, body: [12, 8], leash: 150, xp: 6,
+    cooldown: 1200, body: [12, 8], leash: 150, xp: 6, gold: [2, 5],
     // Со слабого падает часто: первую добычу игрок должен увидеть за полминуты,
     // а не гадать, работает ли она вообще.
     drop: [
@@ -130,7 +132,7 @@ export const MONSTERS: Record<string, MonsterStats> = {
     sheet: 'Mushroom2', key: 'm2',
     hp: 50, dmg: 6, speed: 45,
     aggro: 90, deaggro: 153, reach: 16, hitW: 18, hitFrame: 4,
-    cooldown: 1300, body: [12, 8], leash: 170, xp: 12,
+    cooldown: 1300, body: [12, 8], leash: 170, xp: 12, gold: [5, 11],
     drop: [
       { id: 'mush_red', chance: 0.45, min: 1, max: 2 },
       { id: 'mush_brown', chance: 0.3 },
@@ -146,7 +148,7 @@ export const MONSTERS: Record<string, MonsterStats> = {
     sheet: 'Mushroom3', key: 'm3',
     hp: 90, dmg: 10, speed: 38,
     aggro: 100, deaggro: 170, reach: 18, hitW: 22, hitFrame: 4,
-    cooldown: 1500, body: [12, 8], leash: 190, xp: 25,
+    cooldown: 1500, body: [12, 8], leash: 190, xp: 25, gold: [14, 26],
     // Меч с сильного — примерно с четвёртого убийства. Это несколько минут,
     // а не вечер: экипировка должна начать работать, пока игроку интересно.
     drop: [
@@ -179,6 +181,14 @@ export function rollDrop(table: DropEntry[], rng: () => number = Math.random): {
   }
 
   return out;
+}
+
+/**
+ * Сколько золота упало с монстра. Ровный разброс от min до max включительно.
+ * rng параметром — ради воспроизводимых тестов, как и у rollDrop.
+ */
+export function rollGold([min, max]: [number, number], rng: () => number = Math.random): number {
+  return min + Math.floor(rng() * (max - min + 1));
 }
 
 /** Сколько кого расселить по лесу. */

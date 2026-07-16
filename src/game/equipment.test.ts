@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { totalBonuses, equipFromBag, unequip, slotWearing, SLOTS, LEFT_SLOTS, RIGHT_SLOTS, type Equipped } from './equipment.ts';
-import { ITEMS, addToBag, type Stack } from './items.ts';
+import { totalBonuses, equipFromBag, unequip, slotWearing, ensureStarterWeapon, STARTER_WEAPON, SLOTS, LEFT_SLOTS, RIGHT_SLOTS, type Equipped } from './equipment.ts';
+import { ITEMS, addToBag, countOf, type Stack } from './items.ts';
 
 const bag = (size = 5): (Stack | null)[] => new Array(size).fill(null);
 
@@ -129,4 +129,33 @@ test('у каждого слота есть погашенная подсказ�
     assert.ok(item, `слот ${s.label}: нечем занять`);
     assert.ok(item.icon, `слот ${s.label}: у вещи нет иконки`);
   }
+});
+
+test('стартовый меч существует, надевается в руку и ничего не ломает балансом', () => {
+  const def = ITEMS[STARTER_WEAPON];
+  assert.ok(def, 'меч новобранца есть в игре');
+  assert.equal(def.slot, 'weapon', 'надевается в руку');
+  // Бонус нулевой намеренно: урон базового взмаха уже в HERO.dmg.
+  assert.equal(def.bonus?.dmg ?? 0, 0, 'стартовый меч не добавляет урона сверх базы');
+});
+
+test('стартовый меч выдаётся, когда оружия нет', () => {
+  const eq: Equipped = {};
+  assert.equal(ensureStarterWeapon(eq, bag()), true, 'выдан');
+  assert.equal(eq.weapon, STARTER_WEAPON);
+});
+
+test('стартовый меч НЕ трогает уже надетое оружие', () => {
+  const eq: Equipped = { weapon: 'sword' };
+  assert.equal(ensureStarterWeapon(eq, bag()), false);
+  assert.equal(eq.weapon, 'sword', 'стальной меч на месте');
+});
+
+test('второй стартовый меч не плодится: если он уже в сумке, нового не даём', () => {
+  const b = bag();
+  addToBag(b, STARTER_WEAPON, 1);
+  const eq: Equipped = {};
+  assert.equal(ensureStarterWeapon(eq, b), false, 'меч в сумке — второго не создаём');
+  assert.equal(eq.weapon, undefined, 'гнездо осталось пустым');
+  assert.equal(countOf(b, STARTER_WEAPON), 1, 'в сумке по-прежнему один');
 });

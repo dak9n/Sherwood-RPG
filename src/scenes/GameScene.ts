@@ -1,23 +1,26 @@
 import Phaser from 'phaser';
 import { MapScene } from './MapScene';
-import { Player, type Strike } from '../game/player';
+import { Player, CHEST_OFFSET, type Strike, type Shot } from '../game/player';
 import { Monster } from '../game/monster';
+import { Arrow, ARROW_RANGE } from '../game/arrow';
 import { findTallObjects } from '../game/tall-objects';
 import { pickSpawns } from '../game/spawn';
 import { buildFlow } from '../game/flow';
-import { HERO, MONSTERS, SPAWNS, xpToNext, rollDrop } from '../game/creatures';
+import { HERO, MONSTERS, SPAWNS, xpToNext, rollDrop, rollGold } from '../game/creatures';
 import { Hud } from '../game/hud';
 import { draftCollision, mergeCollision } from '../map/collision-draft';
 import { drawnBounds } from '../map/doc';
 import { Loot, registerItemFrames } from '../game/loot';
-import { addToBag, takeOne, sortBag, ITEMS, type Stack, type EquipSlot } from '../game/items';
+import { addToBag, takeOne, sortBag, isRanged, ITEMS, type Stack, type EquipSlot } from '../game/items';
 import { InventoryUi } from '../game/inventory-ui';
 import { SkillsUi } from '../game/skills-ui';
+import { ShopUi } from '../game/shop-ui';
 import { MinimapUi } from '../game/minimap-ui';
 import { MenuUi } from '../game/menu-ui';
 import { HotbarUi } from '../game/hotbar-ui';
+import { buyItem, sellItem } from '../game/shop';
 import { bind, swap, unbind, findInBag, emptyHotbar, type Hotbar } from '../game/hotbar';
-import { equipFromBag, unequip, totalBonuses, slotWearing, type Equipped } from '../game/equipment';
+import { equipFromBag, unequip, totalBonuses, slotWearing, ensureStarterWeapon, STARTER_WEAPON, type Equipped } from '../game/equipment';
 import { emptySpent, unspent, spendPoint, bonusFrom, POINTS_PER_LEVEL, type Spent, type Stat } from '../game/stats';
 import { parseSave, serializeProgress, type Progress } from '../game/save';
 import { takePendingSave, pushProgress, loadFailed } from '../auth/progress';
@@ -46,14 +49,19 @@ export class GameScene extends MapScene {
   private hud!: Hud;
   private inventory!: InventoryUi;
   private skills!: SkillsUi;
+  private shop!: ShopUi;
   private hotbar!: HotbarUi;
   private minimap!: MinimapUi;
   private menu!: MenuUi;
   private loot: Loot[] = [];
+  /** Стрелы в полёте. Сцена их двигает и проверяет попадания — как взмах меча. */
+  private arrows: Arrow[] = [];
+  /** Золото игрока. Падает с монстров, тратится в магазине. Часть сейва. */
+  private gold = 0;
   /** Сумка игрока. */
   bag: (Stack | null)[] = new Array(BAG_SIZE).fill(null);
-  /** Надетое. */
-  equipped: Equipped = {};
+  /** Надетое. Новый герой начинает с мечом в руке — у каждого героя он есть. */
+  equipped: Equipped = { weapon: STARTER_WEAPON };
   /** Что привязано к клавишам 1-9 и 0. Хранит вид предмета, а не место в сумке. */
   quick: Hotbar = emptyHotbar();
   /** Куда вложены очки характеристик. Сколько их выдано, считается от уровня. */
@@ -108,6 +116,7 @@ export class GameScene extends MapScene {
       this, x, y,
       (strike) => this.playerStrike(strike),
       () => this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#5ba3e0', 'не хватает маны'),
+      (shot) => this.spawnArrow(shot),
     );
 
     // Большие деревья ищем один раз: карта в игре не меняется.
@@ -150,6 +159,14 @@ export class GameScene extends MapScene {
     this.skills.setHero(() => ({ level: this.player.level, spent: this.spent }));
     this.skills.onSpend = (stat) => this.spendPointOn(stat);
 
+    // Магазин (O): покупка и продажа за золото. Решает не окно, а сцена — через
+    // чистые buyItem/sellItem, чтобы проверка была одна на все пути.
+    this.shop = new ShopUi();
+    this.shop.setBag(this.bag);
+    this.shop.setGold(() => this.gold);
+    this.shop.onBuy = (id) => this.buy(id);
+    this.shop.onSell = (index) => this.sell(index);
+
     this.hotbar = new HotbarUi();
     this.hotbar.setData(this.quick, this.bag, this.equipped);
     this.hotbar.onTrigger = (slot) => this.useQuick(slot);
@@ -189,6 +206,11 @@ export class GameScene extends MapScene {
         toggle: () => this.skills.toggle(),
       },
       {
+        label: 'Магазин', key: 'O', icon: { sheet: 'icons', x: 2 * 16, y: 0 * 16, w: 16, h: 16 },
+        isOpen: () => this.shop.isOpen,
+        toggle: () => this.shop.toggle(),
+      },
+      {
         label: 'Карта', key: 'M', icon: { sheet: 'icons', x: 4 * 16, y: 3 * 16, w: 16, h: 16 },
         isOpen: () => this.minimap.isFullOpen,
         toggle: () => this.minimap.toggleFull(),
@@ -199,6 +221,7 @@ export class GameScene extends MapScene {
     // ты роешься в грибах, — иначе сумка станет способом переждать бой.
     this.input.keyboard?.on('keydown-I', () => this.inventory.toggle());
     this.input.keyboard?.on('keydown-U', () => this.skills.toggle());
+    this.input.keyboard?.on('keydown-O', () => this.shop.toggle());
     this.input.keyboard?.on('keydown-M', () => this.minimap.toggleFull());
     this.bindQuickKeys();
 
@@ -222,6 +245,8 @@ export class GameScene extends MapScene {
       this.hud.destroy();
       this.inventory.destroy();
       this.skills.destroy();
+      this.shop.destroy();
+      for (const a of this.arrows) a.destroy();
       this.hotbar.destroy();
       this.minimap.destroy();
       this.menu.destroy();
@@ -326,15 +351,84 @@ export class GameScene extends MapScene {
     );
 
     for (const m of hitAny) {
-      m.takeDamage(strike.damage, this.player.sprite.x, this.player.sprite.y);
-      this.damageNumber(m.sprite.x, m.sprite.y - 30, strike.damage, strike.heavy ? '#ffd35c' : '#ffffff');
-      if (m.isDead) {
-        this.gainXp(m.stats.xp);
-        this.dropLoot(m);
-      }
+      this.hitMonster(m, strike.damage, strike.heavy, this.player.sprite.x, this.player.sprite.y);
     }
 
     if (hitAny.length) this.cameras.main.shake(strike.heavy ? 140 : 80, strike.heavy ? 0.006 : 0.003);
+  }
+
+  /**
+   * Одно попадание по монстру — общее для взмаха меча и для стрелы. Урон, цифра,
+   * а на убийстве — опыт, добыча и золото. fromX/fromY задают, куда отбросить тело.
+   *
+   * Награда только на переходе «жив -> мёртв»: takeDamage по трупу молчит, но без
+   * этой проверки повторное попадание всё равно начислило бы опыт и золото ещё раз.
+   */
+  private hitMonster(m: Monster, damage: number, heavy: boolean, fromX: number, fromY: number): void {
+    if (m.isDead) return;
+    m.takeDamage(damage, fromX, fromY);
+    this.damageNumber(m.sprite.x, m.sprite.y - 30, damage, heavy ? '#ffd35c' : '#ffffff');
+    if (m.isDead) {
+      this.gainXp(m.stats.xp);
+      this.dropLoot(m);
+      this.awardGold(m);
+    }
+  }
+
+  /** Золото за убитого. Считаем чистой rollGold, показываем цифрой и сохраняемся. */
+  private awardGold(m: Monster): void {
+    const amount = rollGold(m.stats.gold);
+    if (amount <= 0) return;
+    this.gold += amount;
+    this.damageNumber(m.sprite.x, m.sprite.y - 46, 0, '#ffd35c', `+${amount} зол.`);
+    this.scheduleSave();
+  }
+
+  /** Лук выстрелил: рождаем стрелу. Дальше её ведёт updateArrows. */
+  private spawnArrow(shot: Shot): void {
+    this.arrows.push(new Arrow(this, shot.x, shot.y, shot.angle, shot.damage, shot.heavy));
+  }
+
+  /**
+   * Двигаем стрелы и проверяем, во что они воткнулись. Первый монстр на пути ловит
+   * стрелу, и она гаснет; так же гаснет в стене и на пределе дальности.
+   *
+   * Стену определяем ровно как для игрока — canWalk. Но стрела летит на высоте
+   * груди, а проходимость задана у НОГ: клетку проверяем не там, где стрела
+   * нарисована, а на CHEST_OFFSET ниже — на уровне земли. Иначе выстрел вдоль
+   * стены, стоящей к северу (игрок у кромки воды), гас бы сразу: клетка над ногами
+   * у воды — «не пройти», хотя летит стрела над проходимой землёй.
+   */
+  private updateArrows(delta: number): void {
+    const tw = this.doc.map.tileWidth;
+    const th = this.doc.map.tileHeight;
+
+    for (let i = this.arrows.length - 1; i >= 0; i--) {
+      const a = this.arrows[i];
+      a.update(delta);
+      const ax = a.sprite.x;
+      const ay = a.sprite.y;
+
+      const hit = this.monsters.find(
+        (m) => !m.isDead && Math.abs(m.sprite.x - ax) < 11 && ay > m.sprite.y - 24 && ay < m.sprite.y + 4,
+      );
+      if (hit) {
+        this.hitMonster(hit, a.damage, a.heavy, ax, ay);
+        this.cameras.main.shake(a.heavy ? 120 : 60, a.heavy ? 0.005 : 0.0025);
+        a.destroy();
+        this.arrows.splice(i, 1);
+        continue;
+      }
+
+      const tx = Math.floor(ax / tw);
+      const ty = Math.floor((ay + CHEST_OFFSET) / th); // проекция на землю
+      const outside = tx < 0 || ty < 0 || tx >= this.doc.width || ty >= this.doc.height;
+      const intoWall = a.traveled > 6 && !outside && !this.doc.canWalk(tx, ty);
+      if (a.traveled > ARROW_RANGE || outside || intoWall) {
+        a.destroy();
+        this.arrows.splice(i, 1);
+      }
+    }
   }
 
   /** Что выпало из паука. Раскладываем вокруг тела, чтобы стопка не легла в одну точку. */
@@ -442,6 +536,7 @@ export class GameScene extends MapScene {
       xp: this.player.xp,
       hp: this.player.hp,
       mp: this.player.mp,
+      gold: this.gold,
       bag: this.bag,
       equipped: this.equipped,
       quick: this.quick,
@@ -485,8 +580,14 @@ export class GameScene extends MapScene {
     for (let i = 0; i < BAG_SIZE; i++) this.bag[i] = prog.bag[i] ?? null;
     for (const k of Object.keys(this.equipped) as (keyof Equipped)[]) delete this.equipped[k];
     Object.assign(this.equipped, prog.equipped);
+    // Старым сейвам (сделанным до появления меча) выдаём стартовый меч, если
+    // оружия у героя нет вовсе: у каждого героя он есть. Второго не плодим — см.
+    // ensureStarterWeapon. Делаем ДО applyGear, чтобы прибавка и режим стрельбы
+    // считались от уже финального оружия.
+    ensureStarterWeapon(this.equipped, this.bag);
     for (let i = 0; i < this.quick.length; i++) this.quick[i] = prog.quick[i] ?? null;
     this.spent = prog.spent;
+    this.gold = prog.gold;
 
     this.player.setPoints(bonusFrom(this.spent));
     this.applyGear(); // прибавки вещей — до restore, чтобы hpMax был верным
@@ -557,9 +658,39 @@ export class GameScene extends MapScene {
     this.refreshBags();
   }
 
-  /** Пересчитать прибавки от вещей. Одно место — иначе бонусы разъедутся. */
+  /**
+   * Пересчитать прибавки от вещей. Одно место — иначе бонусы разъедутся. Заодно
+   * сообщаем игроку, стреляет ли надетое оружие: лук превращает взмах в выстрел.
+   */
   private applyGear(): void {
     this.player.setGear(totalBonuses(this.equipped));
+    this.player.setRanged(isRanged(this.equipped.weapon));
+  }
+
+  /** Купить предмет в магазине. Все проверки — в чистой buyItem, окно только шлёт намерение. */
+  private buy(id: string): void {
+    const res = buyItem(this.gold, this.bag, id);
+    if (!res.ok) {
+      this.shop.flash(res.reason, false);
+      return;
+    }
+    this.gold = res.gold;
+    this.refreshBags(); // сумка + панель + автосейв
+    this.shop.render(); // витрина: обновить кошелёк и доступность кнопок
+    this.shop.flash(`Куплено: ${ITEMS[id].name} (−${res.price})`);
+  }
+
+  /** Продать предмет из ячейки сумки. */
+  private sell(index: number): void {
+    const res = sellItem(this.gold, this.bag, index);
+    if (!res.ok) {
+      this.shop.flash(res.reason, false);
+      return;
+    }
+    this.gold = res.gold;
+    this.refreshBags();
+    this.shop.render();
+    this.shop.flash(`Продано: ${ITEMS[res.id].name} (+${res.price})`);
   }
 
   /**
@@ -669,6 +800,7 @@ export class GameScene extends MapScene {
       if (m.shouldRespawn(now)) m.reset();
     }
 
+    this.updateArrows(delta);
     this.updateLoot(now);
 
     if (this.player.isDead && !this.deathAt) {
@@ -694,8 +826,10 @@ export class GameScene extends MapScene {
       this.player.xp,
       xpToNext(this.player.level),
     );
+    this.hud.setGold(this.gold);
     this.inventory.refreshStats();
     this.skills.render();
+    this.shop.render();
     this.menu.render();
     // Мёртвых пауков на карте не показываем: труп — не угроза.
     this.minimap.render({

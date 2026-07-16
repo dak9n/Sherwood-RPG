@@ -26,6 +26,8 @@ export interface Progress {
   xp: number;
   hp: number;
   mp: number;
+  /** Золото на покупки в магазине. Появилось позже сейвов первой версии — см. parseSave. */
+  gold: number;
   bag: (Stack | null)[];
   equipped: Equipped;
   quick: Hotbar;
@@ -130,6 +132,9 @@ export function parseSave(raw: unknown, bagSize: number): Progress | null {
     xp: Math.max(0, num(s.xp, 0)),
     hp: Math.max(0, num(s.hp, 0)),
     mp: Math.max(0, num(s.mp, 0)),
+    // Золото добавили после первой версии сейва. Старый сейв его не хранит —
+    // читаем 0, а не роняем загрузку: поле необязательное, версию не меняем.
+    gold: Math.max(0, Math.floor(num(s.gold, 0))),
     bag: cleanBag(s.bag, bagSize),
     equipped: cleanEquipped(s.equipped),
     quick: cleanQuick(s.quick),

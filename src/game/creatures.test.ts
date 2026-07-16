@@ -1,7 +1,25 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { HERO, MONSTERS, SPAWNS, xpToNext, rollDrop } from './creatures.ts';
+import { HERO, MONSTERS, SPAWNS, xpToNext, rollDrop, rollGold } from './creatures.ts';
 import { ITEMS } from './items.ts';
+import { SHOP_STOCK } from './shop.ts';
+import { STARTER_WEAPON } from './equipment.ts';
+
+test('rollGold: не выходит за диапазон, концы достижимы', () => {
+  assert.equal(rollGold([5, 5]), 5, 'вырожденный диапазон — само число');
+  assert.equal(rollGold([2, 8], () => 0), 2, 'rng=0 даёт минимум');
+  assert.equal(rollGold([2, 8], () => 0.9999), 8, 'rng у единицы даёт максимум');
+  for (let i = 0; i < 200; i++) {
+    const g = rollGold([3, 7]);
+    assert.ok(g >= 3 && g <= 7, `выпало ${g} вне [3,7]`);
+  }
+});
+
+test('у каждого монстра диапазон золота разумный: 0 <= min <= max', () => {
+  for (const [name, m] of Object.entries(MONSTERS)) {
+    assert.ok(m.gold[0] >= 0 && m.gold[0] <= m.gold[1], `${name}: диапазон золота ${m.gold} кривой`);
+  }
+});
 
 test('от любого паука можно убежать', () => {
   // Монстр быстрее игрока — это смерть без выхода. Числа держим строго ниже.
@@ -108,12 +126,16 @@ test('с каждого паука что-то падает достаточно
   }
 });
 
-test('каждый надеваемый предмет с кого-то падает', () => {
+test('каждый надеваемый предмет откуда-то берётся: дроп, магазин или старт', () => {
   // Недостижимый предмет хуже отсутствующего: слот в экипировке обещает то,
-  // чего игра не даёт.
+  // чего игра не даёт. Источников теперь три: выпадает с монстра, продаётся в
+  // лавке или выдаётся героем на старте (меч новобранца).
   const dropped = new Set(Object.values(MONSTERS).flatMap((m) => m.drop.map((d) => d.id)));
+  const buyable = new Set(SHOP_STOCK);
   for (const [id, def] of Object.entries(ITEMS)) {
-    if (def.slot) assert.ok(dropped.has(id), `${id} надевается, но его неоткуда взять`);
+    if (!def.slot) continue;
+    const reachable = dropped.has(id) || buyable.has(id) || id === STARTER_WEAPON;
+    assert.ok(reachable, `${id} надевается, но его неоткуда взять`);
   }
 });
 

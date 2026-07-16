@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ITEMS, addToBag, takeOne, countOf, rarityOf, RARITY_ORDER, sortBag, type Rarity, type Stack } from './items.ts';
 import { MONSTERS } from './creatures.ts';
+import { STARTER_WEAPON } from './equipment.ts';
 
 const bag = (size = 5): (Stack | null)[] => new Array(size).fill(null);
 
@@ -101,7 +102,10 @@ test('надеваемое не складывается в стопку', () =>
 
 test('у надеваемого есть толк, у съедобного — эффект', () => {
   for (const [id, def] of Object.entries(ITEMS)) {
-    if (def.slot) assert.ok(def.bonus, `${id} надевается, но ничего не даёт`);
+    // Меч новобранца — исключение: его урон уже заложен в базу героя (HERO.dmg),
+    // поэтому отдельного бонуса у него нет. Он делает базовый урон видимым (меч в
+    // руке), а не добавляет силу сверх неё.
+    if (def.slot && id !== STARTER_WEAPON) assert.ok(def.bonus, `${id} надевается, но ничего не даёт`);
     if (def.tab === 'food') assert.ok(def.use, `${id} еда, но не съедается`);
   }
 });
