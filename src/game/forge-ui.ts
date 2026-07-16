@@ -1,20 +1,26 @@
-import { ITEMS, type Icon } from './items';
+import { ITEMS, rarityOf, RARITY_NAME, type Icon, type Rarity } from './items';
 import { SHARPEN_MAX, sharpenChance } from './forge';
 
 /**
  * Окно кузницы. Открывается на K.
  *
- * Здесь точат оружие: попытка съедает свиток заточки (продаётся в магазине, O)
- * и с шансом поднимает НАДЕТОЕ оружие на +1 (до +${SHARPEN_MAX}). Шансы честно
- * написаны в самом окне — те же числа, что использует бросок (forge.ts).
+ * Три панели, как в больших MMORPG (заказчик показал образец): слева — выбор
+ * оружия из своего добра, в центре — само улучшение (уровень, шанс, свитки,
+ * кнопка), справа — характеристики выбранного сейчас и после заточки.
  *
- * Рисуется DOM-ом поверх канваса той же рамой набора, что остальные окна.
+ * Всё в окне — правда нашей игры, а не картинки-образца: платы золотом нет,
+ * уровень при неудаче НЕ падает (сгорает только свиток), свитки берутся только
+ * в магазине. Чего игра не делает — того окно не обещает.
+ *
+ * Точить можно ЛЮБОЕ своё оружие — надетое или из сумки. Заточка числится за
+ * видом оружия (см. forge.ts), поэтому одинаковые мечи показаны одной ячейкой.
+ *
  * Окно шлёт намерение в сцену, а решает чистая trySharpen — как у магазина.
  */
 
 const UI = 'assets/interface/ui';
 const ICONS = 'assets/interface/PNG/Icons.png';
-/** Лист с окном крафта: оттуда берём наковальню — эмблему кузницы. */
+/** Лист с окном крафта: оттуда наковальня — эмблема кузницы. */
 const CRAFT = 'assets/interface/PNG/Craft.png';
 /** Наковальня в листе крафта (замерено по пикселям). */
 const ANVIL = { x: 537, y: 388, w: 40, h: 25 };
@@ -27,12 +33,26 @@ const SHEETS: Record<Icon['sheet'], string> = {
   scroll: `${UI}/scroll.png`,
 };
 
+/** Рамки редкости — те же, что в инвентаре и магазине. */
+const RARITY_COLOR: Record<Rarity, string> = {
+  common: '#8a6a48',
+  uncommon: '#2f7a35',
+  rare: '#2b5ea8',
+  epic: '#7b3ca8',
+};
+
+/** Одно оружие игрока в списке слева. */
+export interface ForgeWeapon {
+  id: string;
+  plus: number;
+  /** Надето сейчас — помечаем: его заточка работает в бою прямо сейчас. */
+  equipped: boolean;
+}
+
 /** Что окно знает о герое. Сцена отдаёт живые данные, окно только рисует. */
 export interface ForgeState {
-  /** id надетого оружия. Пусто — точить нечего. */
-  weapon?: string;
-  /** Текущая заточка этого оружия. */
-  plus: number;
+  /** Все виды оружия у игрока: надетое первым, дальше по сумке. */
+  weapons: ForgeWeapon[];
   /** Сколько свитков в сумке. */
   scrolls: number;
 }
@@ -49,11 +69,11 @@ const CSS = `
   #forge i { display: block; }
 
   #forge .win {
-    pointer-events: auto; position: relative; width: 300px;
+    pointer-events: auto; position: relative; width: 680px; max-width: 97vw;
     border-image: url(${UI}/window.png) 16 5 5 5 fill / ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px repeat;
     border-width: ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px; border-style: solid;
-    padding: 2px 14px 10px;
-    filter: drop-shadow(0 12px 34px rgba(0,0,0,.55));
+    padding: 4px 14px 10px;
+    filter: drop-shadow(0 16px 44px rgba(0,0,0,.62));
   }
   #forge .title {
     position: absolute; top: -${13 * S}px; left: 0; right: 0; text-align: center;
@@ -67,53 +87,102 @@ const CSS = `
   }
   #forge .close:hover { filter: brightness(1.25); }
 
-  /* Наковальня — эмблема, вырезана взглядом из листа крафта. */
-  #forge .anvil {
-    width: ${ANVIL.w}px; height: ${ANVIL.h}px; margin: 4px auto 6px;
-    background: url(${CRAFT}) -${ANVIL.x}px -${ANVIL.y}px;
-    transform: scale(2); transform-origin: center;
+  #forge .body { display: flex; gap: 10px; align-items: stretch; }
+  #forge .colL { width: 196px; flex: none; display: flex; flex-direction: column; }
+  #forge .colC { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  #forge .colR { width: 208px; flex: none; display: flex; flex-direction: column; gap: 8px; }
+
+  #forge .phead {
+    margin: 0 2px 6px; font-size: 11px; font-weight: 700; color: #e0c48a;
+    text-shadow: 1px 1px 0 #3e1f1d; text-transform: uppercase; letter-spacing: .05em;
+    text-align: center;
   }
 
   #forge .page {
     border-image: url(${UI}/panel_beige.png) 2 5 5 5 fill / ${2 * S}px ${5 * S}px ${5 * S}px ${5 * S}px repeat;
     border-width: ${2 * S}px ${5 * S}px ${5 * S}px ${5 * S}px; border-style: solid;
-    padding: ${2 * S}px; color: #2b1d12;
+    padding: ${S}px; color: #2b1d12; flex: 1;
+  }
+  #forge .dark {
+    border-image: url(${UI}/panel_dark.png) 2 3 4 3 fill / ${2 * S}px ${3 * S}px ${4 * S}px ${3 * S}px repeat;
+    border-width: ${2 * S}px ${3 * S}px ${4 * S}px ${3 * S}px; border-style: solid;
+    padding: ${2 * S}px;
   }
 
-  /* Карточка оружия. */
-  #forge .wpn { display: flex; align-items: center; gap: 9px; padding: 2px 2px 8px; }
-  #forge .wico {
-    flex: none; width: 40px; height: 40px; background: #cda677;
-    border: 2px solid #6b4f3a; border-radius: 3px;
+  /* --- Слева: выбор оружия --- */
+  #forge .wgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; align-content: start; }
+  #forge .slot {
+    position: relative; height: 42px; cursor: pointer;
+    background: #cda677; border: 2px solid ${RARITY_COLOR.common}; border-radius: 3px;
     display: flex; align-items: center; justify-content: center;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.18);
   }
-  #forge .wico .ico { transform: scale(1.9); transform-origin: center; }
-  #forge .wname { flex: 1; font-size: 13px; font-weight: 700; }
-  #forge .wname .plus { color: #2f7a2f; }
-  #forge .wname small { display: block; font-weight: 400; font-size: 11px; color: #7a6244; margin-top: 1px; }
+  #forge .slot.r-uncommon { border-color: ${RARITY_COLOR.uncommon}; }
+  #forge .slot.r-rare { border-color: ${RARITY_COLOR.rare}; }
+  #forge .slot.r-epic { border-color: ${RARITY_COLOR.epic}; }
+  #forge .slot:hover { filter: brightness(1.09); }
+  #forge .slot.sel {
+    outline: 3px solid #ffcf5a; outline-offset: -1px;
+    box-shadow: inset 0 0 0 2px rgba(255,207,90,.45), 0 0 8px rgba(255,207,90,.4);
+  }
+  #forge .slot .ico { transform: scale(1.8); transform-origin: center; }
+  #forge .slot .plus {
+    position: absolute; bottom: 0; right: 2px; font-size: 10px; font-weight: 700; color: #fff;
+    text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000;
+  }
+  #forge .slot .on {
+    position: absolute; top: 0; left: 2px; font-size: 8px; font-weight: 700; color: #eaf6f0;
+    background: #50a978; border-radius: 2px; padding: 0 2px; text-shadow: none;
+  }
+  #forge .empty { grid-column: 1 / -1; text-align: center; color: #7a6244; padding: 18px 6px; font-size: 11px; }
 
-  /* Строки состояния: свитки и шанс. */
-  #forge .row {
-    display: flex; align-items: center; gap: 7px; padding: 5px 2px;
-    border-top: 1px solid #cdb488; font-size: 12px;
+  /* --- Центр: улучшение --- */
+  #forge .anvil {
+    width: ${ANVIL.w}px; height: ${ANVIL.h}px; margin: 2px auto 8px;
+    background: url(${CRAFT}) -${ANVIL.x}px -${ANVIL.y}px;
+    transform: scale(1.6); transform-origin: center;
   }
-  #forge .row .ico { flex: none; }
-  #forge .row .nm { flex: 1; }
-  #forge .row b { font-variant-numeric: tabular-nums; }
-  #forge .chance b { font-size: 14px; color: #2f7a2f; }
+  #forge .big {
+    width: 64px; height: 64px; margin: 0 auto; position: relative;
+    background: #cda677; border: 3px solid #ffcf5a; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 12px rgba(255,207,90,.35);
+  }
+  #forge .big .ico { transform: scale(3); transform-origin: center; }
+  #forge .big .plus {
+    position: absolute; bottom: 1px; right: 3px; font-size: 12px; font-weight: 700; color: #fff;
+    text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000;
+  }
+  #forge .wname { text-align: center; font-size: 13px; font-weight: 700; margin-top: 6px; color: #2b5ea8; }
+
+  #forge .lvlrow {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    margin-top: 8px; font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums;
+  }
+  #forge .lvlrow .cur { color: #7a5a1a; }
+  #forge .lvlrow .arr { color: #c98a2f; font-size: 16px; }
+  #forge .lvlrow .next { color: #2f7a35; }
+  #forge .lvlrow .max { font-size: 14px; color: #7a6244; font-weight: 700; }
+  #forge .sub { text-align: center; font-size: 11px; color: #7a6244; margin-top: 2px; }
+  #forge .chance { text-align: center; font-size: 13px; margin-top: 6px; color: #2b1d12; }
+  #forge .chance b { font-size: 16px; color: #2f7a35; }
   #forge .chance.low b { color: #a33b2e; }
 
-  /* Ступени шансов — обещание, которое держит бросок (см. forge.ts). */
-  #forge .table { border-top: 1px solid #cdb488; padding: 6px 2px 2px; font-size: 11px; color: #6b5433; }
-  #forge .table .r { display: flex; justify-content: space-between; padding: 1px 0; }
-  #forge .table .r.cur { color: #2b1d12; font-weight: 700; }
+  #forge .need {
+    display: flex; align-items: center; gap: 8px; margin: 10px 4px 0; padding: 6px 8px;
+    background: rgba(90,60,35,.14); border: 1px solid #cdb488; border-radius: 4px;
+  }
+  #forge .need .ico { flex: none; }
+  #forge .need .nm { flex: 1; font-size: 12px; }
+  #forge .need b { font-variant-numeric: tabular-nums; }
+  #forge .need .short { color: #a33b2e; }
 
-  /* Кнопка заточки — своя CSS-кнопка, как вкладки окна входа. */
   #forge .go {
-    width: 100%; margin-top: 9px; cursor: pointer; font: inherit; font-weight: 700; font-size: 13px;
-    padding: 10px 8px; color: #eaf6f0; text-shadow: 1px 1px 0 #294040;
+    width: 100%; margin-top: 10px; cursor: pointer; font: inherit; font-weight: 700; font-size: 14px;
+    padding: 11px 8px; color: #eaf6f0; text-shadow: 1px 1px 0 #294040;
     background: #50a978; border: 2px solid #294040; border-radius: 4px;
     box-shadow: inset 0 2px 0 #74cf8d, inset 0 -3px 0 #3f7168;
+    text-transform: uppercase; letter-spacing: .06em;
   }
   #forge .go:hover:not(:disabled) { filter: brightness(1.1); }
   #forge .go:active:not(:disabled) { transform: translateY(1px); }
@@ -121,23 +190,53 @@ const CSS = `
     cursor: default; color: #a08a6a; background: #b79b74; border-color: #6b5433;
     box-shadow: none; text-shadow: none;
   }
-
   #forge .msg { margin-top: 7px; min-height: 15px; font-size: 12px; text-align: center; color: #9a835f; }
+
+  /* --- Справа: характеристики --- */
+  #forge .card { display: flex; gap: 8px; align-items: center; }
+  #forge .cico {
+    flex: none; width: 40px; height: 40px; background: #cda677;
+    border: 2px solid #3e1f1d; border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #forge .cico .ico { transform: scale(1.9); transform-origin: center; }
+  #forge .cinfo { flex: 1; min-width: 0; font-size: 11px; color: #d8c0a0; line-height: 1.5; }
+  #forge .cinfo .nm { font-size: 12px; font-weight: 700; color: #7ab0e8; }
+  #forge .cinfo .rar-common { color: #d8c0a0; }
+  #forge .cinfo .rar-uncommon { color: #8ad46a; }
+  #forge .cinfo .rar-rare { color: #7ab0e8; }
+  #forge .cinfo .rar-epic { color: #c58ae8; }
+
+  #forge .stats { font-size: 11px; }
+  #forge .stats .h { font-weight: 700; color: #8ad46a; margin-bottom: 3px; }
+  #forge .stats .h.next { color: #8ad46a; }
+  #forge .stats .r { display: flex; justify-content: space-between; padding: 1px 0; color: #d8c0a0; }
+  #forge .stats .r b { color: #f0e0c8; font-variant-numeric: tabular-nums; }
+  #forge .stats .r .up { color: #8ad46a; }
+
+  #forge .about { font-size: 10px; color: #b8a284; line-height: 1.5; }
+  #forge .about .h { font-weight: 700; color: #e0c48a; font-size: 11px; margin-bottom: 3px; }
+  #forge .about .steps { margin-top: 4px; color: #9a835f; }
 `;
 
 export class ForgeUi {
   private root: HTMLDivElement;
   private style: HTMLStyleElement;
-  private wpnEl: HTMLElement;
-  private rowsEl: HTMLElement;
-  private tableEl: HTMLElement;
-  private goBtn: HTMLButtonElement;
-  private msgEl: HTMLElement;
-  private state: () => ForgeState = () => ({ plus: 0, scrolls: 0 });
+  private wgrid: HTMLElement;
+  private center: HTMLElement;
+  private card: HTMLElement;
+  private statsEl: HTMLElement;
+  private goBtn!: HTMLButtonElement;
+  private msgEl!: HTMLElement;
+  private state: () => ForgeState = () => ({ weapons: [], scrolls: 0 });
+  private selected: string | null = null;
   private key = '';
+  /** Отложенный текст сообщения: flash приходит ДО перерисовки центра. */
+  private msgText = '';
+  private msgColor = '#9a835f';
 
-  /** Игрок жмёт «Заточить». Решает сцена через чистую trySharpen. */
-  onSharpen: () => void = () => {};
+  /** Игрок жмёт «Улучшить» по выбранному оружию. Решает сцена через trySharpen. */
+  onSharpen: (weaponId: string) => void = () => {};
 
   constructor() {
     this.style = document.createElement('style');
@@ -148,28 +247,37 @@ export class ForgeUi {
     this.root.id = 'forge';
     this.root.innerHTML = `
       <div class="win">
-        <div class="title">Кузница</div>
+        <div class="title">Кузница — улучшение оружия</div>
         <div class="close" title="Закрыть (K)"></div>
-        <div class="anvil"></div>
-        <div class="page">
-          <div class="wpn"></div>
-          <div class="rows"></div>
-          <div class="table"></div>
+        <div class="body">
+          <div class="colL">
+            <div class="phead">Ваше оружие</div>
+            <div class="page"><div class="wgrid"></div></div>
+          </div>
+          <div class="colC">
+            <div class="phead">Выбранный предмет</div>
+            <div class="page"><div class="center"></div></div>
+          </div>
+          <div class="colR">
+            <div class="dark card"></div>
+            <div class="dark stats"></div>
+            <div class="dark about">
+              <div class="h">О свитках заточки</div>
+              Свитки продаются в магазине (O). Попытка съедает один свиток;
+              неудача НЕ снижает заточку.
+              <div class="steps">Шансы: +1–5 · 80%, +6–10 · 40%,<br>+11–15 · 20%, +16–20 · 10%</div>
+            </div>
+          </div>
         </div>
-        <button class="go"></button>
-        <div class="msg"></div>
       </div>
     `;
     document.body.append(this.root);
 
-    this.wpnEl = this.root.querySelector('.wpn')!;
-    this.rowsEl = this.root.querySelector('.rows')!;
-    this.tableEl = this.root.querySelector('.table')!;
-    this.goBtn = this.root.querySelector('.go')!;
-    this.msgEl = this.root.querySelector('.msg')!;
-
+    this.wgrid = this.root.querySelector('.wgrid')!;
+    this.center = this.root.querySelector('.center')!;
+    this.card = this.root.querySelector('.card')!;
+    this.statsEl = this.root.querySelector('.stats')!;
     this.root.querySelector('.close')!.addEventListener('click', () => this.close());
-    this.goBtn.onclick = () => this.onSharpen();
   }
 
   setState(get: () => ForgeState): void {
@@ -188,8 +296,7 @@ export class ForgeUi {
   open(): void {
     this.root.classList.add('open');
     this.key = '';
-    this.msgEl.textContent = 'Попытка съедает один свиток. Неудача не сбрасывает заточку.';
-    this.msgEl.style.color = '#9a835f';
+    this.msgText = '';
     this.render();
   }
 
@@ -199,8 +306,12 @@ export class ForgeUi {
 
   /** Итог попытки: зелёный успех или красная неудача. Живёт до следующей. */
   flash(msg: string, ok = true): void {
-    this.msgEl.textContent = msg;
-    this.msgEl.style.color = ok ? '#8ad46a' : '#ff8a75';
+    this.msgText = msg;
+    this.msgColor = ok ? '#2f7a35' : '#a33b2e';
+    if (this.msgEl) {
+      this.msgEl.textContent = msg;
+      this.msgEl.style.color = this.msgColor;
+    }
   }
 
   private iconEl(icon: Icon): HTMLElement {
@@ -220,69 +331,164 @@ export class ForgeUi {
   render(): void {
     if (!this.isOpen) return;
     const st = this.state();
-    const key = `${st.weapon ?? ''}|${st.plus}|${st.scrolls}`;
+
+    // Выбор обязан указывать на живое оружие: надетое — первым по умолчанию.
+    if (!st.weapons.some((w) => w.id === this.selected)) {
+      this.selected = st.weapons[0]?.id ?? null;
+    }
+
+    const sig = st.weapons.map((w) => `${w.id}:${w.plus}:${w.equipped ? 1 : 0}`).join(',');
+    const key = `${sig}|${st.scrolls}|${this.selected}`;
     if (key === this.key) return;
     this.key = key;
 
-    const def = st.weapon ? ITEMS[st.weapon] : undefined;
-    const atMax = st.plus >= SHARPEN_MAX;
-    const target = st.plus + 1;
-    const chance = atMax ? 0 : sharpenChance(target);
+    this.renderGrid(st);
+    const sel = st.weapons.find((w) => w.id === this.selected) ?? null;
+    this.renderCenter(sel, st.scrolls);
+    this.renderRight(sel);
+  }
 
-    // Карточка оружия.
-    this.wpnEl.innerHTML = '';
-    const wico = document.createElement('div');
-    wico.className = 'wico';
-    if (def) wico.append(this.iconEl(def.icon));
-    const wname = document.createElement('div');
-    wname.className = 'wname';
-    wname.innerHTML = def
-      ? `${def.name}${st.plus > 0 ? ` <span class="plus">+${st.plus}</span>` : ''}` +
-        `<small>${atMax ? 'заточен до предела' : `заточка даёт +${st.plus} к атаке`}</small>`
-      : `Оружие не надето<small>надень меч или лук в инвентаре (I)</small>`;
-    this.wpnEl.append(wico, wname);
+  private renderGrid(st: ForgeState): void {
+    this.wgrid.innerHTML = '';
+    if (!st.weapons.length) {
+      this.wgrid.innerHTML = '<div class="empty">Оружия нет.<br>Купи в магазине (O) или выбей с монстров.</div>';
+      return;
+    }
+    for (const w of st.weapons) {
+      const def = ITEMS[w.id];
+      const slot = document.createElement('div');
+      slot.className = `slot r-${rarityOf(w.id)}${w.id === this.selected ? ' sel' : ''}`;
+      slot.title = `${def.name} +${w.plus}${w.equipped ? ' (надето)' : ''}`;
+      slot.append(this.iconEl(def.icon));
+      slot.append(Object.assign(document.createElement('span'), { className: 'plus', textContent: `+${w.plus}` }));
+      if (w.equipped) {
+        slot.append(Object.assign(document.createElement('span'), { className: 'on', textContent: 'надето' }));
+      }
+      slot.onclick = () => {
+        this.selected = w.id;
+        this.key = '';
+        this.msgText = '';
+        this.render();
+      };
+      this.wgrid.append(slot);
+    }
+  }
 
-    // Свитки и шанс.
+  private renderCenter(sel: ForgeWeapon | null, scrolls: number): void {
+    this.center.innerHTML = '';
     const scrollDef = ITEMS.scroll_sharpen;
-    this.rowsEl.innerHTML = '';
-    const rScroll = document.createElement('div');
-    rScroll.className = 'row';
-    rScroll.append(
-      this.iconEl(scrollDef.icon),
-      Object.assign(document.createElement('span'), { className: 'nm', textContent: 'Свитки заточки' }),
-      Object.assign(document.createElement('b'), { textContent: String(st.scrolls) }),
-    );
-    this.rowsEl.append(rScroll);
 
-    if (def && !atMax) {
-      const rChance = document.createElement('div');
-      rChance.className = `row chance${chance < 0.4 ? ' low' : ''}`;
-      rChance.innerHTML = `<span class="nm">Шанс на +${target}</span><b>${Math.round(chance * 100)}%</b>`;
-      this.rowsEl.append(rChance);
+    if (!sel) {
+      this.center.innerHTML = '<div class="empty" style="padding:30px 8px">Выбери оружие слева.</div>';
+      return;
     }
 
-    // Ступени шансов; текущая подсвечена.
-    const steps: [string, number, (t: number) => boolean][] = [
-      ['+1 … +5', 80, (t) => t <= 5],
-      ['+6 … +10', 40, (t) => t > 5 && t <= 10],
-      ['+11 … +15', 20, (t) => t > 10 && t <= 15],
-      ['+16 … +20', 10, (t) => t > 15],
-    ];
-    this.tableEl.innerHTML = steps
-      .map(([label, pct, isCur]) =>
-        `<div class="r${def && !atMax && isCur(target) ? ' cur' : ''}"><span>${label}</span><span>${pct}%</span></div>`)
-      .join('');
+    const def = ITEMS[sel.id];
+    const atMax = sel.plus >= SHARPEN_MAX;
+    const target = sel.plus + 1;
+    const chance = atMax ? 0 : sharpenChance(target);
 
-    // Кнопка.
-    const can = !!def && !atMax && st.scrolls > 0;
+    const anvil = document.createElement('div');
+    anvil.className = 'anvil';
+
+    const big = document.createElement('div');
+    big.className = 'big';
+    big.append(this.iconEl(def.icon));
+    big.append(Object.assign(document.createElement('span'), { className: 'plus', textContent: `+${sel.plus}` }));
+
+    const name = document.createElement('div');
+    name.className = 'wname';
+    name.textContent = def.name;
+
+    const lvl = document.createElement('div');
+    lvl.className = 'lvlrow';
+    lvl.innerHTML = atMax
+      ? `<span class="max">Заточен до предела +${SHARPEN_MAX}</span>`
+      : `<span class="cur">+${sel.plus}</span><span class="arr">➜</span><span class="next">+${target}</span>`;
+
+    const sub = document.createElement('div');
+    sub.className = 'sub';
+    sub.textContent = 'Уровень улучшения';
+
+    this.center.append(anvil, big, name, sub, lvl);
+
+    if (!atMax) {
+      const ch = document.createElement('div');
+      ch.className = `chance${chance < 0.4 ? ' low' : ''}`;
+      ch.innerHTML = `Шанс успеха: <b>${Math.round(chance * 100)}%</b>`;
+      this.center.append(ch);
+
+      const need = document.createElement('div');
+      need.className = 'need';
+      const enough = scrolls >= 1;
+      need.append(this.iconEl(scrollDef.icon));
+      const nm = document.createElement('span');
+      nm.className = 'nm';
+      nm.innerHTML = `${scrollDef.name} ×1 <b class="${enough ? '' : 'short'}">(есть ${scrolls})</b>`;
+      need.append(nm);
+      this.center.append(need);
+    }
+
+    this.goBtn = document.createElement('button');
+    this.goBtn.className = 'go';
+    const can = !atMax && scrolls >= 1;
     this.goBtn.disabled = !can;
-    this.goBtn.textContent = !def
-      ? 'Нет оружия'
-      : atMax
-        ? `Предел +${SHARPEN_MAX}`
-        : st.scrolls < 1
-          ? 'Нет свитков — купи в магазине (O)'
-          : `Заточить на +${target} (−1 свиток)`;
+    this.goBtn.textContent = atMax ? `Предел +${SHARPEN_MAX}` : scrolls < 1 ? 'Нет свитков' : 'Улучшить';
+    this.goBtn.onclick = () => {
+      if (this.selected) this.onSharpen(this.selected);
+    };
+    this.center.append(this.goBtn);
+
+    this.msgEl = document.createElement('div');
+    this.msgEl.className = 'msg';
+    this.msgEl.textContent = this.msgText || 'Неудача сжигает свиток, но заточку не снижает.';
+    this.msgEl.style.color = this.msgText ? this.msgColor : '#9a835f';
+    this.center.append(this.msgEl);
+  }
+
+  private renderRight(sel: ForgeWeapon | null): void {
+    if (!sel) {
+      this.card.innerHTML = '<span style="font-size:11px;color:#9a835f">Оружие не выбрано.</span>';
+      this.statsEl.innerHTML = '';
+      return;
+    }
+
+    const def = ITEMS[sel.id];
+    const rarity = rarityOf(sel.id);
+    const base = def.bonus?.dmg ?? 0;
+    const atMax = sel.plus >= SHARPEN_MAX;
+
+    // Карточка: тип и редкость — правда из таблицы предметов.
+    this.card.innerHTML = '';
+    const cico = document.createElement('div');
+    cico.className = 'cico';
+    cico.append(this.iconEl(def.icon));
+    const cinfo = document.createElement('div');
+    cinfo.className = 'cinfo';
+    cinfo.innerHTML =
+      `<div class="nm">${def.name}</div>` +
+      `Тип: ${def.ranged ? 'Лук' : 'Меч'}<br>` +
+      `Редкость: <span class="rar-${rarity}">${RARITY_NAME[rarity]}</span>`;
+    this.card.append(cico, cinfo);
+
+    // Характеристики: у нашего оружия одна боевая цифра — прибавка к атаке.
+    // Показываем её сейчас и после удачной заточки; выдумывать силу и криты,
+    // которых в игре нет, нельзя.
+    const rows = (plus: number): string => {
+      const parts = [
+        `<div class="r"><span>Прибавка к атаке</span><b>+${base + plus}</b></div>`,
+        `<div class="r"><span>Из них заточка</span><b>+${plus}</b></div>`,
+      ];
+      if (def.ranged) parts.push(`<div class="r"><span>Бой</span><b>стрелами, издалека</b></div>`);
+      return parts.join('');
+    };
+
+    this.statsEl.innerHTML =
+      `<div class="h">Сейчас (+${sel.plus})</div>${rows(sel.plus)}` +
+      (atMax
+        ? ''
+        : `<div class="h next" style="margin-top:7px">После заточки (+${sel.plus + 1})</div>` +
+          `<div class="r"><span>Прибавка к атаке</span><b class="up">+${base + sel.plus + 1} ↑</b></div>`);
   }
 
   destroy(): void {

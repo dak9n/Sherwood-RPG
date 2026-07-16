@@ -180,15 +180,25 @@ export class GameScene extends MapScene {
     this.shop.onBuy = (id) => this.buy(id);
     this.shop.onSellBasket = (indices) => this.sellBasket(indices);
 
-    // Кузница (K): заточка надетого оружия свитками. Бросок — в чистой
-    // trySharpen; окно только показывает состояние и шлёт намерение.
+    // Кузница (K): заточка оружия свитками — любого своего, не только надетого.
+    // Бросок — в чистой trySharpen; окно только показывает состояние и шлёт
+    // намерение. Одинаковые мечи показываются одной ячейкой: заточка числится
+    // за видом оружия (см. forge.ts).
     this.forge = new ForgeUi();
-    this.forge.setState(() => ({
-      weapon: this.equipped.weapon,
-      plus: plusOf(this.sharpen, this.equipped.weapon),
-      scrolls: countOf(this.bag, SCROLL_ID),
-    }));
-    this.forge.onSharpen = () => this.sharpenWeapon();
+    this.forge.setState(() => {
+      const weapons: { id: string; plus: number; equipped: boolean }[] = [];
+      const seen = new Set<string>();
+      const add = (id: string | undefined, equipped: boolean): void => {
+        if (!id || seen.has(id)) return;
+        if (!Object.hasOwn(ITEMS, id) || ITEMS[id].slot !== 'weapon') return;
+        seen.add(id);
+        weapons.push({ id, plus: plusOf(this.sharpen, id), equipped });
+      };
+      add(this.equipped.weapon, true);
+      for (const s of this.bag) add(s?.id, false);
+      return { weapons, scrolls: countOf(this.bag, SCROLL_ID) };
+    });
+    this.forge.onSharpen = (weaponId) => this.sharpenWeapon(weaponId);
 
     this.hotbar = new HotbarUi();
     this.hotbar.setData(this.quick, this.bag, this.equipped);
@@ -709,9 +719,18 @@ export class GameScene extends MapScene {
    * Попытка заточки из окна кузницы. Бросок и все проверки — в чистой trySharpen;
    * здесь только применяем итог: свиток сгорел (сумка изменилась), при успехе
    * урон пересчитан, и оба исхода честно показаны в окне.
+   *
+   * Оружие приходит из окна (точить можно и лежащее в сумке), поэтому первым
+   * делом проверяем, что оно у игрока вообще есть: окну верить нельзя, оно DOM.
    */
-  private sharpenWeapon(): void {
-    const res = trySharpen(this.sharpen, this.equipped.weapon, this.bag);
+  private sharpenWeapon(weaponId: string): void {
+    const owned = this.equipped.weapon === weaponId || this.bag.some((s) => s?.id === weaponId);
+    if (!owned) {
+      this.forge.flash('этого оружия у тебя нет', false);
+      return;
+    }
+
+    const res = trySharpen(this.sharpen, weaponId, this.bag);
     if (!res.ok) {
       this.forge.flash(res.reason, false);
       return;
@@ -719,8 +738,9 @@ export class GameScene extends MapScene {
 
     this.refreshBags(); // свиток съеден: сумка, панель и автосейв
     if (res.success) {
+      // Пересчёт урона: если точили надетое, прибавка работает сразу.
       this.applyGear();
-      this.forge.flash(`Успех! Оружие теперь +${res.level}`);
+      this.forge.flash(`Успех! ${ITEMS[weaponId].name} теперь +${res.level}`);
     } else {
       this.forge.flash(`Неудача на +${res.target} — свиток сгорел, заточка +${res.level} цела`, false);
     }
