@@ -1,7 +1,7 @@
 import { ITEMS, RARITY_NAME, rarityOf, type Icon, type Rarity, type Stack, type Tab } from './items';
 import { SLOTS, LEFT_SLOTS, RIGHT_SLOTS, totalBonuses, type Equipped } from './equipment';
 import { canBind } from './hotbar';
-import { STATS, POINTS_PER_LEVEL, type Stat } from './stats';
+import { POINTS_PER_LEVEL } from './stats';
 import { DND } from './dnd';
 import { HERO } from './creatures';
 
@@ -227,9 +227,8 @@ const CSS = `
   #inv .plus { color: #2f7a2f; }
   #inv .minus { color: #a33b2e; }
 
-  /* Очки характеристик: строка с остатком и кнопки «+» у тех характеристик,
-     в которые можно вложить. Кнопки появляются только когда есть что вкладывать —
-     мёртвая кнопка хуже её отсутствия. */
+  /* Очки характеристик: здесь только напоминание об остатке. Тратят их в окне
+     умений (U) — панель персонажа их лишь показывает, не раздаёт. */
   #inv .pts {
     grid-column: 1 / -1; display: flex; align-items: center; gap: 6px;
     border-top: 1px solid #b0854f; margin-top: 2px; padding-top: 4px;
@@ -237,13 +236,6 @@ const CSS = `
   }
   #inv .pts b { color: #2f7a2f; }
   #inv .pts.none { color: #7a6a52; }
-  #inv .add {
-    flex: none; width: 15px; height: 15px; line-height: 13px; text-align: center;
-    cursor: pointer; font-weight: 700; font-size: 12px;
-    color: #eaf6f0; background: #50a978; border: 1px solid #294040; border-radius: 2px;
-  }
-  #inv .add:hover { background: #68c97e; }
-  #inv .add:active { transform: translateY(1px); }
 
   /* --- Сумка (правая страница) --- */
   #inv .bagside { display: flex; flex-direction: column; }
@@ -333,8 +325,6 @@ export class InventoryUi {
   /** Спрашиваем героя, а не запоминаем: здоровье меняется каждый кадр. */
   private hero: (() => HeroView) | null = null;
   private statsKey = '';
-  /** Есть ли что вкладывать: от этого зависит, рисовать ли кнопки «+». */
-  private canAdd = false;
 
   /** Зовётся, когда игрок хочет применить предмет из ячейки. */
   onUse: (index: number) => void = () => {};
@@ -344,8 +334,6 @@ export class InventoryUi {
   onUnequip: (slot: string) => void = () => {};
   /** Разложить сумку. */
   onSort: () => void = () => {};
-  /** Игрок вложил очко в характеристику. */
-  onSpend: (stat: Stat) => void = () => {};
 
   constructor() {
     this.style = document.createElement('style');
@@ -525,14 +513,10 @@ export class InventoryUi {
     }
   }
 
-  private statRow(icon: Icon, name: string, value: string, extra = '', title = '', stat?: Stat): string {
+  private statRow(icon: Icon, name: string, value: string, extra = '', title = ''): string {
     const i = this.iconEl(icon, '');
     const t = title ? ` title="${title}"` : '';
-    // Кнопку рисуем, только если очко реально есть куда вложить.
-    const add = stat && this.canAdd
-      ? `<span class="add" data-stat="${stat}" title="Вложить очко: ${STATS.find((s) => s.id === stat)!.hint}">+</span>`
-      : '';
-    return `<div class="stat"${t}>${i.outerHTML}<span>${name}</span><b>${value}${extra}</b>${add}</div>`;
+    return `<div class="stat"${t}>${i.outerHTML}<span>${name}</span><b>${value}${extra}</b></div>`;
   }
 
   /**
@@ -552,7 +536,6 @@ export class InventoryUi {
     const key = `${Math.ceil(h.hp)}/${h.hpMax}/${Math.floor(h.mp)}/${h.mpMax}/${h.level}/${Math.floor(h.xp)}/${JSON.stringify(b)}/${h.points}/${JSON.stringify(h.fromPoints)}`;
     if (key === this.statsKey) return;
     this.statsKey = key;
-    this.canAdd = h.points > 0;
 
     this.lvl.textContent = `Уровень ${h.level}`;
     this.xpFill.style.width = `${Math.min(100, (h.xp / h.xpNext) * 100)}%`;
@@ -573,10 +556,10 @@ export class InventoryUi {
       !gear && !pts ? '' : `от вещей ${gear >= 0 ? '+' : ''}${gear}, от очков +${pts}`;
 
     this.stats.innerHTML = [
-      this.statRow(STAT_ICON.hp, 'Здоровье', `${Math.ceil(h.hp)} / ${h.hpMax}`, mark(b.hp + p.hp), src(b.hp, p.hp), 'hp'),
-      this.statRow(STAT_ICON.dmg, 'Атака', `${h.dmgMin + b.dmg + p.dmg}–${h.dmgMax + b.dmg + p.dmg}`, mark(b.dmg + p.dmg), src(b.dmg, p.dmg), 'dmg'),
-      this.statRow(STAT_ICON.mp, 'Мана', `${Math.floor(h.mp)} / ${h.mpMax}`, mark(b.mp + p.mp), src(b.mp, p.mp), 'mp'),
-      this.statRow(STAT_ICON.def, 'Защита', String(b.def + p.def), '', src(b.def, p.def), 'def'),
+      this.statRow(STAT_ICON.hp, 'Здоровье', `${Math.ceil(h.hp)} / ${h.hpMax}`, mark(b.hp + p.hp), src(b.hp, p.hp)),
+      this.statRow(STAT_ICON.dmg, 'Атака', `${h.dmgMin + b.dmg + p.dmg}–${h.dmgMax + b.dmg + p.dmg}`, mark(b.dmg + p.dmg), src(b.dmg, p.dmg)),
+      this.statRow(STAT_ICON.mp, 'Мана', `${Math.floor(h.mp)} / ${h.mpMax}`, mark(b.mp + p.mp), src(b.mp, p.mp)),
+      this.statRow(STAT_ICON.def, 'Защита', String(b.def + p.def), '', src(b.def, p.def)),
       this.statRow(STAT_ICON.speed, 'Скорость', String(HERO.speed + b.speed), mark(b.speed)),
       // Про здоровье оговорка обязательна: в бою оно не растёт, и молчать об
       // этом — значит обещать лечение, которого не будет.
@@ -584,14 +567,11 @@ export class InventoryUi {
         STAT_ICON.regen, 'Восстановление', `${HERO.hpRegen}/с`, '',
         `${HERO.hpRegen} здоровья в секунду, но только если по вам не били ${HERO.regenDelay / 1000} с. Мана растёт всегда: ${HERO.mpRegen}/с.`,
       ),
+      // Тратят очки в окне умений (U); здесь только напоминаем, что они есть.
       h.points > 0
-        ? `<div class="pts">Очков характеристик: <b>${h.points}</b> — жми «+»</div>`
+        ? `<div class="pts">Свободных очков: <b>${h.points}</b> — окно умений (U)</div>`
         : `<div class="pts none">Очки характеристик дают за уровень: по ${POINTS_PER_LEVEL} за каждый</div>`,
     ].join('');
-
-    for (const el of this.stats.querySelectorAll<HTMLElement>('.add')) {
-      el.onclick = () => this.onSpend(el.dataset.stat as Stat);
-    }
   }
 
   get isOpen(): boolean {

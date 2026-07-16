@@ -12,6 +12,7 @@ import { drawnBounds } from '../map/doc';
 import { Loot, registerItemFrames } from '../game/loot';
 import { addToBag, takeOne, sortBag, ITEMS, type Stack, type EquipSlot } from '../game/items';
 import { InventoryUi } from '../game/inventory-ui';
+import { SkillsUi } from '../game/skills-ui';
 import { MinimapUi } from '../game/minimap-ui';
 import { MenuUi } from '../game/menu-ui';
 import { HotbarUi } from '../game/hotbar-ui';
@@ -44,6 +45,7 @@ export class GameScene extends MapScene {
   private monsters: Monster[] = [];
   private hud!: Hud;
   private inventory!: InventoryUi;
+  private skills!: SkillsUi;
   private hotbar!: HotbarUi;
   private minimap!: MinimapUi;
   private menu!: MenuUi;
@@ -141,7 +143,12 @@ export class GameScene extends MapScene {
       sortBag(this.bag);
       this.refreshBags();
     };
-    this.inventory.onSpend = (stat) => this.spendPointOn(stat);
+
+    // Окно умений (U): здесь тратят очки за уровень. Отдельно от сумки — так
+    // просил заказчик, и трате характеристик там было тесно.
+    this.skills = new SkillsUi();
+    this.skills.setHero(() => ({ level: this.player.level, spent: this.spent }));
+    this.skills.onSpend = (stat) => this.spendPointOn(stat);
 
     this.hotbar = new HotbarUi();
     this.hotbar.setData(this.quick, this.bag, this.equipped);
@@ -177,6 +184,11 @@ export class GameScene extends MapScene {
         toggle: () => this.inventory.toggle(),
       },
       {
+        label: 'Умения', key: 'U', icon: { sheet: 'icons', x: 2 * 16, y: 4 * 16, w: 16, h: 16 },
+        isOpen: () => this.skills.isOpen,
+        toggle: () => this.skills.toggle(),
+      },
+      {
         label: 'Карта', key: 'M', icon: { sheet: 'icons', x: 4 * 16, y: 3 * 16, w: 16, h: 16 },
         isOpen: () => this.minimap.isFullOpen,
         toggle: () => this.minimap.toggleFull(),
@@ -186,6 +198,7 @@ export class GameScene extends MapScene {
     // I открывает и закрывает сумку. Игру не останавливаем: пауки не ждут, пока
     // ты роешься в грибах, — иначе сумка станет способом переждать бой.
     this.input.keyboard?.on('keydown-I', () => this.inventory.toggle());
+    this.input.keyboard?.on('keydown-U', () => this.skills.toggle());
     this.input.keyboard?.on('keydown-M', () => this.minimap.toggleFull());
     this.bindQuickKeys();
 
@@ -208,6 +221,7 @@ export class GameScene extends MapScene {
       window.removeEventListener('pagehide', this.onLeave);
       this.hud.destroy();
       this.inventory.destroy();
+      this.skills.destroy();
       this.hotbar.destroy();
       this.minimap.destroy();
       this.menu.destroy();
@@ -562,7 +576,10 @@ export class GameScene extends MapScene {
     }
 
     this.player.setPoints(bonusFrom(this.spent));
-    this.inventory.render();
+    // Обновляем оба окна: тратим в умениях, но панель персонажа тоже показывает
+    // и остаток очков, и прибавку от них.
+    this.skills.render();
+    this.inventory.refreshStats();
     this.scheduleSave();
   }
 
@@ -598,7 +615,7 @@ export class GameScene extends MapScene {
       // вложит, а окно персонажа само не откроется.
       this.damageNumber(
         this.player.sprite.x, this.player.sprite.y - 56, 0, '#e0c48a',
-        `+${POINTS_PER_LEVEL} очка (I)`,
+        `+${POINTS_PER_LEVEL} очка (U)`,
       );
     }
   }
@@ -678,6 +695,7 @@ export class GameScene extends MapScene {
       xpToNext(this.player.level),
     );
     this.inventory.refreshStats();
+    this.skills.render();
     this.menu.render();
     // Мёртвых пауков на карте не показываем: труп — не угроза.
     this.minimap.render({
