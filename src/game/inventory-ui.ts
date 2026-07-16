@@ -281,6 +281,40 @@ const CSS = `
     font-variant-numeric: tabular-nums; pointer-events: none;
   }
 
+  /* Значок заточки на оружии — «+N», как в MMORPG. Оружие не копится в стопки,
+     поэтому правый нижний угол у него свободен. */
+  #inv .plusb {
+    position: absolute; right: 2px; bottom: 1px; font-size: 11px; font-weight: 700;
+    color: #ffcf5a;
+    text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000;
+    pointer-events: none;
+  }
+
+  /* Карточка предмета при наведении: тёмная панель набора, летит за курсором.
+     pointer-events: none — карточка не должна перехватывать мышь у ячеек. */
+  #inv .itemtip {
+    position: absolute; z-index: 40; display: none; pointer-events: none;
+    width: max-content; max-width: 216px;
+    border-image: url(${UI}/panel_dark.png) 2 3 4 3 fill / ${2 * SCALE}px ${3 * SCALE}px ${4 * SCALE}px ${3 * SCALE}px repeat;
+    border-width: ${2 * SCALE}px ${3 * SCALE}px ${4 * SCALE}px ${3 * SCALE}px; border-style: solid;
+    padding: ${SCALE}px ${2 * SCALE}px; font-size: 11px; line-height: 1.55; color: #d8c0a0;
+    filter: drop-shadow(0 6px 16px rgba(0,0,0,.55));
+  }
+  #inv .itemtip .nm { font-size: 12px; font-weight: 700; }
+  #inv .itemtip .nm .pl { color: #ffcf5a; }
+  #inv .itemtip .nm.rar-common { color: #f0e0c8; }
+  #inv .itemtip .nm.rar-uncommon { color: #8ad46a; }
+  #inv .itemtip .nm.rar-rare { color: #7ab0e8; }
+  #inv .itemtip .nm.rar-epic { color: #c58ae8; }
+  #inv .itemtip .sub { color: #9a835f; font-size: 10px; margin-bottom: 3px; }
+  #inv .itemtip .ln { display: flex; justify-content: space-between; gap: 14px; }
+  #inv .itemtip .ln b { color: #f0e0c8; font-variant-numeric: tabular-nums; font-weight: 700; }
+  #inv .itemtip .ln b.plus { color: #8ad46a; }
+  #inv .itemtip .ln b.minus { color: #e08a6a; }
+  #inv .itemtip .dmg { margin-top: 3px; padding-top: 3px; border-top: 1px solid rgba(216,192,160,.25); }
+  #inv .itemtip .dmg b { color: #ffe08a; }
+  #inv .itemtip .act { margin-top: 3px; color: #7ab0e8; font-size: 10px; }
+
   #inv .foot { display: flex; align-items: center; gap: ${2 * SCALE}px; margin-top: ${2 * SCALE}px; }
   #inv .btn {
     cursor: pointer; font-size: 11px; color: #eaf6f0; text-shadow: 1px 1px 0 #294040;
@@ -317,7 +351,7 @@ export class InventoryUi {
   private root: HTMLDivElement;
   private style: HTMLStyleElement;
   private grid!: HTMLDivElement;
-  private hint!: HTMLDivElement;
+  private tip!: HTMLDivElement;
   private stats!: HTMLDivElement;
   private lvl!: HTMLElement;
   private xpFill!: HTMLElement;
@@ -376,11 +410,12 @@ export class InventoryUi {
           </div>
         </div>
       </div>
+      <div class="itemtip"></div>
     `;
     document.body.append(this.root);
 
     this.grid = this.q('.grid');
-    this.hint = this.q('.hint');
+    this.tip = this.q('.itemtip');
     this.stats = this.q('.stats');
     this.lvl = this.q('.lvl');
     this.xpFill = this.q('.xpbar i');
@@ -473,25 +508,96 @@ export class InventoryUi {
     this.plusFor = get;
   }
 
-  /** Строка для подсказки: что предмет даёт. */
-  private describe(id: string): string {
+  /**
+   * Карточка предмета при наведении — как в MMORPG: имя цветом редкости,
+   * «+N» заточки, что даёт, а для оружия — урон, которым герой БУДЕТ бить,
+   * взяв его в руку. Та же формула, что у настоящего удара: база + уровень +
+   * прочие вещи (кольцо) + бонус ЭТОГО оружия + его заточка + очки.
+   */
+  private tipHtml(id: string, action: string, qty = 1): string {
     const def = ITEMS[id];
     if (!def) return '';
+    const rarity = rarityOf(id);
+    const isWeapon = def.slot === 'weapon';
+    const plus = isWeapon ? this.plusFor(id) : 0;
 
-    const parts: string[] = [];
-    if (def.use?.hp) parts.push(`+${def.use.hp} здоровья`);
-    if (def.use?.mp) parts.push(`+${def.use.mp} маны`);
+    const kind = isWeapon
+      ? (def.ranged ? 'Лук' : 'Меч')
+      : def.slot
+        ? SLOTS.find((s) => s.id === def.slot)!.label
+        : TABS.find((t) => t.id === def.tab)?.label ?? '';
+
+    const rows: string[] = [];
+    const row = (name: string, val: string, cls = ''): void => {
+      rows.push(`<div class="ln"><span>${name}</span><b class="${cls}">${val}</b></div>`);
+    };
+    const sign = (n: number): string => (n > 0 ? `+${n}` : String(n));
+
+    if (def.use?.hp) row('Восстанавливает', `+${def.use.hp} здоровья`, 'plus');
+    if (def.use?.mp) row('Восстанавливает', `+${def.use.mp} маны`, 'plus');
 
     const b = def.bonus;
-    const sign = (n: number): string => (n > 0 ? `+${n}` : String(n));
-    if (b?.dmg) parts.push(`${sign(b.dmg)} к атаке`);
-    if (b?.def) parts.push(`${sign(b.def)} к защите`);
-    if (b?.speed) parts.push(`${sign(b.speed)} к скорости`);
-    if (b?.hp) parts.push(`${sign(b.hp)} к здоровью`);
-    if (b?.mp) parts.push(`${sign(b.mp)} к мане`);
+    if (isWeapon) {
+      row('Прибавка к атаке', `+${(b?.dmg ?? 0) + plus}`, 'plus');
+      if (plus > 0) row('Из них заточка', `+${plus}`, 'plus');
+      if (def.ranged) row('Бой', 'стрелами, издалека');
+    } else if (b) {
+      if (b.dmg) row('Атака', sign(b.dmg), b.dmg > 0 ? 'plus' : 'minus');
+      if (b.def) row('Защита', sign(b.def), b.def > 0 ? 'plus' : 'minus');
+      if (b.speed) row('Скорость', sign(b.speed), b.speed > 0 ? 'plus' : 'minus');
+      if (b.hp) row('Здоровье', sign(b.hp), b.hp > 0 ? 'plus' : 'minus');
+      if (b.mp) row('Мана', sign(b.mp), b.mp > 0 ? 'plus' : 'minus');
+    }
+    if (qty > 1) row('В стопке', String(qty));
 
-    const head = `${def.name} — ${RARITY_NAME[rarityOf(id)].toLowerCase()}`;
-    return parts.length ? `${head}. ${parts.join(', ')}` : head;
+    // Урон героя с этим оружием в руке. Вклад НАДЕТОГО оружия вычитаем:
+    // его место займёт это.
+    let dmg = '';
+    const h = this.hero?.();
+    if (isWeapon && h) {
+      const wornWeapon = this.equipped.weapon;
+      const wornBonus = wornWeapon ? ITEMS[wornWeapon]?.bonus?.dmg ?? 0 : 0;
+      const gearOther = totalBonuses(this.equipped).dmg - wornBonus;
+      const add = gearOther + (b?.dmg ?? 0) + plus + h.fromPoints.dmg;
+      dmg = `<div class="ln dmg"><span>Твой урон с ним</span><b>${h.dmgMin + add}–${h.dmgMax + add}</b></div>`;
+    }
+
+    return (
+      `<div class="nm rar-${rarity}">${def.name}${plus > 0 ? ` <span class="pl">+${plus}</span>` : ''}</div>` +
+      `<div class="sub">${RARITY_NAME[rarity]}${kind ? ` · ${kind}` : ''}</div>` +
+      rows.join('') +
+      dmg +
+      (action ? `<div class="act">${action}</div>` : '')
+    );
+  }
+
+  private showTip(html: string, e: MouseEvent): void {
+    this.tip.innerHTML = html;
+    this.tip.style.display = 'block';
+    this.moveTip(e);
+  }
+
+  /** Карточка ходит за курсором; у краёв экрана перекидывается на другую сторону. */
+  private moveTip(e: MouseEvent): void {
+    const w = this.tip.offsetWidth;
+    const h = this.tip.offsetHeight;
+    let x = e.clientX + 16;
+    let y = e.clientY + 12;
+    if (x + w > window.innerWidth - 6) x = e.clientX - w - 14;
+    if (y + h > window.innerHeight - 6) y = e.clientY - h - 10;
+    this.tip.style.left = `${x}px`;
+    this.tip.style.top = `${y}px`;
+  }
+
+  private hideTip(): void {
+    this.tip.style.display = 'none';
+  }
+
+  /** Повесить карточку на ячейку. Один помощник на сумку и на гнёзда. */
+  private bindTip(el: HTMLElement, id: string, action: string, qty = 1): void {
+    el.onmouseenter = (e) => this.showTip(this.tipHtml(id, action, qty), e);
+    el.onmousemove = (e) => this.moveTip(e);
+    el.onmouseleave = () => this.hideTip();
   }
 
   private renderEquip(): void {
@@ -504,6 +610,9 @@ export class InventoryUi {
       el.classList.toggle('has', !!id);
       el.onclick = null;
       el.onmouseenter = null;
+      el.onmousemove = null;
+      el.onmouseleave = null;
+      el.title = '';
 
       if (!id) {
         // Пустое гнездо показывает погашенную иконку: иначе непонятно, что сюда
@@ -515,13 +624,13 @@ export class InventoryUi {
 
       const def = ITEMS[id];
       el.append(this.iconEl(def.icon, 'item'));
-      // Заточенное оружие подписываем честным «+N» — как его знает кузница.
-      const plus = this.plusFor(id);
-      el.title = `${def.name}${plus > 0 ? ` +${plus}` : ''} — снять`;
+      // Заточенное оружие носит значок «+N» — как его знает кузница.
+      const plus = def.slot === 'weapon' ? this.plusFor(id) : 0;
+      if (plus > 0) {
+        el.append(Object.assign(document.createElement('span'), { className: 'plusb', textContent: `+${plus}` }));
+      }
       el.onclick = () => this.onUnequip(key);
-      el.onmouseenter = () => {
-        this.hint.textContent = this.describe(id);
-      };
+      this.bindTip(el, id, 'Клик — снять');
     }
   }
 
@@ -610,11 +719,16 @@ export class InventoryUi {
 
   close(): void {
     this.root.classList.remove('open');
+    this.hideTip();
   }
 
   /** Перерисовать содержимое. Зовётся при открытии и после каждой правки сумки. */
   render(): void {
     if (!this.isOpen) return;
+
+    // Предмет под курсором мог исчезнуть (съели, продали) — карточка не должна
+    // пережить свою ячейку.
+    this.hideTip();
 
     this.renderEquip();
     this.renderStats();
@@ -634,6 +748,8 @@ export class InventoryUi {
       slot.className = 'slot';
       slot.onclick = null;
       slot.onmouseenter = null;
+      slot.onmousemove = null;
+      slot.onmouseleave = null;
       slot.ondragstart = null;
       slot.draggable = false;
       slot.title = '';
@@ -652,11 +768,17 @@ export class InventoryUi {
         }));
       }
 
-      const action = def.slot ? 'надеть' : def.use ? 'применить' : '';
-      slot.title = action ? `${def.name} — ${action}` : def.name;
-      slot.onmouseenter = () => {
-        this.hint.textContent = this.describe(def.id);
-      };
+      // Заточенное оружие носит значок «+N», как в MMORPG.
+      if (def.slot === 'weapon') {
+        const plus = this.plusFor(def.id);
+        if (plus > 0) {
+          slot.append(Object.assign(document.createElement('span'), { className: 'plusb', textContent: `+${plus}` }));
+        }
+      }
+
+      // Вместо голого title — карточка с характеристиками (см. tipHtml).
+      const action = def.slot ? 'Клик — надеть' : def.use ? 'Клик — применить' : '';
+      this.bindTip(slot, def.id, action, entry.stack.qty);
 
       // На панель внизу вещь попадает перетаскиванием. Тащим ВИД предмета, а не
       // номер ячейки: номер живёт до первой раскладки сумки.

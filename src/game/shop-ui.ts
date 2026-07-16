@@ -136,6 +136,12 @@ const CSS = `
   #shop .slot .cost i, #shop .slot .tag i {
     width: 10px; height: 10px; background: url(${ICONS}) -${COIN.x}px -${COIN.y}px; background-size: 16px 16px;
   }
+  /* Значок заточки оружия — «+N», как в MMORPG. */
+  #shop .plusb {
+    position: absolute; bottom: 1px; right: 3px; font-size: 11px; font-weight: 700; color: #ffcf5a;
+    text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000;
+    pointer-events: none;
+  }
   /* Цена продажи в углу вещи инвентаря — маленькой монеткой. */
   #shop .slot .tag {
     position: absolute; top: 1px; left: 2px; display: flex; align-items: center; gap: 2px;
@@ -189,6 +195,8 @@ export class ShopUi {
   private hintEl: HTMLElement;
   private bag: (Stack | null)[] = [];
   private gold: () => number = () => 0;
+  /** Заточка вида оружия — для значка «+N». Ставит сцена. */
+  private plusFor: (id: string) => number = () => 0;
   /** Отобрано на продажу: номер ячейки сумки -> id вещи на момент выбора. */
   private basket = new Map<number, string>();
   private key = '';
@@ -255,6 +263,11 @@ export class ShopUi {
 
   setGold(get: () => number): void {
     this.gold = get;
+  }
+
+  /** Откуда узнавать заточку вида оружия (кузница, K). */
+  setPlusFor(get: (id: string) => number): void {
+    this.plusFor = get;
   }
 
   get isOpen(): boolean {
@@ -371,15 +384,20 @@ export class ShopUi {
       const def = ITEMS[stack.id];
       const price = sellPrice(stack.id);
       const sellable = price > 0;
+      const plus = def?.slot === 'weapon' ? this.plusFor(stack.id) : 0;
+      const nm = def ? `${def.name}${plus > 0 ? ` +${plus}` : ''}` : '';
       slot.className = `slot has r-${rarityOf(stack.id)}${this.basket.has(index) ? ' picked' : ''}`;
       slot.title = def
         ? sellable
-          ? `${def.name} — в продажу (${price} за шт.)`
-          : `${def.name} — не продаётся`
+          ? `${nm} — в продажу (${price} за шт.)`
+          : `${nm} — не продаётся`
         : '';
       if (def) slot.append(this.iconEl(def.icon));
       if (stack.qty > 1) {
         slot.append(Object.assign(document.createElement('span'), { className: 'qty', textContent: String(stack.qty) }));
+      }
+      if (plus > 0) {
+        slot.append(Object.assign(document.createElement('span'), { className: 'plusb', textContent: `+${plus}` }));
       }
       if (sellable) {
         const tag = document.createElement('span');
@@ -413,11 +431,15 @@ export class ShopUi {
         continue;
       }
       const def = ITEMS[stack.id];
+      const plus = def.slot === 'weapon' ? this.plusFor(stack.id) : 0;
       slot.className = `slot has r-${rarityOf(stack.id)}`;
-      slot.title = `${def.name} — убрать из продажи`;
+      slot.title = `${def.name}${plus > 0 ? ` +${plus}` : ''} — убрать из продажи`;
       slot.append(this.iconEl(def.icon));
       if (stack.qty > 1) {
         slot.append(Object.assign(document.createElement('span'), { className: 'qty', textContent: String(stack.qty) }));
+      }
+      if (plus > 0) {
+        slot.append(Object.assign(document.createElement('span'), { className: 'plusb', textContent: `+${plus}` }));
       }
       slot.onclick = () => this.togglePick(index, stack.id);
       this.bcells.append(slot);

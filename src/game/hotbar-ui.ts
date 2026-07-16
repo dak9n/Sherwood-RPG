@@ -62,6 +62,12 @@ const CSS = `
     text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000;
     font-variant-numeric: tabular-nums; pointer-events: none;
   }
+  /* Значок заточки оружия — «+N». Оружие не копится, угол количества свободен. */
+  #hotbar .plusb {
+    position: absolute; right: 1px; bottom: 0; font-size: 10px; font-weight: 700; color: #ffcf5a;
+    text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000;
+    pointer-events: none;
+  }
   /* Куда можно бросить перетаскиваемое. */
   #hotbar .hs.over { box-shadow: inset 0 0 0 2px #57c767; background: rgba(87, 199, 103, .25); }
   /* Вспышка на нажатие: без неё непонятно, сработала клавиша или нет. */
@@ -78,6 +84,8 @@ export class HotbarUi {
   private bar: Hotbar = [];
   private bag: (Stack | null)[] = [];
   private worn: Equipped = {};
+  /** Заточка вида оружия — для значка «+N». Ставит сцена. */
+  private plusFor: (id: string) => number = () => 0;
   private key = '';
 
   /** Сработала ячейка: сцена решает, применить предмет или надеть. */
@@ -146,6 +154,10 @@ export class HotbarUi {
     };
   }
 
+  setPlusFor(get: (id: string) => number): void {
+    this.plusFor = get;
+  }
+
   setData(bar: Hotbar, bag: (Stack | null)[], worn: Equipped): void {
     this.bar = bar;
     this.bag = bag;
@@ -170,7 +182,7 @@ export class HotbarUi {
     // Панель на виду всё время, поэтому перерисовку сравниваем со снимком:
     // иначе она перестраивала бы DOM каждый кадр игры.
     const key = this.bar
-      .map((id, i) => `${id ?? '-'}:${countFor(this.bar, i, this.bag)}:${id ? !!slotWearing(this.worn, id) : 0}`)
+      .map((id, i) => `${id ?? '-'}:${countFor(this.bar, i, this.bag)}:${id ? !!slotWearing(this.worn, id) : 0}:${id ? this.plusFor(id) : 0}`)
       .join('|');
     if (key === this.key) return;
     this.key = key;
@@ -179,6 +191,7 @@ export class HotbarUi {
       const id = this.bar[i];
       el.querySelector('i')?.remove();
       el.querySelector('.cnt')?.remove();
+      el.querySelector('.plusb')?.remove();
       el.classList.toggle('full', !!id);
       el.classList.remove('out', 'worn');
       el.title = '';
@@ -208,9 +221,16 @@ export class HotbarUi {
         el.append(Object.assign(document.createElement('span'), { className: 'cnt', textContent: String(n) }));
       }
 
-      if (wearing) el.title = `${def.name} — надето, снять (${KEYS[i]})`;
-      else if (n) el.title = `${def.name} — ${def.slot ? 'надеть' : 'применить'} (${KEYS[i]})`;
-      else el.title = `${def.name} — нет в сумке`;
+      // Заточенное оружие носит значок «+N» и подписывается им же.
+      const plus = def.slot === 'weapon' ? this.plusFor(id) : 0;
+      if (plus > 0) {
+        el.append(Object.assign(document.createElement('span'), { className: 'plusb', textContent: `+${plus}` }));
+      }
+      const nm = `${def.name}${plus > 0 ? ` +${plus}` : ''}`;
+
+      if (wearing) el.title = `${nm} — надето, снять (${KEYS[i]})`;
+      else if (n) el.title = `${nm} — ${def.slot ? 'надеть' : 'применить'} (${KEYS[i]})`;
+      else el.title = `${nm} — нет в сумке`;
     }
   }
 

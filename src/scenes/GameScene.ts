@@ -177,6 +177,7 @@ export class GameScene extends MapScene {
     this.shop = new ShopUi();
     this.shop.setBag(this.bag);
     this.shop.setGold(() => this.gold);
+    this.shop.setPlusFor((id) => plusOf(this.sharpen, id));
     this.shop.onBuy = (id) => this.buy(id);
     this.shop.onSellBasket = (indices) => this.sellBasket(indices);
 
@@ -202,6 +203,7 @@ export class GameScene extends MapScene {
 
     this.hotbar = new HotbarUi();
     this.hotbar.setData(this.quick, this.bag, this.equipped);
+    this.hotbar.setPlusFor((id) => plusOf(this.sharpen, id));
     this.hotbar.onTrigger = (slot) => this.useQuick(slot);
     this.hotbar.onBind = (slot, id) => {
       bind(this.quick, slot, id);
