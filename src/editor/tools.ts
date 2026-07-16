@@ -1,10 +1,19 @@
 import Phaser from 'phaser';
 import { selectObject, extractRect, rectBetween, type Rect } from '../map/region';
-import type { CellEdit, EditorState } from './state';
+import type { EditorState } from './state';
+import type { CellEdit } from './edit';
+import { WALK, BLOCK } from '../map/doc';
 
-export type Tool = 'brush' | 'eraser' | 'select';
+export type Tool = 'brush' | 'eraser' | 'select' | 'wall';
 
 export type { Rect };
+
+/** Размер кисти стен в клетках. Свой, а не state.brush — см. stampPass. */
+let wallSize = 1;
+export const setWallSize = (n: number): void => {
+  wallSize = Math.max(1, Math.min(16, Math.round(n)));
+};
+export const getWallSize = (): number => wallSize;
 
 export interface ToolHandlers {
   onPick?: (note?: string) => void;
@@ -54,12 +63,33 @@ export function installTools(
         if (!erase && !after) continue; // дырка в штампе — не затираем то, что под ней
 
         edits.push({
+          kind: 'tile',
           layerIndex: state.activeLayer,
           x: cx,
           y: cy,
           before: state.doc.getRaw(state.activeLayer, cx, cy),
           after,
         });
+      }
+    }
+    return edits;
+  };
+
+  /**
+   * Кисть стен. Отдельно от stamp: тот прибит к активному слою и кладёт тайлы, а
+   * проходимость — одна на всю карту и в слои не пишется.
+   *
+   * Размер свой, а не state.brush: его перетирают палитра и пипетка, и выбранное
+   * дерево 5x5 расставляло бы стены штампом, да ещё с дырками на месте нулей.
+   */
+  const stampPass = (x: number, y: number, value: number): CellEdit[] => {
+    const edits: CellEdit[] = [];
+    for (let dy = 0; dy < wallSize; dy++) {
+      for (let dx = 0; dx < wallSize; dx++) {
+        const cx = x + dx;
+        const cy = y + dy;
+        if (!state.doc.inBounds(cx, cy)) continue;
+        edits.push({ kind: 'pass', x: cx, y: cy, before: state.doc.getPass(cx, cy), after: value });
       }
     }
     return edits;
@@ -113,6 +143,23 @@ export function installTools(
     const { x, y } = cellUnder(p);
     if (!state.doc.inBounds(x, y)) return;
 
+    // Стены рисуются раньше всех проверок, кроме панорамы: ни пипетка, ни
+    // выделение, ни ластик тут не при чём — правится не слой, а проходимость.
+    if (getTool() === 'wall') {
+      if (p.leftButtonDown() && scene.input.keyboard?.checkDown(scene.input.keyboard.addKey('SPACE'), 0)) return;
+      if (!p.leftButtonDown() && !p.rightButtonDown()) return;
+
+      // ЛКМ — стена, ПКМ — проход. Не «стереть в UNSET»: игрок обводит речку и
+      // хочет сказать «сюда нельзя», а соседнюю клетку — «сюда можно», и оба
+      // слова должны быть сильнее черновика.
+      stroke = [];
+      lastCell = `${x},${y}`;
+      const edits = stampPass(x, y, p.rightButtonDown() ? WALK : BLOCK);
+      stroke.push(...edits);
+      state.apply(edits, { record: false });
+      return;
+    }
+
     // Пипетка: Alt с любым инструментом либо режим «Выделить» без модификаторов.
     // Клик берёт объект целиком, протяжка — обведённую область; что именно из
     // двух, решаем на отпускании кнопки, когда уже видно, тянули мышь или нет.
@@ -155,7 +202,10 @@ export function installTools(
     lastCell = key;
 
     if (!state.doc.inBounds(x, y)) return;
-    const edits = stamp(x, y, p.rightButtonDown() || getTool() === 'eraser');
+    const edits =
+      getTool() === 'wall'
+        ? stampPass(x, y, p.rightButtonDown() ? WALK : BLOCK)
+        : stamp(x, y, p.rightButtonDown() || getTool() === 'eraser');
     stroke.push(...edits);
     state.apply(edits, { record: false });
   });

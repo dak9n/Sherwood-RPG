@@ -1,5 +1,7 @@
 import { MapDoc } from '../map/doc';
 import { applyCell, type MapView } from '../map/view';
+import { applyToDoc, reverse, type CellEdit } from './edit';
+export type { CellEdit };
 
 /**
  * Скрытые «глазом» слои запоминаются в браузере — по имени карты, отдельно для
@@ -30,14 +32,6 @@ function saveHiddenNames(mapName: string, names: string[]): void {
   }
 }
 
-/** Одна изменённая клетка. before/after — значения формата (0 = пусто). */
-export interface CellEdit {
-  layerIndex: number;
-  x: number;
-  y: number;
-  before: number;
-  after: number;
-}
 
 /** Кисть — всегда прямоугольник; одна клетка это просто 1x1. */
 export interface Brush {
@@ -73,6 +67,12 @@ export class EditorState {
    */
   private hidden = new Set<string>();
 
+  /**
+   * Кому сказать, что проходимость клетки изменилась, — накладке в редакторе.
+   * Ставит mount. Здесь, а не внутри apply: state не знает про Phaser.
+   */
+  onPass: ((x: number, y: number, pass: number) => void) | null = null;
+
   constructor(
     public doc: MapDoc,
     public view: MapView,
@@ -104,8 +104,10 @@ export class EditorState {
     if (real.length === 0) return;
 
     for (const e of real) {
-      this.doc.setRaw(e.layerIndex, e.x, e.y, e.after);
-      applyCell(this.view, e.layerIndex, e.x, e.y, e.after);
+      applyToDoc(this.doc, e);
+      // Экран обновляем здесь: edit.ts намеренно не знает про Phaser.
+      if (e.kind === 'pass') this.onPass?.(e.x, e.y, e.after);
+      else applyCell(this.view, e.layerIndex, e.x, e.y, e.after);
     }
 
     if (record) {
@@ -135,8 +137,8 @@ export class EditorState {
     const batch = this.undoStack.pop();
     if (!batch) return false;
 
-    const reverse = batch.map((e) => ({ ...e, before: e.after, after: e.before }));
-    this.apply(reverse, { record: false });
+    const reversed = batch.map(reverse);
+    this.apply(reversed, { record: false });
     this.redoStack.push(batch);
     return true;
   }

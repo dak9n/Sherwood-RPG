@@ -3,8 +3,12 @@ import { MapDoc } from '../map/doc';
 import { resizeMap } from '../map/resize';
 import { withLayerAdded, withLayerRemoved, withLayerMoved, suggestLayerName } from '../map/layers';
 import { EditorState } from './state';
+import type { CellEdit } from './edit';
 import { installTools, type Tool } from './tools';
 import { Overlay } from './overlay';
+import { PassOverlay } from './pass-overlay';
+import { draftCollision } from '../map/collision-draft';
+import { findTallObjects } from '../game/tall-objects';
 import { saveMap, saveMapAs, fetchRevision, fetchMaps } from './save';
 import { askResize } from './resize-dialog';
 import { buildShell } from './ui/shell';
@@ -46,6 +50,30 @@ export function mountEditor(game: Phaser.Game): void {
   window.addEventListener('resize', () => game.scale.refresh());
 
   const overlay = new Overlay(scene, state);
+  const passOverlay = new PassOverlay(scene, state.doc, scene.view);
+  // Правку проходимости в apply рисуем точечно: O(1) на клетку вместо обхода 9800.
+  state.onPass = (x, y, pass) => passOverlay.paint(x, y, pass);
+
+  /**
+   * Залить проходимость черновиком по картинке.
+   *
+   * Без этого размечать пришлось бы с нуля: сейчас во всех картах проходимость —
+   * сплошные нули, и в режиме стен экран был бы равномерно серым. Черновик даёт
+   * основу (вода, край нарисованного, стволы), а кисть её уточняет.
+   */
+  function seedDraft(): void {
+    const draft = draftCollision(state.doc, findTallObjects(state.doc), state.doc.map.tileHeight);
+    const edits: CellEdit[] = [];
+    for (let y = 0; y < state.doc.height; y++) {
+      for (let x = 0; x < state.doc.width; x++) {
+        const i = y * state.doc.width + x;
+        edits.push({ kind: 'pass', x, y, before: state.doc.getPass(x, y), after: draft.collision[i] });
+      }
+    }
+    // Одной правкой: Ctrl+Z должен откатывать заливку целиком, а не по клетке.
+    state.apply(edits);
+    refreshStatus();
+  }
   let tool: Tool = 'brush';
 
   const redrawLayers = buildLayers(shell.layers, state, {
@@ -70,6 +98,16 @@ export function mountEditor(game: Phaser.Game): void {
   const eraserBtn = btn('Ластик', 'Стирать (ПКМ или этот режим)', () => setTool('eraser'));
   const selectBtn = btn('Выделить', 'Обвести объект рамкой и взять его как кисть (то же самое — Alt+протяжка)', () =>
     setTool('select'),
+  );
+  const wallBtn = btn(
+    'Стены',
+    'Рисовать непроходимость: ЛКМ — стена, ПКМ — проход. Обведите речку, обрыв или дом — игрок туда не зайдёт',
+    () => setTool('wall'),
+  );
+  const draftBtn = btn(
+    'Черновик',
+    'Заполнить проходимость автоматически по картинке (вода, край, стволы) — чтобы не размечать всю карту с нуля',
+    () => seedDraft(),
   );
   const gridBtn = btn('Сетка', 'Показать сетку (при увеличении от 2x)', () => {
     gridOn = !gridOn;
@@ -99,6 +137,10 @@ export function mountEditor(game: Phaser.Game): void {
     brushBtn.setAttribute('aria-pressed', String(next === 'brush'));
     eraserBtn.setAttribute('aria-pressed', String(next === 'eraser'));
     selectBtn.setAttribute('aria-pressed', String(next === 'select'));
+    wallBtn.setAttribute('aria-pressed', String(next === 'wall'));
+    // Накладку показываем только в своём режиме: поверх карты она мешает рисовать.
+    passOverlay.setVisible(next === 'wall');
+    draftBtn.disabled = next !== 'wall';
   }
   setTool('brush');
 
@@ -288,6 +330,7 @@ export function mountEditor(game: Phaser.Game): void {
     // У Phaser нет ресайза тайлмапа — только пересборка.
     scene.rebuild(doc);
     state.resetAfterResize(doc, scene.view);
+    passOverlay.relayer(doc, scene.view); // rebuild уничтожил тайлмапу вместе с накладкой
 
     // Камера сдвигается вслед за картой, иначе она прыгнет под курсором.
     scene.cameras.main.scrollX += req.deltas.left * map.tileWidth;
@@ -304,6 +347,7 @@ export function mountEditor(game: Phaser.Game): void {
     const doc = new MapDoc(withLayerAdded(state.doc.map, suggestLayerName(state.doc.map), insertAt));
     scene.rebuild(doc);
     state.relayer(doc, scene.view, insertAt); // новый слой сразу активный
+    passOverlay.relayer(doc, scene.view); // rebuild уничтожил тайлмапу вместе с накладкой
   }
 
   function deleteLayer(index: number): void {
@@ -321,6 +365,7 @@ export function mountEditor(game: Phaser.Game): void {
     const doc = new MapDoc(withLayerRemoved(state.doc.map, index));
     scene.rebuild(doc);
     state.relayer(doc, scene.view, index); // relayer сам поджимает индекс под укоротившийся список
+    passOverlay.relayer(doc, scene.view);
   }
 
   function reorderLayer(from: number, to: number): void {
@@ -328,6 +373,7 @@ export function mountEditor(game: Phaser.Game): void {
     const doc = new MapDoc(withLayerMoved(state.doc.map, from, to));
     scene.rebuild(doc);
     state.relayer(doc, scene.view, to); // перемещённый слой остаётся активным
+    passOverlay.relayer(doc, scene.view);
   }
 
   // Горячие клавиши
