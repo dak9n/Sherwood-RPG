@@ -18,7 +18,7 @@ import { ShopUi } from '../game/shop-ui';
 import { MinimapUi } from '../game/minimap-ui';
 import { MenuUi } from '../game/menu-ui';
 import { HotbarUi } from '../game/hotbar-ui';
-import { buyItem, sellItem } from '../game/shop';
+import { buyItem, sellStack } from '../game/shop';
 import { bind, swap, unbind, findInBag, emptyHotbar, type Hotbar } from '../game/hotbar';
 import { equipFromBag, unequip, totalBonuses, slotWearing, ensureStarterWeapon, STARTER_WEAPON, type Equipped } from '../game/equipment';
 import { emptySpent, unspent, spendPoint, bonusFrom, POINTS_PER_LEVEL, type Spent, type Stat } from '../game/stats';
@@ -160,12 +160,12 @@ export class GameScene extends MapScene {
     this.skills.onSpend = (stat) => this.spendPointOn(stat);
 
     // Магазин (O): покупка и продажа за золото. Решает не окно, а сцена — через
-    // чистые buyItem/sellItem, чтобы проверка была одна на все пути.
+    // чистые buyItem/sellStack, чтобы проверка была одна на все пути.
     this.shop = new ShopUi();
     this.shop.setBag(this.bag);
     this.shop.setGold(() => this.gold);
     this.shop.onBuy = (id) => this.buy(id);
-    this.shop.onSell = (index) => this.sell(index);
+    this.shop.onSellBasket = (indices) => this.sellBasket(indices);
 
     this.hotbar = new HotbarUi();
     this.hotbar.setData(this.quick, this.bag, this.equipped);
@@ -680,17 +680,30 @@ export class GameScene extends MapScene {
     this.shop.flash(`Куплено: ${ITEMS[id].name} (−${res.price})`);
   }
 
-  /** Продать предмет из ячейки сумки. */
-  private sell(index: number): void {
-    const res = sellItem(this.gold, this.bag, index);
-    if (!res.ok) {
-      this.shop.flash(res.reason, false);
+  /**
+   * Продать отобранные в корзине ячейки — целыми стопками. Каждую продаёт чистая
+   * sellStack; неудачные (опустевшие, непродаваемые) просто пропускаем — корзина
+   * могла отстать от сумки на кадр.
+   */
+  private sellBasket(indices: number[]): void {
+    let total = 0;
+    let count = 0;
+    for (const i of indices) {
+      const res = sellStack(this.gold, this.bag, i);
+      if (!res.ok) continue;
+      this.gold = res.gold;
+      total += res.total;
+      count += res.qty;
+    }
+
+    if (!count) {
+      this.shop.flash('Продавать нечего', false);
       return;
     }
-    this.gold = res.gold;
+
     this.refreshBags();
     this.shop.render();
-    this.shop.flash(`Продано: ${ITEMS[res.id].name} (+${res.price})`);
+    this.shop.flash(`Продано ×${count} за +${total}`);
   }
 
   /**

@@ -23,8 +23,12 @@ export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic';
  * тайлсета карты кусками 14x12 — они там нарисованы вместе с травой.
  */
 export interface Icon {
-  /** Какой лист: 'icons' — набор интерфейса, 'Objects' — тайлсет карты. */
-  sheet: 'icons' | 'Objects';
+  /**
+   * Какой лист: 'icons' — набор интерфейса, 'Objects' — тайлсет карты,
+   * 'scroll' — наш дорисованный свиток (в наборе свитка не оказалось нигде,
+   * пришлось нарисовать самим в палитре набора: assets/interface/ui/scroll.png).
+   */
+  sheet: 'icons' | 'Objects' | 'scroll';
   x: number;
   y: number;
   w: number;

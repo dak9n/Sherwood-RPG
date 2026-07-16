@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SHOP_STOCK, VALUE, buyPrice, sellPrice, buyItem, sellItem } from './shop.ts';
+import { SHOP_STOCK, VALUE, buyPrice, sellPrice, buyItem, sellStack } from './shop.ts';
 import { ITEMS, countOf, type Stack } from './items.ts';
 import { STARTER_WEAPON } from './equipment.ts';
 
@@ -9,7 +9,7 @@ test('СТАРТОВЫЙ МЕЧ НЕ ПРОДАЁТСЯ: его бесплатн
   // за золото — «снял, продал, перезашёл» давало бесконечное золото. Теперь нет.
   assert.equal(sellPrice(STARTER_WEAPON), 0, 'цена продажи стартового меча — ноль');
   const b: (Stack | null)[] = [{ id: STARTER_WEAPON, qty: 1 }, null];
-  const res = sellItem(100, b, 0);
+  const res = sellStack(100, b, 0);
   assert.equal(res.ok, false, 'продать стартовый меч нельзя');
   assert.equal(b[0]?.id, STARTER_WEAPON, 'меч остался в сумке, золото не начислено');
 });
@@ -78,26 +78,21 @@ test('id-ключ прототипа не покупается', () => {
   }
 });
 
-test('продажа: золото прибавлено, одна штука убрана', () => {
+test('продажа стопки: золото за всю стопку, ячейка пустеет', () => {
   const b: (Stack | null)[] = [{ id: 'mush_red', qty: 3 }, null, null, null, null];
-  const res = sellItem(0, b, 0);
+  const res = sellStack(10, b, 0);
   assert.ok(res.ok);
   if (res.ok) {
-    assert.equal(res.gold, sellPrice('mush_red'), 'золото = цена продажи');
-    assert.equal(res.id, 'mush_red');
+    assert.equal(res.total, sellPrice('mush_red') * 3, 'цена за штуку помножена на стопку');
+    assert.equal(res.gold, 10 + res.total, 'золото выросло ровно на выручку');
+    assert.equal(res.qty, 3);
   }
-  assert.equal(countOf(b, 'mush_red'), 2, 'убрана ровно одна');
-});
-
-test('продажа последней штуки освобождает ячейку', () => {
-  const b: (Stack | null)[] = [{ id: 'apple', qty: 1 }, null];
-  const res = sellItem(5, b, 0);
-  assert.ok(res.ok);
-  assert.equal(b[0], null, 'ячейка пуста');
+  assert.equal(b[0], null, 'ячейка освободилась');
+  assert.equal(countOf(b, 'mush_red'), 0, 'ничего не осталось');
 });
 
 test('пустую ячейку не продать', () => {
-  const res = sellItem(0, bag(), 2);
+  const res = sellStack(0, bag(), 2);
   assert.equal(res.ok, false);
 });
 
@@ -108,7 +103,7 @@ test('золото при покупке-продаже сходится: про
   assert.ok(afterBuy.ok);
   const gold1 = afterBuy.ok ? afterBuy.gold : start;
   const idx = b.findIndex((s) => s?.id === 'potion_hp');
-  const afterSell = sellItem(gold1, b, idx);
+  const afterSell = sellStack(gold1, b, idx);
   assert.ok(afterSell.ok);
   const gold2 = afterSell.ok ? afterSell.gold : gold1;
   assert.ok(gold2 < start, `перепродажа не должна давать прибыль: было ${start}, стало ${gold2}`);

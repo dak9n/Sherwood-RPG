@@ -54,6 +54,7 @@ const UI = 'assets/interface/ui';
 const SHEETS: Record<Icon['sheet'], string> = {
   icons: 'assets/interface/PNG/Icons.png',
   Objects: 'assets/tilesets/Objects.png',
+  scroll: 'assets/interface/ui/scroll.png',
 };
 
 /** Кадр героя для портрета: мечник анфас, поза покоя. */

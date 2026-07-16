@@ -23,6 +23,7 @@ const SCALE = 3;
 const SHEETS: Record<Icon['sheet'], string> = {
   icons: 'assets/interface/PNG/Icons.png',
   Objects: 'assets/tilesets/Objects.png',
+  scroll: 'assets/interface/ui/scroll.png',
 };
 
 /** Подписи клавиш: девять цифр и ноль — как нарисовано гнёзд. */

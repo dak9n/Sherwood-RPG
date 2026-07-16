@@ -1,5 +1,5 @@
 // С расширением: модуль выполняют и браузер, и тесты, а node без него не найдёт.
-import { ITEMS, addToBag, takeOne, roomFor, type Stack } from './items.ts';
+import { ITEMS, addToBag, roomFor, type Stack } from './items.ts';
 import { STARTER_WEAPON } from './equipment.ts';
 
 /**
@@ -8,9 +8,9 @@ import { STARTER_WEAPON } from './equipment.ts';
  * Золото падает с монстров (см. creatures.ts). Здесь его тратят и возвращают:
  * покупают предметы и продают лишнее. Заказчик выбрал и покупку, и продажу.
  *
- * Одна операция — одна штука: клик покупает или продаёт ровно один предмет.
- * Так проще не ошибиться с местом в сумке и с ценой, а спешащий игрок кликает
- * несколько раз — это дешевле, чем поле ввода количества.
+ * Покупка — по одной штуке за клик: так не ошибиться с местом в сумке.
+ * Продажа — целыми стопками через корзину: игрок отбирает вещи в окне
+ * (кликом по инвентарю), потом продаёт всё разом.
  */
 
 /**
@@ -83,19 +83,25 @@ export function buyItem(gold: number, bag: (Stack | null)[], id: string): BuyRes
   return { ok: true, gold: gold - price, price };
 }
 
-export type SellResult = { ok: true; gold: number; id: string; price: number } | { ok: false; reason: string };
+export type SellStackResult =
+  | { ok: true; gold: number; id: string; qty: number; total: number }
+  | { ok: false; reason: string };
 
 /**
- * Продать одну штуку из ячейки сумки. Возвращает новое золото; из сумки убирает
- * ровно одну штуку. Надетое сюда не попадает — его сначала снимают.
+ * Продать ВСЮ стопку из ячейки разом. Для корзины продажи: игрок отбирает вещи,
+ * жмёт «продать выбранное», и каждая уходит целиком. Ячейка пустеет, золото
+ * прибавляется на цену за штуку, помноженную на количество.
  */
-export function sellItem(gold: number, bag: (Stack | null)[], index: number): SellResult {
+export function sellStack(gold: number, bag: (Stack | null)[], index: number): SellStackResult {
   const slot = bag[index];
   if (!slot) return { ok: false, reason: 'пусто' };
 
   const price = sellPrice(slot.id);
   if (price <= 0) return { ok: false, reason: 'это не продать' };
 
-  const id = takeOne(bag, index)!; // ячейка не пуста — проверено выше
-  return { ok: true, gold: gold + price, id, price };
+  const total = price * slot.qty;
+  const { id, qty } = slot;
+  bag[index] = null;
+  return { ok: true, gold: gold + total, id, qty, total };
 }
+
