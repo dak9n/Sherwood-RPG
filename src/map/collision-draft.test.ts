@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { draftCollision } from './collision-draft.ts';
-import { MapDoc } from './doc.ts';
+import { draftCollision, mergeCollision } from './collision-draft.ts';
+import { MapDoc, UNSET, WALK, BLOCK } from './doc.ts';
 import type { GameMap } from './types.ts';
 
 const WATER_ID = 1; // Water_detilazation
@@ -98,4 +98,56 @@ test('считает, сколько получилось проходимого
 
   assert.equal(walkable, 4);
   assert.equal(blocked, 4);
+});
+
+test('пустая разметка — берём черновик целиком', () => {
+  const draft = [WALK, BLOCK, WALK, BLOCK];
+  const manual = [UNSET, UNSET, UNSET, UNSET];
+  assert.deepEqual(mergeCollision(manual, draft), draft);
+});
+
+test('нарисованная стена сильнее черновика', () => {
+  // Ради этого всё и затевалось: обвести речку или дом, которых черновик не видит.
+  const draft = [WALK, WALK, WALK, WALK];
+  const manual = [UNSET, BLOCK, UNSET, UNSET];
+  assert.deepEqual(mergeCollision(manual, draft), [WALK, BLOCK, WALK, WALK]);
+});
+
+test('нарисованный проход сильнее черновика', () => {
+  // Обратный случай: черновик считает клетку стеной, а человек знает, что тут мост.
+  const draft = [BLOCK, BLOCK, BLOCK];
+  const manual = [UNSET, WALK, UNSET];
+  assert.deepEqual(mergeCollision(manual, draft), [BLOCK, WALK, BLOCK]);
+});
+
+test('одна стена НЕ обнуляет проходимость всей карты', () => {
+  // Тот самый баг. Раньше: marked = collision.some(v => v !== 0) -> черновик
+  // выбрасывался целиком -> остальные клетки UNSET -> canWalk(UNSET) = false ->
+  // на forest получалось 0 проходимых клеток из 6300, игрок не мог сдвинуться.
+  const size = 6300;
+  const draft = new Array(size).fill(WALK);
+  const manual = new Array(size).fill(UNSET);
+  manual[100] = BLOCK;
+
+  const out = mergeCollision(manual, draft);
+  const walkable = out.filter((v) => v === WALK).length;
+
+  assert.equal(walkable, size - 1, `проходимых ${walkable}, а должно быть ${size - 1}`);
+  assert.equal(out[100], BLOCK, 'нарисованная стена на месте');
+});
+
+test('разметка от чужой карты не применяется', () => {
+  // Длина разъехалась — значит массив не от этой карты. Лучше черновик, чем
+  // разметка, сдвинутая на полкарты.
+  const draft = [WALK, BLOCK, WALK];
+  assert.deepEqual(mergeCollision([BLOCK, BLOCK], draft), draft);
+  assert.deepEqual(mergeCollision([], draft), draft);
+});
+
+test('слияние не портит исходные массивы', () => {
+  const draft = [WALK, WALK];
+  const manual = [BLOCK, UNSET];
+  mergeCollision(manual, draft);
+  assert.deepEqual(draft, [WALK, WALK], 'черновик не тронут');
+  assert.deepEqual(manual, [BLOCK, UNSET], 'разметка не тронута');
 });

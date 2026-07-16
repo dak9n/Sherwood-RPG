@@ -6,7 +6,7 @@ import { findTallObjects } from '../game/tall-objects';
 import { pickSpawns } from '../game/spawn';
 import { HERO, MONSTERS, SPAWNS, xpToNext, rollDrop } from '../game/creatures';
 import { Hud } from '../game/hud';
-import { draftCollision } from '../map/collision-draft';
+import { draftCollision, mergeCollision } from '../map/collision-draft';
 import { drawnBounds } from '../map/doc';
 import { Loot, registerItemFrames } from '../game/loot';
 import { addToBag, takeOne, sortBag, ITEMS, type Stack, type EquipSlot } from '../game/items';
@@ -180,17 +180,24 @@ export class GameScene extends MapScene {
   /**
    * Невидимый слой стен для физики.
    *
-   * Проходимость берём из карты, а если её ещё не размечали — считаем по самой
-   * картинке (вода, обрыв за краем нарисованного, стволы деревьев). Так игра
-   * играется сразу, а редактор потом позволит уточнить руками.
+   * Черновик по картинке (вода, обрыв за краем нарисованного, стволы деревьев)
+   * считаем ВСЕГДА, а размеченное руками кладём поверх: клетка UNSET значит «не
+   * задано — спроси у черновика», WALK и BLOCK — слово человека.
+   *
+   * Раньше здесь было всё-или-ничего: черновик брали, только если вся разметка в
+   * нулях. Одна нарисованная в редакторе стена отменяла черновик целиком, и вся
+   * карта становилась непроходимой — на forest 0 клеток из 6300.
    */
   private buildCollision(tall: Map<number, number>): Phaser.Tilemaps.TilemapLayer {
-    const marked = this.doc.map.collision.some((v) => v !== 0);
-    if (!marked) {
-      const draft = draftCollision(this.doc, tall, this.doc.map.tileHeight);
-      this.doc.map.collision = draft.collision;
-      console.log(`Проходимость посчитана: ${draft.walkable} клеток из ${draft.walkable + draft.blocked}`);
-    }
+    const draft = draftCollision(this.doc, tall, this.doc.map.tileHeight);
+    const byHand = this.doc.map.collision.filter((v) => v !== 0).length;
+    this.doc.map.collision = mergeCollision(this.doc.map.collision, draft.collision);
+
+    const walkable = this.doc.map.collision.filter((v) => v === 1).length;
+    console.log(
+      `Проходимость: ${walkable} клеток из ${this.doc.width * this.doc.height}` +
+        ` (черновик ${draft.walkable}, размечено руками ${byHand})`,
+    );
 
     const layer = this.view.map.createBlankLayer('__collision', this.view.map.tilesets)!;
 

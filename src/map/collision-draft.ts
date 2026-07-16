@@ -3,6 +3,7 @@ import type { MapDoc } from './doc';
 // файл не найдёт.
 import { landCells, largestArea } from '../game/spawn.ts';
 
+const UNSET = 0;
 const WALK = 1;
 const BLOCK = 2;
 
@@ -51,4 +52,25 @@ export function draftCollision(doc: MapDoc, trees: Map<number, number>, tileH: n
   for (const v of collision) if (v === WALK) walkable++;
 
   return { collision, walkable, blocked: size - walkable };
+}
+
+/**
+ * Сводит ручную разметку с черновиком.
+ *
+ * UNSET значит «не задано — спроси у черновика», а WALK/BLOCK — слово человека,
+ * и оно сильнее. Ровно так это и описано в types.ts, но игра раньше понимала
+ * разметку иначе: брала черновик, ТОЛЬКО если весь массив в нулях. Из-за этого
+ * одна нарисованная стена отменяла черновик целиком, остальные клетки оставались
+ * UNSET, а UNSET для canWalk — стена. Обвёл речку — и вся карта непроходима:
+ * на forest это 0 проходимых клеток из 6300, игрок не мог сдвинуться.
+ *
+ * Теперь черновик считается всегда и служит основой, поверх которой ложится
+ * ручная правка. За этим следит тест.
+ */
+export function mergeCollision(manual: readonly number[], draft: readonly number[]): number[] {
+  // Длина расходится — доверять нечему: ручная разметка от другой карты хуже,
+  // чем её отсутствие. ensureCollision такой массив всё равно пересоздаст.
+  if (manual.length !== draft.length) return [...draft];
+
+  return draft.map((d, i) => (manual[i] === UNSET ? d : manual[i]));
 }
