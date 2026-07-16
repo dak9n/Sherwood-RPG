@@ -64,6 +64,11 @@ export interface MonsterStats {
   /** Размер тела для столкновений: [ширина, высота] у ног. */
   body: [number, number];
   /** Дальше этого от места появления не уходит — иначе уйдёт в озеро. */
+  /**
+   * Как далеко от дома паук готов уйти. ОБЯЗАН быть не меньше deaggro, иначе
+   * паук успевает уйти за поводок, не потеряв игрока, и начинает дрожать на
+   * границе: шаг домой — снова вижу — снова за поводок. За этим следит тест.
+   */
   leash: number;
   xp: number;
   /** Что с него падает. */
@@ -102,7 +107,7 @@ export const MONSTERS: Record<string, MonsterStats> = {
     sheet: 'Mushroom1', key: 'm1',
     hp: 30, dmg: 3, speed: 50,
     aggro: 80, deaggro: 136, reach: 16, hitW: 18, hitFrame: 4,
-    cooldown: 1200, body: [12, 8], leash: 140, xp: 6,
+    cooldown: 1200, body: [12, 8], leash: 150, xp: 6,
     // Со слабого падает часто: первую добычу игрок должен увидеть за полминуты,
     // а не гадать, работает ли она вообще.
     drop: [
@@ -116,7 +121,7 @@ export const MONSTERS: Record<string, MonsterStats> = {
     sheet: 'Mushroom2', key: 'm2',
     hp: 50, dmg: 6, speed: 45,
     aggro: 90, deaggro: 153, reach: 16, hitW: 18, hitFrame: 4,
-    cooldown: 1300, body: [12, 8], leash: 140, xp: 12,
+    cooldown: 1300, body: [12, 8], leash: 170, xp: 12,
     drop: [
       { id: 'mush_red', chance: 0.45, min: 1, max: 2 },
       { id: 'mush_brown', chance: 0.3 },
@@ -132,7 +137,7 @@ export const MONSTERS: Record<string, MonsterStats> = {
     sheet: 'Mushroom3', key: 'm3',
     hp: 90, dmg: 10, speed: 38,
     aggro: 100, deaggro: 170, reach: 18, hitW: 22, hitFrame: 4,
-    cooldown: 1500, body: [16, 8], leash: 140, xp: 25,
+    cooldown: 1500, body: [16, 8], leash: 190, xp: 25,
     // Меч с сильного — примерно с четвёртого убийства. Это несколько минут,
     // а не вечер: экипировка должна начать работать, пока игроку интересно.
     drop: [

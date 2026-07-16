@@ -4,6 +4,7 @@ import { creatureDepth } from './depth';
 import { dirFromVelocity, DIRS_MOB, type Dir } from './dir';
 import { distSq, hitRect } from './combat';
 import { nextStep, UNREACHABLE } from './flow';
+import { decideChase } from './chase';
 import type { MonsterStats } from './creatures';
 import type { Player } from './player';
 
@@ -11,7 +12,7 @@ const FRAME = 64;
 const sheetPath = (sheet: string, anim: string) =>
   `assets/monster/PNG/${sheet}/With_shadow/${sheet}_${anim}_with_shadow.png`;
 
-type State = 'idle' | 'chase' | 'hold' | 'attack' | 'hurt' | 'dead';
+type State = 'idle' | 'chase' | 'leash' | 'attack' | 'hurt' | 'dead';
 
 /** Труп лежит столько, потом тает. */
 const CORPSE_MS = 3000;
@@ -235,22 +236,29 @@ export class Monster {
     const py = player.sprite.y;
     const d2 = distSq(this.sprite.x, this.sprite.y, px, py);
 
-    // Далеко от дома — идём обратно: без проходимости погоня утащит паука в озеро.
+    // Гнаться, стоять или возвращаться — решает чистая функция, у неё же тесты.
     const home2 = distSq(this.sprite.x, this.sprite.y, this.homeX, this.homeY);
-    if (home2 > this.stats.leash * this.stats.leash) {
+    const was = this.state;
+    const mode = decideChase(
+      { mode: was === 'chase' || was === 'leash' ? was : 'idle', toPlayer2: d2, toHome2: home2, homeTol2: this.tileW * this.tileW },
+      this.stats,
+    );
+
+    if (mode === 'leash') {
+      // Возвращаемся домой ДО КОНЦА, не отвлекаясь на игрока. Раньше проверка
+      // стояла в лоб («дальше поводка — шаг домой»), и паук дрожал на границе:
+      // шаг домой — снова внутри — снова в погоню — снова за поводок.
+      this.state = 'leash';
       this.moveTo(this.homeX, this.homeY);
-      this.hp = this.stats.hp;
       this.bar.setVisible(false);
       this.barBg.setVisible(false);
       return;
     }
 
-    if (this.state === 'chase' && d2 > this.stats.deaggro * this.stats.deaggro) {
-      this.state = 'idle';
-    }
-    if (this.state === 'idle' && d2 < this.stats.aggro * this.stats.aggro) {
-      this.state = 'chase';
-    }
+    // Дошёл домой — только теперь лечимся, один раз. Раньше здоровье
+    // восстанавливалось каждый кадр за поводком, и паука нельзя было добить.
+    if (was === 'leash' && mode === 'idle') this.hp = this.stats.hp;
+    this.state = mode;
 
     if (this.state === 'idle') {
       body.setVelocity(0, 0);
