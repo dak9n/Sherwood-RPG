@@ -8,6 +8,6 @@
     "types": ["node"],
     "allowImportingTsExtensions": true
   },
-  "include": ["tools", "vite.config.ts", "src/**/*.test.ts"],
+  "include": ["tools", "server", "vite.config.ts", "src/**/*.test.ts"],
   "exclude": []
 }

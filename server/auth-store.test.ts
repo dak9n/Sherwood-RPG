@@ -1,0 +1,122 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { AuthStore, type UserRecord } from './auth-store.ts';
+
+/** Хранилище с болванкой persist: проверяем логику, а не диск. */
+const make = async (initial: UserRecord[] = []) => {
+  const saved: UserRecord[][] = [];
+  const store = await AuthStore.create(initial, (u) => saved.push(u));
+  return { store, saved };
+};
+
+const T0 = 1_000_000;
+
+test('регистрация создаёт аккаунт и сразу впускает', async () => {
+  const { store, saved } = await make();
+  const r = await store.register('Геко', 'secret123', T0);
+
+  assert.equal(r.ok, true);
+  assert.equal(r.name, 'Геко', 'имя показываем как ввели');
+  assert.match(r.token!, /^[0-9a-f]{64}$/, 'выдан токен сессии');
+  assert.equal(saved.length, 1, 'записали на диск один раз');
+  assert.equal(saved[0][0].hash.includes('secret123'), false, 'пароль в записи не открытым текстом');
+});
+
+test('второй раз то же имя не занять — и регистр не спасает', async () => {
+  const { store } = await make();
+  await store.register('geko', 'secret123', T0);
+
+  assert.equal((await store.register('geko', 'other123', T0)).ok, false, 'ровно то же');
+  const dup = await store.register('  GEKO ', 'other123', T0);
+  assert.equal(dup.ok, false, 'другой регистр и пробелы — тот же игрок');
+  assert.match(dup.error!, /занято/);
+});
+
+test('слабое имя или пароль не регистрируются', async () => {
+  const { store, saved } = await make();
+  assert.equal((await store.register('ab', 'secret123', T0)).ok, false, 'имя короткое');
+  assert.equal((await store.register('нормально', '123', T0)).ok, false, 'пароль короткий');
+  assert.equal(saved.length, 0, 'ничего не записали');
+});
+
+test('вход: верный пароль впускает, неверный — нет', async () => {
+  const { store } = await make();
+  await store.register('geko', 'correct-pw', T0);
+
+  const ok = await store.login('geko', 'correct-pw', T0);
+  assert.equal(ok.ok, true);
+  assert.equal(ok.name, 'geko');
+
+  const bad = await store.login('geko', 'wrong-pw', T0);
+  assert.equal(bad.ok, false);
+});
+
+test('ошибка входа общая — не выдаёт, какое имя существует', async () => {
+  // Раздельные «нет имени» / «пароль не тот» — подсказка взломщику.
+  const { store } = await make();
+  await store.register('geko', 'correct-pw', T0);
+
+  const нетИмени = await store.login('никто', 'что-угодно', T0);
+  const неТотПароль = await store.login('geko', 'wrong-pw', T0);
+  assert.equal(нетИмени.error, неТотПароль.error, 'формулировки должны совпадать');
+});
+
+test('сессия узнаёт вошедшего по токену', async () => {
+  const { store } = await make();
+  const r = await store.register('Ден', 'secret123', T0);
+
+  assert.equal(store.whoami(r.token, T0), 'Ден');
+  assert.equal(store.whoami('чужой-токен', T0), null);
+  assert.equal(store.whoami(undefined, T0), null);
+});
+
+test('протухшая сессия больше не пускает', async () => {
+  const { store } = await make();
+  const r = await store.register('Ден', 'secret123', T0);
+
+  const месяц = 30 * 24 * 60 * 60 * 1000;
+  assert.equal(store.whoami(r.token, T0 + месяц - 1), 'Ден', 'ещё жива');
+  assert.equal(store.whoami(r.token, T0 + месяц + 1), null, 'протухла');
+});
+
+test('выход гасит токен', async () => {
+  const { store } = await make();
+  const r = await store.register('Ден', 'secret123', T0);
+
+  store.logout(r.token);
+  assert.equal(store.whoami(r.token, T0), null, 'после выхода токен мёртв');
+});
+
+test('перебор пароля запирает имя, верный пароль до запирания — впускает', async () => {
+  const { store } = await make();
+  await store.register('geko', 'correct-pw', T0);
+
+  // 7 промахов — ещё пускает попытки
+  for (let i = 0; i < 7; i++) await store.login('geko', 'wrong', T0);
+  assert.equal((await store.login('geko', 'correct-pw', T0)).ok, true, 'до предела верный пароль работает');
+});
+
+test('после предела промахов имя заперто даже с верным паролем', async () => {
+  const { store } = await make();
+  await store.register('geko', 'correct-pw', T0);
+
+  for (let i = 0; i < 8; i++) await store.login('geko', 'wrong', T0);
+  const locked = await store.login('geko', 'correct-pw', T0);
+  assert.equal(locked.ok, false, 'заперто');
+  assert.match(locked.error!, /попыток/);
+
+  // Через 5 минут отпускает.
+  const ok = await store.login('geko', 'correct-pw', T0 + 5 * 60 * 1000 + 1);
+  assert.equal(ok.ok, true, 'после паузы снова можно');
+});
+
+test('загруженные с диска пользователи входят', async () => {
+  // Первый запуск создал аккаунт, сервер перезапустился, запись прочли с диска.
+  const first = await make();
+  const r = await first.store.register('geko', 'my-password', T0);
+  assert.equal(r.ok, true);
+  const onDisk = first.saved.at(-1)!;
+
+  const second = await make(onDisk);
+  assert.equal((await second.store.login('geko', 'my-password', T0)).ok, true);
+});
