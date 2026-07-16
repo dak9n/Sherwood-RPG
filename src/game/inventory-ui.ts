@@ -309,6 +309,8 @@ export interface HeroView {
   points: number;
   /** Что уже дали вложенные очки — показываем отдельно от вещей. */
   fromPoints: { dmg: number; hp: number; mp: number; def: number };
+  /** Прибавка урона от заточки надетого оружия (кузница, K). */
+  sharpen: number;
 }
 
 export class InventoryUi {
@@ -325,6 +327,8 @@ export class InventoryUi {
   private equipped: Equipped = {};
   /** Спрашиваем героя, а не запоминаем: здоровье меняется каждый кадр. */
   private hero: (() => HeroView) | null = null;
+  /** Заточка вида оружия — для подписи «+N» у надетого. Ставит сцена. */
+  private plusFor: (id: string) => number = () => 0;
   private statsKey = '';
 
   /** Зовётся, когда игрок хочет применить предмет из ячейки. */
@@ -464,6 +468,11 @@ export class InventoryUi {
     this.hero = get;
   }
 
+  /** Откуда узнавать заточку вида оружия (кузница, K). */
+  setPlusFor(get: (id: string) => number): void {
+    this.plusFor = get;
+  }
+
   /** Строка для подсказки: что предмет даёт. */
   private describe(id: string): string {
     const def = ITEMS[id];
@@ -506,7 +515,9 @@ export class InventoryUi {
 
       const def = ITEMS[id];
       el.append(this.iconEl(def.icon, 'item'));
-      el.title = `${def.name} — снять`;
+      // Заточенное оружие подписываем честным «+N» — как его знает кузница.
+      const plus = this.plusFor(id);
+      el.title = `${def.name}${plus > 0 ? ` +${plus}` : ''} — снять`;
       el.onclick = () => this.onUnequip(key);
       el.onmouseenter = () => {
         this.hint.textContent = this.describe(id);
@@ -534,7 +545,7 @@ export class InventoryUi {
     if (!h) return;
 
     const b = totalBonuses(this.equipped);
-    const key = `${Math.ceil(h.hp)}/${h.hpMax}/${Math.floor(h.mp)}/${h.mpMax}/${h.level}/${Math.floor(h.xp)}/${JSON.stringify(b)}/${h.points}/${JSON.stringify(h.fromPoints)}`;
+    const key = `${Math.ceil(h.hp)}/${h.hpMax}/${Math.floor(h.mp)}/${h.mpMax}/${h.level}/${Math.floor(h.xp)}/${JSON.stringify(b)}/${h.points}/${JSON.stringify(h.fromPoints)}/${h.sharpen}`;
     if (key === this.statsKey) return;
     this.statsKey = key;
 
@@ -556,9 +567,17 @@ export class InventoryUi {
     const src = (gear: number, pts: number): string =>
       !gear && !pts ? '' : `от вещей ${gear >= 0 ? '+' : ''}${gear}, от очков +${pts}`;
 
+    // Атака собирается из трёх источников; в подсказке разложено по полочкам.
+    const atk = b.dmg + p.dmg + h.sharpen;
+    const atkSrc = [
+      b.dmg ? `от вещей ${b.dmg >= 0 ? '+' : ''}${b.dmg}` : '',
+      p.dmg ? `от очков +${p.dmg}` : '',
+      h.sharpen ? `заточка +${h.sharpen}` : '',
+    ].filter(Boolean).join(', ');
+
     this.stats.innerHTML = [
       this.statRow(STAT_ICON.hp, 'Здоровье', `${Math.ceil(h.hp)} / ${h.hpMax}`, mark(b.hp + p.hp), src(b.hp, p.hp)),
-      this.statRow(STAT_ICON.dmg, 'Атака', `${h.dmgMin + b.dmg + p.dmg}–${h.dmgMax + b.dmg + p.dmg}`, mark(b.dmg + p.dmg), src(b.dmg, p.dmg)),
+      this.statRow(STAT_ICON.dmg, 'Атака', `${h.dmgMin + atk}–${h.dmgMax + atk}`, mark(atk), atkSrc),
       this.statRow(STAT_ICON.mp, 'Мана', `${Math.floor(h.mp)} / ${h.mpMax}`, mark(b.mp + p.mp), src(b.mp, p.mp)),
       this.statRow(STAT_ICON.def, 'Защита', String(b.def + p.def), '', src(b.def, p.def)),
       this.statRow(STAT_ICON.speed, 'Скорость', String(HERO.speed + b.speed), mark(b.speed)),

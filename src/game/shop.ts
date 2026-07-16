@@ -31,6 +31,7 @@ export const VALUE: Record<string, number> = Object.assign(Object.create(null), 
   potion_mp: 20,
   ore_copper: 15,
   crystal: 40,
+  scroll_sharpen: 30,
   sword_basic: 10,
   bow: 120,
   sword: 90,
@@ -44,7 +45,10 @@ export const VALUE: Record<string, number> = Object.assign(Object.create(null), 
 });
 
 /** Что стоит на витрине и в каком порядке. Только эти предметы можно купить. */
-export const SHOP_STOCK: string[] = ['potion_hp', 'potion_mp', 'apple', 'bow', 'sword', 'shield', 'boots', 'helm'];
+export const SHOP_STOCK: string[] = [
+  'potion_hp', 'potion_mp', 'apple', 'scroll_sharpen',
+  'bow', 'sword', 'shield', 'boots', 'helm',
+];
 
 /** Доля ценности, которую даёт лавка при продаже. Разница с покупкой — её навар. */
 const SELL_RATE = 0.4;

@@ -110,6 +110,13 @@ export const ITEMS: Record<string, ItemDef> = {
   ore_copper: { id: 'ore_copper', name: 'Медный слиток', tab: 'resource', icon: ico(4, 16), stack: 99 },
   crystal: { id: 'crystal', name: 'Кристалл', tab: 'resource', icon: ico(5, 10), stack: 99, rarity: 'uncommon' },
 
+  // Свиток заточки: съедается кузницей (K) за попытку поднять оружие на +1.
+  // Лист 'scroll' — наш дорисованный: свитка в наборе не нашлось ни в одном листе.
+  scroll_sharpen: {
+    id: 'scroll_sharpen', name: 'Свиток заточки', tab: 'resource',
+    icon: { sheet: 'scroll', x: 0, y: 0, w: 16, h: 16 }, stack: 20, rarity: 'uncommon',
+  },
+
   // Меч новобранца — с ним герой начинает игру. Раньше меча не было вовсе:
   // персонаж махал и наносил урон, а в сумке оружия не было, и это сбивало с
   // толку. Бонус НУЛЕВОЙ намеренно: урон обычного взмаха уже заложен в HERO.dmg,

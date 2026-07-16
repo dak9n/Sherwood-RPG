@@ -13,6 +13,7 @@ const base = (over: Partial<Progress> = {}): Progress => ({
   hp: 100,
   mp: 50,
   gold: 0,
+  sharpen: {},
   bag: new Array(BAG).fill(null),
   equipped: {},
   quick: emptyHotbar(),
@@ -147,6 +148,40 @@ test('сейв ПЕРВОЙ версии без золота читается (�
   const p = parseSave(old, BAG)!;
   assert.equal(p.gold, 0, 'нет поля — читаем ноль');
   assert.equal(p.level, 4, 'остальной прогресс на месте');
+});
+
+test('заточка: туда-обратно и санация', () => {
+  const p = parseSave(serializeProgress(base({ sharpen: { sword: 3, bow: 20 } })), BAG)!;
+  assert.deepEqual(p.sharpen, { sword: 3, bow: 20 }, 'честная заточка цела');
+
+  const dirty = parseSave(
+    serializeProgress(base({
+      sharpen: {
+        sword: 99,             // выше предела — режем до 20
+        bow: -4,               // отрицательная — выбрасываем
+        apple: 5,              // яблоко не оружие
+        НЕТ_ТАКОГО: 3,         // неизвестный предмет
+        sword_basic: 2.9,      // дробное — вниз до целого
+      } as never,
+    })),
+    BAG,
+  )!;
+  assert.deepEqual(dirty.sharpen, { sword: 20, sword_basic: 2 });
+});
+
+test('сейв без заточки (старый) читается с пустой картой', () => {
+  const old = serializeProgress(base({ level: 3 })) as Record<string, unknown>;
+  delete old.sharpen;
+  const p = parseSave(old, BAG)!;
+  assert.deepEqual(p.sharpen, {}, 'нет поля — пустая заточка');
+  assert.equal(p.level, 3, 'остальное цело');
+});
+
+test('id-ключ прототипа в заточке отбрасывается', () => {
+  // JSON.parse создаёт СВОЙ ключ __proto__ (литерал бы задел прототип).
+  const evil = JSON.parse('{"__proto__": 9, "constructor": 9, "sword": 2}');
+  const p = parseSave({ ...serializeProgress(base()), sharpen: evil }, BAG)!;
+  assert.deepEqual(p.sharpen, { sword: 2 }, 'фантомные ключи вычищены');
 });
 
 test('hp/mp очищаются до неотрицательных чисел', () => {

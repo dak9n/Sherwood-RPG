@@ -3,6 +3,7 @@ import { ITEMS, type Stack } from './items.ts';
 import { SLOTS, type Equipped } from './equipment.ts';
 import { canBind, HOTBAR_SIZE, emptyHotbar, type Hotbar } from './hotbar.ts';
 import { STATS, earned, emptySpent, type Spent } from './stats.ts';
+import { SHARPEN_MAX, type Sharpen } from './forge.ts';
 
 /**
  * Разбор и санация сохранения. Чистая логика: ни сервера, ни браузера — поэтому
@@ -32,6 +33,8 @@ export interface Progress {
   equipped: Equipped;
   quick: Hotbar;
   spent: Spent;
+  /** Заточка оружия: вид -> уровень. Тоже добавлено позже — старый сейв читается без неё. */
+  sharpen: Sharpen;
 }
 
 export interface SaveFile extends Progress {
@@ -96,6 +99,27 @@ function cleanQuick(raw: unknown): Hotbar {
   return bar;
 }
 
+/**
+ * Заточка из сейва. Берём только НАШИ виды оружия (своим полем таблицы, не
+ * унаследованным — та же защита от __proto__/constructor, что у сумки) и режем
+ * уровень в honest-диапазон 0..SHARPEN_MAX: выше игра не выдаёт.
+ */
+function cleanSharpen(raw: unknown): Sharpen {
+  // Обычный объект, а не Object.create(null): внутрь попадают ТОЛЬКО ключи,
+  // прошедшие hasOwn по таблице предметов, — __proto__ и родня сюда не пролезут,
+  // а все чтения карты идут через plusOf с тем же hasOwn.
+  const out: Sharpen = {};
+  if (!raw || typeof raw !== 'object') return out;
+
+  for (const [id, v] of Object.entries(raw as Record<string, unknown>)) {
+    const def = Object.hasOwn(ITEMS, id) ? ITEMS[id] : undefined;
+    if (!def || def.slot !== 'weapon') continue;
+    const level = Math.min(SHARPEN_MAX, Math.floor(num(v, 0)));
+    if (level > 0) out[id] = level;
+  }
+  return out;
+}
+
 function cleanSpent(raw: unknown, level: number): Spent {
   const spent = emptySpent();
   const src = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
@@ -139,5 +163,6 @@ export function parseSave(raw: unknown, bagSize: number): Progress | null {
     equipped: cleanEquipped(s.equipped),
     quick: cleanQuick(s.quick),
     spent: cleanSpent(s.spent, level),
+    sharpen: cleanSharpen(s.sharpen),
   };
 }

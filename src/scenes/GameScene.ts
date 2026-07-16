@@ -11,10 +11,12 @@ import { Hud } from '../game/hud';
 import { draftCollision, mergeCollision } from '../map/collision-draft';
 import { drawnBounds } from '../map/doc';
 import { Loot, registerItemFrames } from '../game/loot';
-import { addToBag, takeOne, sortBag, isRanged, ITEMS, type Stack, type EquipSlot } from '../game/items';
+import { addToBag, takeOne, sortBag, isRanged, countOf, ITEMS, type Stack, type EquipSlot } from '../game/items';
 import { InventoryUi } from '../game/inventory-ui';
 import { SkillsUi } from '../game/skills-ui';
 import { ShopUi } from '../game/shop-ui';
+import { ForgeUi } from '../game/forge-ui';
+import { trySharpen, plusOf, sharpenBonus, SCROLL_ID, type Sharpen } from '../game/forge';
 import { MinimapUi } from '../game/minimap-ui';
 import { MenuUi } from '../game/menu-ui';
 import { HotbarUi } from '../game/hotbar-ui';
@@ -50,6 +52,7 @@ export class GameScene extends MapScene {
   private inventory!: InventoryUi;
   private skills!: SkillsUi;
   private shop!: ShopUi;
+  private forge!: ForgeUi;
   private hotbar!: HotbarUi;
   private minimap!: MinimapUi;
   private menu!: MenuUi;
@@ -58,6 +61,12 @@ export class GameScene extends MapScene {
   private arrows: Arrow[] = [];
   /** Золото игрока. Падает с монстров, тратится в магазине. Часть сейва. */
   private gold = 0;
+  /**
+   * Заточка оружия: вид -> уровень (кузница, K). Часть сейва. Ключи всегда
+   * проверены по таблице предметов (trySharpen и санация сейва), чтение — через
+   * plusOf с hasOwn.
+   */
+  private sharpen: Sharpen = {};
   /** Сумка игрока. */
   bag: (Stack | null)[] = new Array(BAG_SIZE).fill(null);
   /** Надетое. Новый герой начинает с мечом в руке — у каждого героя он есть. */
@@ -102,6 +111,8 @@ export class GameScene extends MapScene {
     for (const stats of Object.values(MONSTERS)) Monster.preload(this, stats);
     // Иконки предметов. Тайлсеты карты (грибы) грузит MapScene вторым проходом.
     this.load.image('icons', 'assets/interface/PNG/Icons.png');
+    // Наш дорисованный свиток — лист из одной иконки (см. items.ts про 'scroll').
+    this.load.image('scroll', 'assets/interface/ui/scroll.png');
   }
 
   protected onReady(): void {
@@ -144,7 +155,9 @@ export class GameScene extends MapScene {
       dmgMax: HERO.dmgMax + this.player.level - 1,
       points: unspent(this.player.level, this.spent),
       fromPoints: bonusFrom(this.spent),
+      sharpen: sharpenBonus(this.sharpen, this.equipped.weapon),
     }));
+    this.inventory.setPlusFor((id) => plusOf(this.sharpen, id));
     this.inventory.onUse = (index) => this.useItem(index);
     this.inventory.onEquip = (index) => this.equipItem(index);
     this.inventory.onUnequip = (slot) => this.unequipItem(slot as EquipSlot);
@@ -166,6 +179,16 @@ export class GameScene extends MapScene {
     this.shop.setGold(() => this.gold);
     this.shop.onBuy = (id) => this.buy(id);
     this.shop.onSellBasket = (indices) => this.sellBasket(indices);
+
+    // Кузница (K): заточка надетого оружия свитками. Бросок — в чистой
+    // trySharpen; окно только показывает состояние и шлёт намерение.
+    this.forge = new ForgeUi();
+    this.forge.setState(() => ({
+      weapon: this.equipped.weapon,
+      plus: plusOf(this.sharpen, this.equipped.weapon),
+      scrolls: countOf(this.bag, SCROLL_ID),
+    }));
+    this.forge.onSharpen = () => this.sharpenWeapon();
 
     this.hotbar = new HotbarUi();
     this.hotbar.setData(this.quick, this.bag, this.equipped);
@@ -211,6 +234,11 @@ export class GameScene extends MapScene {
         toggle: () => this.shop.toggle(),
       },
       {
+        label: 'Кузница', key: 'K', icon: { sheet: 'icons', x: 0 * 16, y: 6 * 16, w: 16, h: 16 },
+        isOpen: () => this.forge.isOpen,
+        toggle: () => this.forge.toggle(),
+      },
+      {
         label: 'Карта', key: 'M', icon: { sheet: 'icons', x: 4 * 16, y: 3 * 16, w: 16, h: 16 },
         isOpen: () => this.minimap.isFullOpen,
         toggle: () => this.minimap.toggleFull(),
@@ -222,6 +250,7 @@ export class GameScene extends MapScene {
     this.input.keyboard?.on('keydown-I', () => this.inventory.toggle());
     this.input.keyboard?.on('keydown-U', () => this.skills.toggle());
     this.input.keyboard?.on('keydown-O', () => this.shop.toggle());
+    this.input.keyboard?.on('keydown-K', () => this.forge.toggle());
     this.input.keyboard?.on('keydown-M', () => this.minimap.toggleFull());
     this.bindQuickKeys();
 
@@ -246,6 +275,7 @@ export class GameScene extends MapScene {
       this.inventory.destroy();
       this.skills.destroy();
       this.shop.destroy();
+      this.forge.destroy();
       for (const a of this.arrows) a.destroy();
       this.hotbar.destroy();
       this.minimap.destroy();
@@ -541,6 +571,7 @@ export class GameScene extends MapScene {
       equipped: this.equipped,
       quick: this.quick,
       spent: this.spent,
+      sharpen: this.sharpen,
     };
   }
 
@@ -588,6 +619,8 @@ export class GameScene extends MapScene {
     for (let i = 0; i < this.quick.length; i++) this.quick[i] = prog.quick[i] ?? null;
     this.spent = prog.spent;
     this.gold = prog.gold;
+    // Заточка — ДО applyGear: тот считает урон уже с ней.
+    this.sharpen = prog.sharpen;
 
     this.player.setPoints(bonusFrom(this.spent));
     this.applyGear(); // прибавки вещей — до restore, чтобы hpMax был верным
@@ -661,10 +694,37 @@ export class GameScene extends MapScene {
   /**
    * Пересчитать прибавки от вещей. Одно место — иначе бонусы разъедутся. Заодно
    * сообщаем игроку, стреляет ли надетое оружие: лук превращает взмах в выстрел.
+   *
+   * Заточка (кузница, K) бьёт через тот же канал, что бонус оружия: +1 урона за
+   * уровень. Сняли меч — ушла и его заточка, надели обратно — вернулась.
    */
   private applyGear(): void {
-    this.player.setGear(totalBonuses(this.equipped));
+    const bonus = totalBonuses(this.equipped);
+    bonus.dmg += sharpenBonus(this.sharpen, this.equipped.weapon);
+    this.player.setGear(bonus);
     this.player.setRanged(isRanged(this.equipped.weapon));
+  }
+
+  /**
+   * Попытка заточки из окна кузницы. Бросок и все проверки — в чистой trySharpen;
+   * здесь только применяем итог: свиток сгорел (сумка изменилась), при успехе
+   * урон пересчитан, и оба исхода честно показаны в окне.
+   */
+  private sharpenWeapon(): void {
+    const res = trySharpen(this.sharpen, this.equipped.weapon, this.bag);
+    if (!res.ok) {
+      this.forge.flash(res.reason, false);
+      return;
+    }
+
+    this.refreshBags(); // свиток съеден: сумка, панель и автосейв
+    if (res.success) {
+      this.applyGear();
+      this.forge.flash(`Успех! Оружие теперь +${res.level}`);
+    } else {
+      this.forge.flash(`Неудача на +${res.target} — свиток сгорел, заточка +${res.level} цела`, false);
+    }
+    this.forge.render();
   }
 
   /** Купить предмет в магазине. Все проверки — в чистой buyItem, окно только шлёт намерение. */
@@ -843,6 +903,7 @@ export class GameScene extends MapScene {
     this.inventory.refreshStats();
     this.skills.render();
     this.shop.render();
+    this.forge.render();
     this.menu.render();
     // Мёртвых пауков на карте не показываем: труп — не угроза.
     this.minimap.render({
