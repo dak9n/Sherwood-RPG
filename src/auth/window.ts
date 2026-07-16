@@ -63,7 +63,9 @@ const CSS = `
     transform: scale(${HERO.zoom}); transform-origin: bottom center;
   }
 
-  #auth .tabs { display: flex; gap: ${TS}px; margin-bottom: ${3 * TS}px; }
+  /* Вкладки сидят на верхней кромке страницы — их плоский низ сливается с ней,
+     а не висит обрезанным в воздухе. Ровно как в окне инвентаря. */
+  #auth .tabs { display: flex; gap: ${TS}px; padding-left: ${2 * TS}px; position: relative; z-index: 1; }
   #auth .tab {
     flex: 1; text-align: center; cursor: pointer; position: relative; top: ${2 * TS}px;
     padding: ${2 * TS}px ${2 * TS}px ${TS}px; font-size: 12px; color: #e6d3b0;
@@ -75,7 +77,14 @@ const CSS = `
     border-image-source: url(${UI}/tab_on.png); top: 0; padding-bottom: ${3 * TS}px; color: #eaf6f0;
   }
 
-  #auth label { display: block; margin: 8px 0 3px; color: #b0916a; font-size: 12px; }
+  /* Светлая страница под вкладками — та же, что держит сетку сумки в инвентаре. */
+  #auth .page {
+    border-image: url(${UI}/panel_beige.png) 2 5 5 5 fill / ${2 * S}px ${5 * S}px ${5 * S}px ${5 * S}px repeat;
+    border-width: ${2 * S}px ${5 * S}px ${5 * S}px ${5 * S}px; border-style: solid;
+    padding: ${S}px ${2 * S}px ${2 * S}px;
+  }
+  #auth label { display: block; margin: 6px 0 3px; color: #6b4f2a; font-size: 12px; }
+  #auth .page label:first-child { margin-top: 2px; }
   #auth input {
     width: 100%; box-sizing: border-box; font: inherit; padding: 7px 9px; color: #f0e0c8;
     background: #241811; border: 2px solid #70492a; border-radius: 2px;
@@ -118,11 +127,13 @@ export function showAuthWindow(): Promise<string> {
           <div class="tab" data-mode="login">Вход</div>
           <div class="tab" data-mode="register">Регистрация</div>
         </div>
-        <label>Имя</label>
-        <input class="name" autocomplete="username" maxlength="20" />
-        <label>Пароль</label>
-        <input class="pw" type="password" autocomplete="current-password" maxlength="200" />
-        <button class="go"></button>
+        <div class="page">
+          <label>Имя</label>
+          <input class="name" autocomplete="username" maxlength="20" />
+          <label>Пароль</label>
+          <input class="pw" type="password" autocomplete="current-password" maxlength="200" />
+          <button class="go"></button>
+        </div>
         <div class="msg"></div>
         <div class="hint"></div>
       </div>
