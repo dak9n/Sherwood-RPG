@@ -7,9 +7,11 @@ import { pickSpawns } from '../game/spawn';
 import { HERO, MONSTERS, SPAWNS, xpToNext, rollDrop } from '../game/creatures';
 import { Hud } from '../game/hud';
 import { draftCollision } from '../map/collision-draft';
+import { drawnBounds } from '../map/doc';
 import { Loot, registerItemFrames } from '../game/loot';
 import { addToBag, takeOne, sortBag, ITEMS, type Stack, type EquipSlot } from '../game/items';
 import { InventoryUi } from '../game/inventory-ui';
+import { MinimapUi } from '../game/minimap-ui';
 import { HotbarUi } from '../game/hotbar-ui';
 import { bind, swap, unbind, findInBag, emptyHotbar, type Hotbar } from '../game/hotbar';
 import { equipFromBag, unequip, totalBonuses, slotWearing, type Equipped } from '../game/equipment';
@@ -38,6 +40,7 @@ export class GameScene extends MapScene {
   private hud!: Hud;
   private inventory!: InventoryUi;
   private hotbar!: HotbarUi;
+  private minimap!: MinimapUi;
   private loot: Loot[] = [];
   /** Сумка игрока. */
   bag: (Stack | null)[] = new Array(BAG_SIZE).fill(null);
@@ -117,15 +120,23 @@ export class GameScene extends MapScene {
     };
     this.hotbar.render();
 
+    // Карту печатаем один раз: она в игре не меняется, а слоёв 27. Картинки
+    // тайлсетов уже загружены — Phaser держит их под именем тайлсета.
+    this.minimap = new MinimapUi(this.doc.map, (name) =>
+      this.textures.exists(name) ? (this.textures.get(name).getSourceImage() as CanvasImageSource) : null,
+    );
+
     // I открывает и закрывает сумку. Игру не останавливаем: пауки не ждут, пока
     // ты роешься в грибах, — иначе сумка станет способом переждать бой.
     this.input.keyboard?.on('keydown-I', () => this.inventory.toggle());
+    this.input.keyboard?.on('keydown-M', () => this.minimap.toggleFull());
     this.bindQuickKeys();
 
     this.events.once('shutdown', () => {
       this.hud.destroy();
       this.inventory.destroy();
       this.hotbar.destroy();
+      this.minimap.destroy();
     });
 
     const cam = this.cameras.main;
@@ -457,6 +468,12 @@ export class GameScene extends MapScene {
       xpToNext(this.player.level),
     );
     this.inventory.refreshStats();
+    // Мёртвых пауков на карте не показываем: труп — не угроза.
+    this.minimap.render({
+      player: { x: this.player.sprite.x, y: this.player.sprite.y },
+      monsters: this.monsters.filter((m) => !m.isDead).map((m) => ({ x: m.sprite.x, y: m.sprite.y })),
+      loot: this.loot.map((l) => ({ x: l.sprite.x, y: l.sprite.y })),
+    });
     this.followPlayer();
   }
 
@@ -483,25 +500,11 @@ export class GameScene extends MapScene {
 
   /** Центр области, где вообще что-то нарисовано. */
   private drawnCenter(): { x: number; y: number } {
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-
-    for (const layer of this.doc.layers) {
-      for (let i = 0; i < layer.data.length; i++) {
-        if (!layer.data[i]) continue;
-        const x = i % this.doc.width;
-        const y = Math.floor(i / this.doc.width);
-        minX = Math.min(minX, x);
-        minY = Math.min(minY, y);
-        maxX = Math.max(maxX, x);
-        maxY = Math.max(maxY, y);
-      }
-    }
-
+    const b = drawnBounds(this.doc.map);
     const tw = this.doc.map.tileWidth;
     const th = this.doc.map.tileHeight;
-    return { x: ((minX + maxX) / 2) * tw, y: ((minY + maxY) / 2) * th };
+    // Пустая карта — ставим в середину холста: другого ориентира нет.
+    if (!b) return { x: (this.doc.width * tw) / 2, y: (this.doc.height * th) / 2 };
+    return { x: ((b.minX + b.maxX) / 2) * tw, y: ((b.minY + b.maxY) / 2) * th };
   }
 }

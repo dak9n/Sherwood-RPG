@@ -101,3 +101,34 @@ export class MapDoc {
     return n;
   }
 }
+
+/**
+ * Прямоугольник в тайлах, за пределами которого на карте пусто.
+ *
+ * Холст карты почти всегда больше нарисованного: лес расширяли вправо и вниз,
+ * и добрая половина клеток пуста. Кто показывает карту целиком — от старта
+ * игрока до полной карты на M — должен знать, где она на самом деле.
+ *
+ * null, если не нарисовано вообще ничего: у пустоты нет ни центра, ни границ,
+ * и возвращать нули значило бы врать.
+ */
+export function drawnBounds(map: GameMap): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const layer of map.layers) {
+    for (let i = 0; i < layer.data.length; i++) {
+      if (!layer.data[i]) continue;
+      const x = i % map.width;
+      const y = Math.floor(i / map.width);
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+  }
+
+  return minX === Infinity ? null : { minX, minY, maxX, maxY };
+}

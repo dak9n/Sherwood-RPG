@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MapDoc, ensureCollision } from './doc.ts';
+import { MapDoc, ensureCollision, drawnBounds } from './doc.ts';
 import type { GameMap } from './types.ts';
 
 /** Карта 2x2 с тремя слоями — как в настоящей, где тайл может лежать под другими. */
@@ -113,4 +113,52 @@ test('карта версии 3 не откатывается до 2', () => {
   // остальному коду, что список тайлсетов у карты свой, а его там нет.
   const v3 = { ...makeDoc().map, version: 3 } as GameMap;
   assert.equal(ensureCollision(v3).version, 3);
+});
+
+/** Карта 5x4, где нарисован только прямоугольник (1,1)..(3,2). */
+function sparseMap(): GameMap {
+  const empty = () => new Array(20).fill(0);
+  const at = (x: number, y: number) => y * 5 + x;
+
+  const low = empty();
+  low[at(1, 1)] = 7;
+  low[at(3, 2)] = 9;
+
+  const high = empty();
+  high[at(2, 1)] = 5; // внутри уже известных границ — их не расширяет
+
+  return {
+    version: 3, width: 5, height: 4, tileWidth: 16, tileHeight: 16,
+    tilesets: [],
+    layers: [
+      { name: 'низ', visible: true, data: low },
+      { name: 'верх', visible: true, data: high },
+    ],
+    collision: new Array(20).fill(0),
+  } as GameMap;
+}
+
+test('границы нарисованного считаются по всем слоям', () => {
+  assert.deepEqual(drawnBounds(sparseMap()), { minX: 1, minY: 1, maxX: 3, maxY: 2 });
+});
+
+test('границы растут от тайла на любом слое', () => {
+  // Холст карты почти всегда больше нарисованного, и знать надо про ЛЮБОЙ слой:
+  // одинокий куст на верхнем слое — тоже часть карты.
+  const m = sparseMap();
+  m.layers[1].data[0] = 3; // тайл в углу (0,0) на верхнем слое
+  assert.deepEqual(drawnBounds(m), { minX: 0, minY: 0, maxX: 3, maxY: 2 });
+});
+
+test('у пустой карты границ нет', () => {
+  // Возвращать нули значило бы соврать: у пустоты нет ни центра, ни углов.
+  const m = sparseMap();
+  for (const l of m.layers) l.data.fill(0);
+  assert.equal(drawnBounds(m), null);
+});
+
+test('карта, нарисованная целиком, даёт границы по краям холста', () => {
+  const m = sparseMap();
+  m.layers[0].data.fill(1);
+  assert.deepEqual(drawnBounds(m), { minX: 0, minY: 0, maxX: 4, maxY: 3 });
 });

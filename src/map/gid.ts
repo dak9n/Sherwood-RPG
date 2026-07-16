@@ -27,6 +27,28 @@ export function unpackGid(raw: number): { gid: number; flips: Flips } {
   };
 }
 
+/**
+ * Во что превращаются флаги при рисовании: поворот вокруг центра тайла плюс
+ * отражение по X.
+ *
+ * Таблица — та же, что у Phaser (Tilemaps/Parsers/Tiled/ParseGID), которым карта
+ * рисуется в игре. Своя трактовка флагов означала бы, что мини-карта разошлась
+ * бы с тем, что игрок видит под ногами.
+ */
+export function tileTransform(flips: Flips): { rotation: number; flipX: boolean } {
+  const { h, v, d } = flips;
+  const Q = Math.PI / 2;
+
+  if (h && v && d) return { rotation: Q, flipX: true };
+  if (h && v && !d) return { rotation: Math.PI, flipX: false };
+  if (h && !v && d) return { rotation: Q, flipX: false };
+  if (h && !v && !d) return { rotation: 0, flipX: true };
+  if (!h && v && d) return { rotation: 3 * Q, flipX: false };
+  if (!h && v && !d) return { rotation: Math.PI, flipX: true };
+  if (!h && !v && d) return { rotation: 3 * Q, flipX: true };
+  return { rotation: 0, flipX: false };
+}
+
 export function packGid(gid: number, flips: Partial<Flips> = {}): number {
   let raw = gid & GID_MASK;
   if (flips.h) raw |= FLIP_H;
