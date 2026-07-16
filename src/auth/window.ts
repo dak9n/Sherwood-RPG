@@ -63,25 +63,29 @@ const CSS = `
     transform: scale(${HERO.zoom}); transform-origin: bottom center;
   }
 
-  /* Вкладки сидят на верхней кромке страницы — их плоский низ сливается с ней,
-     а не висит обрезанным в воздухе. Ровно как в окне инвентаря. */
-  #auth .tabs { display: flex; gap: ${TS}px; padding-left: ${2 * TS}px; position: relative; z-index: 1; }
+  /* Вкладки и страница слоями: у кусков набора низ вкладки ОТКРЫТ (рассчитан на
+     панель под ним). Поэтому страница (z-index 2) накрывает открытый низ
+     невыбранных вкладок (z-index 1), а выбранная (z-index 3) остаётся поверх
+     страницы и сливается с ней. Так ни одна вкладка не висит обрезанной. */
+  #auth .tabs { display: flex; gap: ${TS}px; padding-left: ${2 * TS}px; }
   #auth .tab {
-    flex: 1; text-align: center; cursor: pointer; position: relative; top: ${2 * TS}px;
+    flex: 1; text-align: center; cursor: pointer; position: relative; z-index: 1; top: ${2 * TS}px;
     padding: ${2 * TS}px ${2 * TS}px ${TS}px; font-size: 12px; color: #e6d3b0;
     border-image: url(${UI}/tab_off.png) 4 5 1 5 fill / ${4 * TS}px ${5 * TS}px ${TS}px ${5 * TS}px repeat;
     border-width: ${4 * TS}px ${5 * TS}px ${TS}px ${5 * TS}px; border-style: solid;
   }
   #auth .tab:hover { filter: brightness(1.12); }
   #auth .tab[aria-selected="true"] {
-    border-image-source: url(${UI}/tab_on.png); top: 0; padding-bottom: ${3 * TS}px; color: #eaf6f0;
+    border-image-source: url(${UI}/tab_on.png); z-index: 3; top: 0; padding-bottom: ${3 * TS}px; color: #eaf6f0;
   }
 
-  /* Светлая страница под вкладками — та же, что держит сетку сумки в инвентаре. */
+  /* Светлая страница под вкладками — та же, что держит сетку сумки в инвентаре.
+     Приподнята под вкладки, чтобы спрятать их открытый низ. */
   #auth .page {
+    position: relative; z-index: 2; margin-top: -${2 * TS}px;
     border-image: url(${UI}/panel_beige.png) 2 5 5 5 fill / ${2 * S}px ${5 * S}px ${5 * S}px ${5 * S}px repeat;
     border-width: ${2 * S}px ${5 * S}px ${5 * S}px ${5 * S}px; border-style: solid;
-    padding: ${S}px ${2 * S}px ${2 * S}px;
+    padding: ${2 * S}px ${2 * S}px;
   }
   #auth label { display: block; margin: 6px 0 3px; color: #6b4f2a; font-size: 12px; }
   #auth .page label:first-child { margin-top: 2px; }
