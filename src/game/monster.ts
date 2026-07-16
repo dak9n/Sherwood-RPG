@@ -89,7 +89,8 @@ export class Monster {
     const body = this.sprite.body as Phaser.Physics.Arcade.Body;
     body.setSize(stats.body[0], stats.body[1]);
     body.setOffset(FRAME / 2 - stats.body[0] / 2, 40);
-    // Чтобы паука можно было оттолкнуть ударом, и он сам докатился.
+    // Пауки толкают друг друга (в сцене есть коллайдер группы) — трение гасит
+    // толчок, чтобы толкнутый докатился и встал, а не скользил без конца.
     body.setDrag(600, 600);
 
     this.barBg = scene.add.rectangle(homeX, homeY - 34, 22, 3, 0x000000).setOrigin(0.5).setVisible(false);
@@ -134,7 +135,7 @@ export class Monster {
     return this.state === 'dead';
   }
 
-  takeDamage(amount: number, fromX: number, fromY: number): void {
+  takeDamage(amount: number): void {
     if (this.state === 'dead') return;
 
     this.hp -= amount;
@@ -152,9 +153,10 @@ export class Monster {
     // включалась только по близости, а стрела бьёт дальше, чем паук замечает.
     this.provoked = true;
 
-    // Отбрасывание: видно, что попал.
-    const angle = Math.atan2(this.sprite.y - fromY, this.sprite.x - fromX);
-    (this.sprite.body as Phaser.Physics.Arcade.Body).setVelocity(Math.cos(angle) * 220, Math.sin(angle) * 220);
+    // Отброса нет (так просил заказчик): монстр не отлетает от удара, а
+    // останавливается на месте и вздрагивает. Скорость гасим, чтобы он не
+    // проскальзывал по инерции от прежнего шага погони.
+    (this.sprite.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
 
     // Урон прерывает паука — это награда за то, что ударил первым.
     this.state = 'hurt';

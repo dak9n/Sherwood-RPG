@@ -351,7 +351,7 @@ export class GameScene extends MapScene {
     );
 
     for (const m of hitAny) {
-      this.hitMonster(m, strike.damage, strike.heavy, this.player.sprite.x, this.player.sprite.y);
+      this.hitMonster(m, strike.damage, strike.heavy);
     }
 
     if (hitAny.length) this.cameras.main.shake(strike.heavy ? 140 : 80, strike.heavy ? 0.006 : 0.003);
@@ -359,14 +359,14 @@ export class GameScene extends MapScene {
 
   /**
    * Одно попадание по монстру — общее для взмаха меча и для стрелы. Урон, цифра,
-   * а на убийстве — опыт, добыча и золото. fromX/fromY задают, куда отбросить тело.
+   * а на убийстве — опыт, добыча и золото.
    *
    * Награда только на переходе «жив -> мёртв»: takeDamage по трупу молчит, но без
    * этой проверки повторное попадание всё равно начислило бы опыт и золото ещё раз.
    */
-  private hitMonster(m: Monster, damage: number, heavy: boolean, fromX: number, fromY: number): void {
+  private hitMonster(m: Monster, damage: number, heavy: boolean): void {
     if (m.isDead) return;
-    m.takeDamage(damage, fromX, fromY);
+    m.takeDamage(damage);
     this.damageNumber(m.sprite.x, m.sprite.y - 30, damage, heavy ? '#ffd35c' : '#ffffff');
     if (m.isDead) {
       this.gainXp(m.stats.xp);
@@ -413,7 +413,7 @@ export class GameScene extends MapScene {
         (m) => !m.isDead && Math.abs(m.sprite.x - ax) < 11 && ay > m.sprite.y - 24 && ay < m.sprite.y + 4,
       );
       if (hit) {
-        this.hitMonster(hit, a.damage, a.heavy, ax, ay);
+        this.hitMonster(hit, a.damage, a.heavy);
         this.cameras.main.shake(a.heavy ? 120 : 60, a.heavy ? 0.005 : 0.0025);
         a.destroy();
         this.arrows.splice(i, 1);
