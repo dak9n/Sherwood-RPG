@@ -120,3 +120,15 @@ test('загруженные с диска пользователи входят
   const second = await make(onDisk);
   assert.equal((await second.store.login('geko', 'my-password', T0)).ok, true);
 });
+
+test('keyOf отдаёт ключ аккаунта по токену, без регистра', async () => {
+  const { store } = await make();
+  const r = await store.register('Геко', 'secret123', T0);
+
+  assert.equal(store.keyOf(r.token, T0), 'геко', 'нормализованный ключ, а не показное имя');
+  assert.equal(store.keyOf('чужой', T0), null);
+  assert.equal(store.keyOf(undefined, T0), null);
+
+  const месяц = 30 * 24 * 60 * 60 * 1000;
+  assert.equal(store.keyOf(r.token, T0 + месяц + 1), null, 'протухшая сессия ключа не даёт');
+});

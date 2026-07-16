@@ -32,11 +32,36 @@ export function loadUsers(path: string): UserRecord[] {
  * обрубок базы пользователей. Тот же приём, что у сохранения карт.
  */
 export function saveUsers(path: string, users: UserRecord[]): void {
+  writeAtomic(path, JSON.stringify(users, null, 2), 'users');
+}
+
+/**
+ * Прогресс игроков: карта «ключ аккаунта -> сейв». Сервер не разбирает сейв —
+ * хранит как есть, а чистит его клиент при загрузке (src/game/save.ts). Одним
+ * файлом, а не по файлу на игрока: имена в файловых путях — лишний источник
+ * хлопот, а игроков тут двое.
+ */
+export function loadProgress(path: string): Record<string, unknown> {
+  if (!existsSync(path)) return {};
+  try {
+    const data = JSON.parse(readFileSync(path, 'utf8'));
+    return data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveProgress(path: string, map: Record<string, unknown>): void {
+  writeAtomic(path, JSON.stringify(map), 'progress');
+}
+
+/** Пишем через временный файл и rename: оборванная запись не бьёт настоящий файл. */
+function writeAtomic(path: string, text: string, tag: string): void {
   mkdirSync(dirname(path), { recursive: true });
-  const tmp = resolve(dirname(path), `users.${process.pid}.tmp.json`);
+  const tmp = resolve(dirname(path), `${tag}.${process.pid}.tmp.json`);
   const fd = openSync(tmp, 'w');
   try {
-    writeSync(fd, JSON.stringify(users, null, 2), null, 'utf8');
+    writeSync(fd, text, null, 'utf8');
     fsyncSync(fd);
   } finally {
     closeSync(fd);

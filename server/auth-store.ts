@@ -124,6 +124,18 @@ export class AuthStore {
     return { ok: true, token: this.issue(key, now), name: user.name };
   }
 
+  /**
+   * Ключ аккаунта по токену — к нему привязываются данные игрока (сейв). Тот же
+   * токен, что и у whoami, но отдаёт нормализованный ключ, а не показное имя:
+   * файл прогресса не должен зависеть от регистра, в котором игрок вошёл.
+   */
+  keyOf(token: unknown, now: number): string | null {
+    if (typeof token !== 'string') return null;
+    const s = this.sessions.get(token);
+    if (!s || s.expiresAt <= now) return null;
+    return this.users.has(s.nameKey) ? s.nameKey : null;
+  }
+
   /** Кто вошёл по этому токену. null — токен неизвестен или протух. */
   whoami(token: unknown, now: number): string | null {
     if (typeof token !== 'string') return null;

@@ -18,6 +18,8 @@ import { HotbarUi } from '../game/hotbar-ui';
 import { bind, swap, unbind, findInBag, emptyHotbar, type Hotbar } from '../game/hotbar';
 import { equipFromBag, unequip, totalBonuses, slotWearing, type Equipped } from '../game/equipment';
 import { emptySpent, unspent, spendPoint, bonusFrom, POINTS_PER_LEVEL, type Spent, type Stat } from '../game/stats';
+import { parseSave, serializeProgress, type Progress } from '../game/save';
+import { takePendingSave, pushProgress } from '../auth/progress';
 
 /** Целый зум: при дробном пиксели карты не легли бы на пиксели экрана. */
 const ZOOM = 3;
@@ -61,6 +63,13 @@ export class GameScene extends MapScene {
    * гонять её каждый кадр — 6300 клеток впустую 60 раз в секунду.
    */
   private flowAt = -1;
+
+  /** Отложенный автосейв: setTimeout-id, 0 — не запланирован. */
+  private saveTimer = 0;
+  /** До конца загрузки не сохраняем — иначе applySave тут же отправит сейв назад. */
+  private saveReady = false;
+  private onHide: () => void = () => {};
+  private onLeave: () => void = () => {};
 
   constructor() {
     super('world');
@@ -129,14 +138,17 @@ export class GameScene extends MapScene {
     this.hotbar.onBind = (slot, id) => {
       bind(this.quick, slot, id);
       this.hotbar.render();
+      this.scheduleSave();
     };
     this.hotbar.onSwap = (from, to) => {
       swap(this.quick, from, to);
       this.hotbar.render();
+      this.scheduleSave();
     };
     this.hotbar.onClear = (slot) => {
       unbind(this.quick, slot);
       this.hotbar.render();
+      this.scheduleSave();
     };
     this.hotbar.render();
 
@@ -166,7 +178,23 @@ export class GameScene extends MapScene {
     this.input.keyboard?.on('keydown-M', () => this.minimap.toggleFull());
     this.bindQuickKeys();
 
+    // Прогресс вошедшего. Применяем ПОСЛЕ того, как собраны сумка, экипировка и
+    // панель: applySave кладёт в те же самые объекты, на которые уже смотрят окна.
+    this.applySave();
+
+    // Сохраняемся, когда вкладку прячут или закрывают — не только по таймеру.
+    // keepalive у запроса (см. pushProgress) даёт ему дожить после закрытия.
+    this.onHide = () => {
+      if (document.hidden) this.flushSave();
+    };
+    this.onLeave = () => this.flushSave();
+    document.addEventListener('visibilitychange', this.onHide);
+    window.addEventListener('pagehide', this.onLeave);
+
     this.events.once('shutdown', () => {
+      this.flushSave();
+      document.removeEventListener('visibilitychange', this.onHide);
+      window.removeEventListener('pagehide', this.onLeave);
       this.hud.destroy();
       this.inventory.destroy();
       this.hotbar.destroy();
@@ -183,6 +211,10 @@ export class GameScene extends MapScene {
     // экранных при зуме 3 — независимо от того, следует камера за кем-то или нет.
     cam.setRoundPixels(false);
     this.followPlayer();
+
+    // Дальше правки прогресса разрешено сохранять. Флаг нужен, чтобы загрузка
+    // сейва (applySave -> refreshBags) не отправила его тут же обратно.
+    this.saveReady = true;
   }
 
   /**
@@ -366,10 +398,70 @@ export class GameScene extends MapScene {
   /**
    * Сумка изменилась. Одно место на оба окна: панель внизу показывает остаток
    * тех же предметов, и обновлять её отдельно означало бы рано или поздно забыть.
+   * Отсюда же планируем автосейв — любая правка сумки его касается.
    */
   private refreshBags(): void {
     this.inventory.render();
     this.hotbar.render();
+    this.scheduleSave();
+  }
+
+  /** Снимок прогресса для сейва. Ссылки, а не копии: pushProgress тут же его сериализует. */
+  private snapshot(): Progress {
+    return {
+      level: this.player.level,
+      xp: this.player.xp,
+      hp: this.player.hp,
+      mp: this.player.mp,
+      bag: this.bag,
+      equipped: this.equipped,
+      quick: this.quick,
+      spent: this.spent,
+    };
+  }
+
+  /**
+   * Отложить автосейв. Собираем правки в кучу: подряд подобрал пять грибов —
+   * одна отправка, а не пять. Отправляем через полторы секунды затишья.
+   */
+  private scheduleSave(): void {
+    if (!this.saveReady) return;
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = window.setTimeout(() => this.flushSave(), 1500);
+  }
+
+  /** Отправить сейв немедленно — при выходе, смерти, закрытии вкладки. */
+  private flushSave(): void {
+    if (!this.saveReady) return;
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = 0;
+    }
+    void pushProgress(serializeProgress(this.snapshot()));
+  }
+
+  /**
+   * Применить скачанный сейв. Кладём в те же bag/equipped/quick/spent, на которые
+   * уже смотрят окна (мутируем, а не подменяем ссылку), затем пересобираем
+   * прибавки и восстанавливаем игрока — в порядке очки -> вещи -> уровень, чтобы
+   * потолок здоровья к моменту restore был честным.
+   */
+  private applySave(): void {
+    const prog = parseSave(takePendingSave(), BAG_SIZE);
+    if (!prog) return;
+
+    // Сумка и панель — по месту: ссылки в окнах остаются те же.
+    for (let i = 0; i < BAG_SIZE; i++) this.bag[i] = prog.bag[i] ?? null;
+    for (const k of Object.keys(this.equipped) as (keyof Equipped)[]) delete this.equipped[k];
+    Object.assign(this.equipped, prog.equipped);
+    for (let i = 0; i < this.quick.length; i++) this.quick[i] = prog.quick[i] ?? null;
+    this.spent = prog.spent;
+
+    this.player.setPoints(bonusFrom(this.spent));
+    this.applyGear(); // прибавки вещей — до restore, чтобы hpMax был верным
+    this.player.restore(prog.level, prog.xp, prog.hp, prog.mp);
+
+    this.refreshBags();
   }
 
   /** Клавиши 1-9 и 0 — ячейки панели быстрого доступа. */
@@ -454,6 +546,7 @@ export class GameScene extends MapScene {
 
     this.player.setPoints(bonusFrom(this.spent));
     this.inventory.render();
+    this.scheduleSave();
   }
 
   /**
@@ -475,6 +568,7 @@ export class GameScene extends MapScene {
   }
 
   private gainXp(amount: number): void {
+    this.scheduleSave();
     this.player.xp += amount;
     while (this.player.xp >= xpToNext(this.player.level)) {
       this.player.xp -= xpToNext(this.player.level);
@@ -554,6 +648,8 @@ export class GameScene extends MapScene {
       // Опыт теряется, но не уровень: откат до нуля обиднее смерти.
       this.player.xp = Math.floor(this.player.xp * 0.7);
       this.player.respawn(x, y, now);
+      // Смерть сохраняем сразу: иначе игрок решит, что она откатывается, а она нет.
+      this.flushSave();
     }
 
     this.hud.set(

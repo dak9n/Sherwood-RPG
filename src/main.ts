@@ -3,6 +3,7 @@ import { GameScene } from './scenes/GameScene';
 import { EditorScene } from './scenes/EditorScene';
 import { whoami, logout } from './auth/client';
 import { showAuthWindow, showAccountBadge } from './auth/window';
+import { fetchProgress, setPendingSave } from './auth/progress';
 
 /** Игра и редактор — две разные сцены, вместе они не запускаются никогда. */
 const editMode = import.meta.env.DEV && new URLSearchParams(location.search).has('edit');
@@ -53,6 +54,10 @@ async function main(): Promise<void> {
   // Игра открывается только после входа. Сначала пробуем сохранённый токен;
   // не вошёл — показываем окно и ждём, пока войдёт или зарегистрируется.
   const name = (await whoami()) ?? (await showAuthWindow());
+
+  // Прогресс тянем ДО старта игры: сцена в onReady применяет его синхронно, а
+  // из сети в момент создания сцены его не подгрузить.
+  setPendingSave(await fetchProgress());
   bootGame();
 
   // Плашка «вошёл как …»: без неё аккаунт не сменить. Выход гасит сессию и

@@ -11,10 +11,11 @@ import { resolve } from 'node:path';
 import type { Plugin, ViteDevServer } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { AuthStore } from './auth-store.ts';
-import { loadUsers, saveUsers } from './auth-persist.ts';
+import { loadUsers, saveUsers, loadProgress, saveProgress } from './auth-persist.ts';
 
 const AUTH_FILE = '.auth/users.json';
-const MAX_BODY = 64 * 1024; // имя и пароль — этого с огромным запасом
+const PROGRESS_FILE = '.auth/progress.json';
+const MAX_BODY = 256 * 1024; // сейв крошечный, но с запасом; больше — точно порча
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((ok, fail) => {
@@ -54,10 +55,14 @@ export function authPlugin(): Plugin {
     apply: 'serve',
     configureServer(server: ViteDevServer) {
       const file = resolve(server.config.root, AUTH_FILE);
+      const progressFile = resolve(server.config.root, PROGRESS_FILE);
 
       // Хранилище одно на весь дев-сервер. Готовится асинхронно (пустышка для
       // защиты от тайминга считается scrypt), поэтому ждём его в каждой ручке.
       const ready = AuthStore.create(loadUsers(file), (users) => saveUsers(file, users));
+
+      // Прогресс держим в памяти и сбрасываем на диск при каждой записи.
+      const progress = loadProgress(progressFile);
 
       /**
        * Тело как json. Требование content-type — это и защита от чужой вкладки:
@@ -120,6 +125,34 @@ export function authPlugin(): Plugin {
           const store = await ready;
           store.logout(tokenOf(req));
           send(res, 200, { ok: true });
+        })().catch((e: Error) => send(res, 400, { error: e.message }));
+      });
+
+      // Сохранить прогресс вошедшего. Тело — сам сейв; сервер его не разбирает,
+      // хранит как есть под ключом аккаунта. Чистит сейв клиент при загрузке.
+      server.middlewares.use('/__save-progress', (req, res, next) => {
+        if (req.method !== 'POST') return next();
+        void (async () => {
+          const store = await ready;
+          const key = store.keyOf(tokenOf(req), Date.now());
+          if (!key) return send(res, 401, { error: 'нужен вход' });
+
+          const body = await jsonBody(req, res);
+          if (!body) return;
+          progress[key] = body;
+          saveProgress(progressFile, progress);
+          send(res, 200, { ok: true });
+        })().catch((e: Error) => send(res, 400, { ok: false, error: e.message }));
+      });
+
+      // Отдать сохранённый прогресс вошедшего. null — сейва ещё нет.
+      server.middlewares.use('/__load-progress', (req, res, next) => {
+        if (req.method !== 'GET') return next();
+        void (async () => {
+          const store = await ready;
+          const key = store.keyOf(tokenOf(req), Date.now());
+          if (!key) return send(res, 401, { error: 'нужен вход' });
+          send(res, 200, { save: progress[key] ?? null });
         })().catch((e: Error) => send(res, 400, { error: e.message }));
       });
     },

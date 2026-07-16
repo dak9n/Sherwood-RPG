@@ -62,6 +62,25 @@ export class Player {
     this.mpBase += mp;
   }
 
+  /**
+   * Восстановить из сейва. Потолок ЗАДАЁТ УРОВЕНЬ: hpBase накапливается по +10 за
+   * уровень (см. growMax в GameScene.gainXp), поэтому при загрузке его надо
+   * пересобрать из уровня, а не оставить стартовым — иначе потолок был бы как у
+   * первого уровня, и вся прокачка здоровья пропала бы.
+   *
+   * hp/mp поджимаем под потолок; здоровье не меньше 1 — грузиться трупом нельзя.
+   * Прибавки вещей и очков к этому моменту уже применены сценой, поэтому hpMax
+   * тут честный.
+   */
+  restore(level: number, xp: number, hp: number, mp: number): void {
+    this.level = Math.max(1, Math.floor(level));
+    this.xp = Math.max(0, xp);
+    this.hpBase = HERO.hp + (this.level - 1) * 10;
+    this.mpBase = HERO.mp + (this.level - 1) * 5;
+    this.hp = Math.min(this.hpMax, Math.max(1, hp));
+    this.mp = Math.min(this.mpMax, Math.max(0, mp));
+  }
+
   /** Сменилась экипировка. */
   setGear(bonus: { dmg: number; def: number; speed: number; hp: number; mp: number }): void {
     this.gear = { ...bonus };
