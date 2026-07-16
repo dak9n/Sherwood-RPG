@@ -102,6 +102,9 @@ const CSS = `
     border-top: 1px solid #0d1114; border-bottom: 1px solid #0d1114;
     display: flex; align-items: center; justify-content: center;
   }
+  /* Обязательно: display выше перебивает браузерное [hidden] { display: none },
+     и полоски торчали под КАЖДЫМ закрытым тайлсетом — 39 штук поперёк списка. */
+  .ed-ts-grip[hidden] { display: none; }
   .ed-ts-grip::before {
     content: ''; width: 28px; height: 3px; border-radius: 2px; background: #55656e;
   }
