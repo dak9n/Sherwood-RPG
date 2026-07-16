@@ -12,9 +12,11 @@ import { Loot, registerItemFrames } from '../game/loot';
 import { addToBag, takeOne, sortBag, ITEMS, type Stack, type EquipSlot } from '../game/items';
 import { InventoryUi } from '../game/inventory-ui';
 import { MinimapUi } from '../game/minimap-ui';
+import { MenuUi } from '../game/menu-ui';
 import { HotbarUi } from '../game/hotbar-ui';
 import { bind, swap, unbind, findInBag, emptyHotbar, type Hotbar } from '../game/hotbar';
 import { equipFromBag, unequip, totalBonuses, slotWearing, type Equipped } from '../game/equipment';
+import { emptySpent, unspent, spendPoint, bonusFrom, POINTS_PER_LEVEL, type Spent, type Stat } from '../game/stats';
 
 /** Целый зум: при дробном пиксели карты не легли бы на пиксели экрана. */
 const ZOOM = 3;
@@ -41,6 +43,7 @@ export class GameScene extends MapScene {
   private inventory!: InventoryUi;
   private hotbar!: HotbarUi;
   private minimap!: MinimapUi;
+  private menu!: MenuUi;
   private loot: Loot[] = [];
   /** Сумка игрока. */
   bag: (Stack | null)[] = new Array(BAG_SIZE).fill(null);
@@ -48,6 +51,8 @@ export class GameScene extends MapScene {
   equipped: Equipped = {};
   /** Что привязано к клавишам 1-9 и 0. Хранит вид предмета, а не место в сумке. */
   quick: Hotbar = emptyHotbar();
+  /** Куда вложены очки характеристик. Сколько их выдано, считается от уровня. */
+  spent: Spent = emptySpent();
 
   constructor() {
     super('world');
@@ -94,6 +99,8 @@ export class GameScene extends MapScene {
       // Урон растёт с уровнем — так же, как считает сам удар.
       dmgMin: HERO.dmgMin + this.player.level - 1,
       dmgMax: HERO.dmgMax + this.player.level - 1,
+      points: unspent(this.player.level, this.spent),
+      fromPoints: bonusFrom(this.spent),
     }));
     this.inventory.onUse = (index) => this.useItem(index);
     this.inventory.onEquip = (index) => this.equipItem(index);
@@ -102,6 +109,7 @@ export class GameScene extends MapScene {
       sortBag(this.bag);
       this.refreshBags();
     };
+    this.inventory.onSpend = (stat) => this.spendPointOn(stat);
 
     this.hotbar = new HotbarUi();
     this.hotbar.setData(this.quick, this.bag, this.equipped);
@@ -126,6 +134,20 @@ export class GameScene extends MapScene {
       this.textures.exists(name) ? (this.textures.get(name).getSourceImage() as CanvasImageSource) : null,
     );
 
+    // Кнопок ровно столько, сколько окон. Появится третье — станет три строки.
+    this.menu = new MenuUi([
+      {
+        label: 'Персонаж', key: 'I', icon: { sheet: 'icons', x: 1 * 16, y: 18 * 16, w: 16, h: 16 },
+        isOpen: () => this.inventory.isOpen,
+        toggle: () => this.inventory.toggle(),
+      },
+      {
+        label: 'Карта', key: 'M', icon: { sheet: 'icons', x: 4 * 16, y: 3 * 16, w: 16, h: 16 },
+        isOpen: () => this.minimap.isFullOpen,
+        toggle: () => this.minimap.toggleFull(),
+      },
+    ]);
+
     // I открывает и закрывает сумку. Игру не останавливаем: пауки не ждут, пока
     // ты роешься в грибах, — иначе сумка станет способом переждать бой.
     this.input.keyboard?.on('keydown-I', () => this.inventory.toggle());
@@ -137,6 +159,7 @@ export class GameScene extends MapScene {
       this.inventory.destroy();
       this.hotbar.destroy();
       this.minimap.destroy();
+      this.menu.destroy();
     });
 
     const cam = this.cameras.main;
@@ -384,6 +407,23 @@ export class GameScene extends MapScene {
     this.player.setGear(totalBonuses(this.equipped));
   }
 
+  /**
+   * Вложить очко характеристики.
+   *
+   * Молчать при отказе нельзя: игрок жмёт «+» и должен понять, почему ничего не
+   * произошло. Кнопку мы прячем, когда очков нет, но проверка тут — своя: окно
+   * могло не успеть перерисоваться.
+   */
+  private spendPointOn(stat: Stat): void {
+    if (!spendPoint(this.spent, stat, this.player.level)) {
+      this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#b0a08a', 'нет очков');
+      return;
+    }
+
+    this.player.setPoints(bonusFrom(this.spent));
+    this.inventory.render();
+  }
+
   private gainXp(amount: number): void {
     this.player.xp += amount;
     while (this.player.xp >= xpToNext(this.player.level)) {
@@ -393,6 +433,12 @@ export class GameScene extends MapScene {
       this.player.hp = this.player.hpMax;
       this.player.mp = this.player.mpMax;
       this.damageNumber(this.player.sprite.x, this.player.sprite.y - 40, 0, '#8ad46a', `УРОВЕНЬ ${this.player.level}`);
+      // Про очки говорим отдельно: молча начисленное игрок не заметит и не
+      // вложит, а окно персонажа само не откроется.
+      this.damageNumber(
+        this.player.sprite.x, this.player.sprite.y - 56, 0, '#e0c48a',
+        `+${POINTS_PER_LEVEL} очка (I)`,
+      );
     }
   }
 
@@ -468,6 +514,7 @@ export class GameScene extends MapScene {
       xpToNext(this.player.level),
     );
     this.inventory.refreshStats();
+    this.menu.render();
     // Мёртвых пауков на карте не показываем: труп — не угроза.
     this.minimap.render({
       player: { x: this.player.sprite.x, y: this.player.sprite.y },

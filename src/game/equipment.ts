@@ -17,6 +17,17 @@ export const SLOTS: { id: EquipSlot; label: string }[] = [
   { id: 'boots', label: 'Сапоги' },
 ];
 
+/**
+ * Как гнёзда разложены вокруг портрета: колонка слева и колонка справа.
+ *
+ * Живёт здесь, а не в окне: окно тянет DOM и тестами не проверяется, а раскладка
+ * обязана покрывать ВСЕ слоты. Забыть слот в колонке — значит сделать вещь,
+ * которую можно надеть и нельзя снять: гнезда для неё на экране нет. За этим
+ * следит тест — добавишь слот в SLOTS и не добавишь сюда, он упадёт.
+ */
+export const LEFT_SLOTS: EquipSlot[] = ['helm', 'amulet', 'body', 'ring'];
+export const RIGHT_SLOTS: EquipSlot[] = ['weapon', 'shield', 'boots'];
+
 export interface Bonuses {
   dmg: number;
   def: number;

@@ -52,12 +52,21 @@ export class Player {
    */
   gear = { dmg: 0, def: 0, speed: 0, hp: 0, mp: 0 };
 
+  /**
+   * Что добавили вложенные очки характеристик.
+   *
+   * Отдельно от gear по той же причине, по какой gear отдельно от базы: вещь
+   * снимается, а очки — нет, и складывать их в одну кучу значило бы однажды
+   * вычесть вложенное вместе со снятым мечом.
+   */
+  points = { dmg: 0, def: 0, hp: 0, mp: 0 };
+
   get hpMax(): number {
-    return this.hpBase + this.gear.hp;
+    return this.hpBase + this.gear.hp + this.points.hp;
   }
 
   get mpMax(): number {
-    return this.mpBase + this.gear.mp;
+    return this.mpBase + this.gear.mp + this.points.mp;
   }
 
   /** Уровень поднимает потолок навсегда. */
@@ -72,6 +81,11 @@ export class Player {
     // Сняли шлем — потолок упал, и текущее здоровье не должно висеть выше него.
     this.hp = Math.min(this.hp, this.hpMax);
     this.mp = Math.min(this.mp, this.mpMax);
+  }
+
+  /** Игрок вложил очки. Потолок вырос — в отличие от вещей, назад он не упадёт. */
+  setPoints(bonus: { dmg: number; def: number; hp: number; mp: number }): void {
+    this.points = { ...bonus };
   }
 
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
@@ -167,8 +181,10 @@ export class Player {
     this.didHit = true;
     const reach = this.heavySwing ? HERO.reach + 8 : HERO.reach;
     const width = this.heavySwing ? HERO.hitW + 8 : HERO.hitW;
-    // Урон = база + уровень + оружие. Меч должен чувствоваться в первом же ударе.
-    const bonus = this.level - 1 + this.gear.dmg;
+    // Урон = база + уровень + оружие + вложенные очки. Меч должен чувствоваться
+    // в первом же ударе. Ту же формулу показывает окно персонажа — они обязаны
+    // сходиться, иначе число на экране врёт.
+    const bonus = this.level - 1 + this.gear.dmg + this.points.dmg;
     const base = rollDamage(HERO.dmgMin + bonus, HERO.dmgMax + bonus);
 
     this.onStrike({
@@ -217,7 +233,8 @@ export class Player {
 
     // Броня режет урон, но не в ноль: неуязвимый герой — не игра. Минимум
     // единица, иначе с полным набором пауки перестали бы существовать.
-    const taken = Math.max(1, amount - this.gear.def);
+    // Единица проходит всегда: полная неуязвимость от защиты сломала бы бой.
+    const taken = Math.max(1, amount - this.gear.def - this.points.def);
     this.hp -= taken;
     this.invulnUntil = now + HERO.iframes;
     this.lastHurtAt = now;

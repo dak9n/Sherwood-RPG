@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { totalBonuses, equipFromBag, unequip, slotWearing, SLOTS, type Equipped } from './equipment.ts';
+import { totalBonuses, equipFromBag, unequip, slotWearing, SLOTS, LEFT_SLOTS, RIGHT_SLOTS, type Equipped } from './equipment.ts';
 import { ITEMS, addToBag, type Stack } from './items.ts';
 
 const bag = (size = 5): (Stack | null)[] => new Array(size).fill(null);
@@ -108,4 +108,25 @@ test('находим, в каком слоте надет предмет', () =>
   assert.equal(slotWearing(eq, 'helm'), 'helm');
   assert.equal(slotWearing(eq, 'sword'), undefined, 'обычный меч не надет');
   assert.equal(slotWearing({}, 'sword'), undefined);
+});
+
+test('колонки окна покрывают ВСЕ слоты и ничего не выдумывают', () => {
+  // Ловушка не выдуманная: пока шла работа, в SLOTS и в предметы добавили слот
+  // «Перчатки», а в колонки окна — нет. Такую вещь можно надеть из сумки и
+  // нельзя снять: гнезда, по которому кликают, на экране просто нет.
+  const shown = [...LEFT_SLOTS, ...RIGHT_SLOTS];
+  const all = SLOTS.map((s) => s.id);
+
+  assert.deepEqual([...shown].sort(), [...all].sort(), 'колонки и SLOTS разошлись');
+  assert.equal(new Set(shown).size, shown.length, 'слот показан дважды');
+});
+
+test('у каждого слота есть погашенная подсказка-иконка', () => {
+  // Пустое гнездо без иконки — просто дырка: непонятно, что туда надевается.
+  // Проверяем через предметы: у каждого слота есть вещь, а значит и иконка.
+  for (const s of SLOTS) {
+    const item = Object.values(ITEMS).find((d) => d.slot === s.id);
+    assert.ok(item, `слот ${s.label}: нечем занять`);
+    assert.ok(item.icon, `слот ${s.label}: у вещи нет иконки`);
+  }
 });
