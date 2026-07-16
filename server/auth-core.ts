@@ -76,12 +76,21 @@ export const normalizeName = (name: string): string => name.trim().toLowerCase()
  * Ни точек, ни слэшей — имя нигде не становится путём к файлу, но лишний повод
  * для инъекции убираем сразу.
  */
+/**
+ * Служебные имена свойств объекта. Имя-ключ вроде __proto__ опасно: если такой
+ * строкой индексировать обычный объект (например, карту «аккаунт -> сейв»),
+ * запись подменит прототип, а не создаст поле. Проще запретить их в именах, чем
+ * потом чинить каждое место, где имя становится ключом.
+ */
+const RESERVED = new Set(['__proto__', 'constructor', 'prototype']);
+
 export function validateUsername(name: unknown): string | null {
   if (typeof name !== 'string') return 'Введите имя';
   const n = name.trim();
   if (n.length < MIN_NAME) return `Имя короче ${MIN_NAME} символов`;
   if (n.length > MAX_NAME) return `Имя длиннее ${MAX_NAME} символов`;
   if (!/^[\p{L}\p{N} _-]+$/u.test(n)) return 'Только буквы, цифры, пробел, дефис и _';
+  if (RESERVED.has(n.toLowerCase())) return 'Это имя занято системой';
   return null;
 }
 

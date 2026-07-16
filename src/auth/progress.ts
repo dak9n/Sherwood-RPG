@@ -12,6 +12,7 @@ import { getToken } from './client';
  * синхронно. Кладём здесь, а main.ts наполняет ДО запуска игры.
  */
 let pending: unknown = null;
+let failed = false;
 
 export function setPendingSave(raw: unknown): void {
   pending = raw;
@@ -24,15 +25,35 @@ export function takePendingSave(): unknown {
   return r;
 }
 
-/** Скачать сейв вошедшего. null — сейва нет, не вошёл или сервера нет. */
+/**
+ * Не удалось ли скачать сейв. Это НЕ то же, что «сейва нет»: если сервер лежал
+ * или ответил ошибкой, автосейв ОБЯЗАН молчать — иначе пустое стартовое
+ * состояние затрёт настоящий прогресс на сервере навсегда.
+ */
+export function loadFailed(): boolean {
+  return failed;
+}
+
+/**
+ * Скачать сейв вошедшего.
+ *   null       — сейва честно ещё нет (или не вошёл);
+ *   значение   — сохранённый сейв;
+ * при ЛЮБОМ сбое (не-200, не-json, сеть) помечаем loadFailed и тоже отдаём null,
+ * но этот null уже нельзя перезаписывать — см. loadFailed.
+ */
 export async function fetchProgress(): Promise<unknown> {
   const token = getToken();
   if (!token) return null;
   try {
     const res = await fetch('/__load-progress', { headers: { authorization: `Bearer ${token}` } });
+    if (!res.ok) {
+      failed = true;
+      return null;
+    }
     const data = (await res.json()) as { save?: unknown };
     return data.save ?? null;
   } catch {
+    failed = true;
     return null;
   }
 }

@@ -51,6 +51,28 @@ export class AuthStore {
    */
   private dummyHash: string;
 
+  /**
+   * Очередь: регистрация и вход выполняются строго по одному.
+   *
+   * Без этого параллельные запросы обходили защиту: между синхронной проверкой
+   * (имя занято? / заперто ли за перебор) и последующим await hashPassword/
+   * verifyPassword управление уходило в цикл событий, и сотня одновременных
+   * входов успевала проскочить ворота до того, как хоть один увеличил счётчик
+   * промахов. Проверено атакой: 200 параллельных входов давали 200 проверок
+   * пароля вместо 8. Последовательное исполнение это закрывает — и вдобавок
+   * лишает атакующего параллелизма.
+   */
+  private lock: Promise<unknown> = Promise.resolve();
+
+  private serialize<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.lock.then(fn, fn);
+    this.lock = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
   private constructor(
     users: Map<string, UserRecord>,
     persist: (users: UserRecord[]) => void,
@@ -71,8 +93,17 @@ export class AuthStore {
     return new AuthStore(users, persist, dummy);
   }
 
-  /** Зарегистрировать нового. Имя должно быть свободно. */
-  async register(name: unknown, password: unknown, now: number): Promise<AuthResult> {
+  /** Зарегистрировать нового. Имя должно быть свободно. По одному за раз. */
+  register(name: unknown, password: unknown, now: number): Promise<AuthResult> {
+    return this.serialize(() => this.runRegister(name, password, now));
+  }
+
+  /** Войти. По одному за раз — иначе перебор обходит защиту (см. serialize). */
+  login(name: unknown, password: unknown, now: number): Promise<AuthResult> {
+    return this.serialize(() => this.runLogin(name, password, now));
+  }
+
+  private async runRegister(name: unknown, password: unknown, now: number): Promise<AuthResult> {
     const nameErr = validateUsername(name);
     if (nameErr) return { ok: false, error: nameErr };
     const pwErr = validatePassword(password);
@@ -94,11 +125,7 @@ export class AuthStore {
     return { ok: true, token: this.issue(key, now), name: display };
   }
 
-  /**
-   * Войти. Ошибка НАМЕРЕННО общая («Неверное имя или пароль»): раздельные «нет
-   * такого имени» и «пароль не тот» подсказали бы взломщику, какое имя занято.
-   */
-  async login(name: unknown, password: unknown, now: number): Promise<AuthResult> {
+  private async runLogin(name: unknown, password: unknown, now: number): Promise<AuthResult> {
     if (typeof name !== 'string' || typeof password !== 'string') {
       return { ok: false, error: 'Введите имя и пароль' };
     }

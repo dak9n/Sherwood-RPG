@@ -56,7 +56,10 @@ function cleanBag(raw: unknown, bagSize: number): (Stack | null)[] {
     const cell = src[i];
     if (!cell || typeof cell !== 'object') continue;
     const { id, qty } = cell as { id?: unknown; qty?: unknown };
-    const def = typeof id === 'string' ? ITEMS[id] : undefined;
+    // hasOwn, а не просто ITEMS[id]: иначе id вроде 'constructor' или '__proto__'
+    // вернул бы УНАСЛЕДОВАННЫЙ член Object.prototype (он truthy), фантом прошёл бы
+    // санацию и уронил игру при открытии сумки.
+    const def = typeof id === 'string' && Object.hasOwn(ITEMS, id) ? ITEMS[id] : undefined;
     if (!def) continue; // предмета больше нет — ячейка пустеет
 
     const n = Math.floor(num(qty, 0));
@@ -72,8 +75,9 @@ function cleanEquipped(raw: unknown): Equipped {
 
   for (const [slot, id] of Object.entries(raw as Record<string, unknown>)) {
     if (!VALID_SLOTS.has(slot as never)) continue; // такого гнезда нет
-    const def = typeof id === 'string' ? ITEMS[id] : undefined;
-    // Вещь должна и существовать, и надеваться ИМЕННО в это гнездо.
+    const def = typeof id === 'string' && Object.hasOwn(ITEMS, id) ? ITEMS[id] : undefined;
+    // Вещь должна и существовать (своим полем таблицы, не унаследованным), и
+    // надеваться ИМЕННО в это гнездо.
     if (def && def.slot === slot) eq[slot as keyof Equipped] = id as string;
   }
   return eq;

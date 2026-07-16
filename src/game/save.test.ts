@@ -136,3 +136,17 @@ test('hp/mp очищаются до неотрицательных чисел', 
   assert.equal(p.hp, 0);
   assert.equal(p.mp, 0);
 });
+
+test('id-ключ прототипа (constructor/__proto__/toString) НЕ проходит в сумку', () => {
+  // Дыра: ITEMS['constructor'] возвращал унаследованный член прототипа (truthy),
+  // фантом просачивался и ронял игру при открытии сумки и «Разложить».
+  for (const evil of ['constructor', '__proto__', 'toString', 'valueOf', 'hasOwnProperty']) {
+    const p = parseSave(serializeProgress(base({ bag: [{ id: evil, qty: 5 }, ...new Array(BAG - 1).fill(null)] })), BAG)!;
+    assert.equal(p.bag[0], null, `фантом «${evil}» должен быть вычищен`);
+  }
+});
+
+test('id-ключ прототипа в надетом тоже отбрасывается', () => {
+  const p = parseSave(serializeProgress(base({ equipped: { weapon: 'constructor', helm: '__proto__' } as never })), BAG)!;
+  assert.deepEqual(p.equipped, {}, 'ни одно унаследованное имя не встало в гнездо');
+});

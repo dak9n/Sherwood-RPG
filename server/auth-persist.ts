@@ -42,12 +42,18 @@ export function saveUsers(path: string, users: UserRecord[]): void {
  * хлопот, а игроков тут двое.
  */
 export function loadProgress(path: string): Record<string, unknown> {
-  if (!existsSync(path)) return {};
+  // Объект БЕЗ прототипа: тогда progress['__proto__'] = x создаёт обычное поле,
+  // а не подменяет прототип, и лукап чужого ключа не проваливается в Object
+  // .prototype. Защита в глубину — имена вроде __proto__ уже запрещены при
+  // регистрации, но ключом карты имя быть перестаёт только здесь.
+  const empty = (): Record<string, unknown> => Object.create(null);
+  if (!existsSync(path)) return empty();
   try {
     const data = JSON.parse(readFileSync(path, 'utf8'));
-    return data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, unknown>) : {};
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return empty();
+    return Object.assign(empty(), data);
   } catch {
-    return {};
+    return empty();
   }
 }
 

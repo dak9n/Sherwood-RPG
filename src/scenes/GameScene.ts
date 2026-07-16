@@ -19,7 +19,7 @@ import { bind, swap, unbind, findInBag, emptyHotbar, type Hotbar } from '../game
 import { equipFromBag, unequip, totalBonuses, slotWearing, type Equipped } from '../game/equipment';
 import { emptySpent, unspent, spendPoint, bonusFrom, POINTS_PER_LEVEL, type Spent, type Stat } from '../game/stats';
 import { parseSave, serializeProgress, type Progress } from '../game/save';
-import { takePendingSave, pushProgress } from '../auth/progress';
+import { takePendingSave, pushProgress, loadFailed } from '../auth/progress';
 
 /** Целый зум: при дробном пиксели карты не легли бы на пиксели экрана. */
 const ZOOM = 3;
@@ -66,8 +66,19 @@ export class GameScene extends MapScene {
 
   /** Отложенный автосейв: setTimeout-id, 0 — не запланирован. */
   private saveTimer = 0;
-  /** До конца загрузки не сохраняем — иначе applySave тут же отправит сейв назад. */
+  /**
+   * До конца загрузки не сохраняем — иначе applySave тут же отправит сейв назад.
+   * И НЕ включаем вовсе, если сейв не скачался: пустое стартовое состояние не
+   * должно затереть настоящий прогресс на сервере.
+   */
   private saveReady = false;
+  /**
+   * Менялось ли хоть что-то в этой сессии. flushSave без изменений — пропуск:
+   * простаивающая вторая вкладка не должна при закрытии затирать сейв первой
+   * своим устаревшим снимком. (Полную гонку двух АКТИВНЫХ вкладок это не
+   * закрывает — там нужна сверка поколений; здесь честная частичная защита.)
+   */
+  private saveDirty = false;
   private onHide: () => void = () => {};
   private onLeave: () => void = () => {};
 
@@ -212,9 +223,13 @@ export class GameScene extends MapScene {
     cam.setRoundPixels(false);
     this.followPlayer();
 
-    // Дальше правки прогресса разрешено сохранять. Флаг нужен, чтобы загрузка
-    // сейва (applySave -> refreshBags) не отправила его тут же обратно.
-    this.saveReady = true;
+    // Дальше правки прогресса разрешено сохранять — но ТОЛЬКО если сейв
+    // скачался. Сбой загрузки оставляет автосейв выключенным: играть можно, а
+    // затереть настоящий серверный сейв пустым стартом — нельзя.
+    this.saveReady = !loadFailed();
+    if (loadFailed()) {
+      console.warn('Прогресс не загрузился — эта сессия не сохраняется, чтобы не затереть сейв на сервере.');
+    }
   }
 
   /**
@@ -426,17 +441,19 @@ export class GameScene extends MapScene {
    */
   private scheduleSave(): void {
     if (!this.saveReady) return;
+    this.saveDirty = true;
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = window.setTimeout(() => this.flushSave(), 1500);
   }
 
   /** Отправить сейв немедленно — при выходе, смерти, закрытии вкладки. */
   private flushSave(): void {
-    if (!this.saveReady) return;
+    if (!this.saveReady || !this.saveDirty) return;
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
       this.saveTimer = 0;
     }
+    this.saveDirty = false;
     void pushProgress(serializeProgress(this.snapshot()));
   }
 

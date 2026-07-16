@@ -82,3 +82,12 @@ test('токены случайны и не повторяются', () => {
     seen.add(t);
   }
 });
+
+test('служебные имена (__proto__/constructor/prototype) регистрировать нельзя', () => {
+  // Иначе такое имя, став ключом карты «аккаунт -> сейв», подменило бы прототип
+  // и дало межаккаунтную инъекцию.
+  for (const evil of ['__proto__', 'constructor', 'prototype', '__PROTO__', ' Constructor ']) {
+    assert.ok(validateUsername(evil), `«${evil}» должно быть отклонено`);
+  }
+  assert.equal(validateUsername('нормальное_имя'), null, 'обычное имя проходит');
+});
