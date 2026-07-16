@@ -4,6 +4,7 @@ import { Player, type Strike } from '../game/player';
 import { Monster } from '../game/monster';
 import { findTallObjects } from '../game/tall-objects';
 import { pickSpawns } from '../game/spawn';
+import { buildFlow } from '../game/flow';
 import { HERO, MONSTERS, SPAWNS, xpToNext, rollDrop } from '../game/creatures';
 import { Hud } from '../game/hud';
 import { draftCollision, mergeCollision } from '../map/collision-draft';
@@ -53,6 +54,13 @@ export class GameScene extends MapScene {
   quick: Hotbar = emptyHotbar();
   /** Куда вложены очки характеристик. Сколько их выдано, считается от уровня. */
   spent: Spent = emptySpent();
+
+  /**
+   * В какой клетке был игрок, когда последний раз считали волну. Пересчитываем
+   * только при переходе в новую клетку: внутри одной клетки волна та же, а
+   * гонять её каждый кадр — 6300 клеток впустую 60 раз в секунду.
+   */
+  private flowAt = -1;
 
   constructor() {
     super('world');
@@ -229,7 +237,7 @@ export class GameScene extends MapScene {
     for (const p of points) {
       const m = new Monster(this, MONSTERS[p.kind], p.x, p.y);
       // Пауки прячутся за деревьями по тем же правилам, что игрок.
-      m.setTallObjects(tall, this.doc.width, this.doc.map.tileWidth, this.doc.map.tileHeight);
+      m.setTallObjects(tall, this.doc.width, this.doc.height, this.doc.map.tileWidth, this.doc.map.tileHeight);
       this.monsters.push(m);
     }
 
@@ -448,6 +456,24 @@ export class GameScene extends MapScene {
     this.inventory.render();
   }
 
+  /**
+   * Пересчитать волну от игрока, если он перешёл в другую клетку.
+   *
+   * Одна волна на всех пауков: цель у них общая, и считать поиск пути каждому из
+   * шестнадцати незачем. 6300 клеток обходятся за доли миллисекунды, а внутри
+   * одной клетки игрока результат не меняется — потому и проверка flowAt.
+   */
+  private updateFlow(): void {
+    const at =
+      Math.floor(this.player.sprite.y / this.doc.map.tileHeight) * this.doc.width +
+      Math.floor(this.player.sprite.x / this.doc.map.tileWidth);
+    if (at === this.flowAt) return;
+    this.flowAt = at;
+
+    const flow = buildFlow(this.doc.width, this.doc.height, (i) => this.doc.map.collision[i] === 1, at);
+    for (const m of this.monsters) m.setFlow(flow);
+  }
+
   private gainXp(amount: number): void {
     this.player.xp += amount;
     while (this.player.xp >= xpToNext(this.player.level)) {
@@ -495,6 +521,7 @@ export class GameScene extends MapScene {
   protected onUpdate(delta: number): void {
     const now = this.time.now;
     this.player.update(now, delta);
+    this.updateFlow();
 
     for (const m of this.monsters) {
       m.update(this.player);

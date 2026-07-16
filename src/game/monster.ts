@@ -3,6 +3,7 @@ import { createDirAnims } from './anims';
 import { creatureDepth } from './depth';
 import { dirFromVelocity, DIRS_MOB, type Dir } from './dir';
 import { distSq, hitRect } from './combat';
+import { nextStep, UNREACHABLE } from './flow';
 import type { MonsterStats } from './creatures';
 import type { Player } from './player';
 
@@ -31,13 +32,25 @@ export class Monster {
   /** Большие деревья: чтобы паук прятался за ними так же, как игрок. */
   private tallObjects: Map<number, number> = new Map();
   private mapWidth = 0;
+  private mapHeight = 0;
   private tileW = 16;
   private tileH = 16;
 
+  /**
+   * Волна от игрока: в каждой клетке — сколько шагов до него. Одна на всех
+   * пауков, считает и обновляет сцена. null — пока не посчитана.
+   */
+  private flow: Int32Array | null = null;
+
+  setFlow(flow: Int32Array | null): void {
+    this.flow = flow;
+  }
+
   /** Сказать пауку, где большие деревья. Зовётся сценой один раз, как у игрока. */
-  setTallObjects(tall: Map<number, number>, mapWidth: number, tileW: number, tileH: number): void {
+  setTallObjects(tall: Map<number, number>, mapWidth: number, mapHeight: number, tileW: number, tileH: number): void {
     this.tallObjects = tall;
     this.mapWidth = mapWidth;
+    this.mapHeight = mapHeight;
     this.tileW = tileW;
     this.tileH = tileH;
   }
@@ -261,8 +274,45 @@ export class Monster {
       return;
     }
 
-    this.moveTo(px, py);
+    this.chaseTo(px, py);
     this.showBar();
+  }
+
+  /**
+   * Идти к игроку в обход препятствий.
+   *
+   * Раньше паук просто разворачивался носом к цели и шёл напролом: дерево или
+   * пруд между ними — и он упирался, толкая препятствие до бесконечности.
+   * Теперь спрашиваем у волны, в какую соседнюю клетку шагнуть, и идём туда.
+   *
+   * Вплотную волной не пользуемся: на последнем метре шаги по клеткам заметны
+   * глазом как дёрганье, а обходить там уже нечего.
+   */
+  private chaseTo(tx: number, ty: number): void {
+    const near = this.stats.reach + this.tileW;
+    if (!this.flow || distSq(this.sprite.x, this.sprite.y, tx, ty) < near * near) {
+      this.moveTo(tx, ty);
+      return;
+    }
+
+    const from = this.cellIndex();
+    const step = nextStep(this.flow, this.mapWidth, this.mapHeight, from);
+    if (step === UNREACHABLE) {
+      // Пути нет (паука вытолкнули в стену) или мы уже в клетке игрока — идём
+      // как раньше. Хуже, чем было, от этого не станет.
+      this.moveTo(tx, ty);
+      return;
+    }
+
+    // В центр следующей клетки: к её краю паук подходил бы по касательной и
+    // цеплялся углом за стену.
+    this.moveTo((step % this.mapWidth) * this.tileW + this.tileW / 2, Math.floor(step / this.mapWidth) * this.tileH + this.tileH / 2);
+  }
+
+  private cellIndex(): number {
+    const x = Math.floor(this.sprite.x / this.tileW);
+    const y = Math.floor(this.sprite.y / this.tileH);
+    return y * this.mapWidth + x;
   }
 
   private moveTo(tx: number, ty: number): void {
