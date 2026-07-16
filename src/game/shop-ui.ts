@@ -203,8 +203,11 @@ export class ShopUi {
 
   /** Игрок купил предмет по id. */
   onBuy: (id: string) => void = () => {};
-  /** Игрок продал отобранные ячейки сумки (целыми стопками). */
-  onSellBasket: (indices: number[]) => void = () => {};
+  /**
+   * Игрок продал отобранное (целыми стопками). Пары «ячейка + что в ней было
+   * при отборе»: сцена продаёт только при совпадении — сумка могла измениться.
+   */
+  onSellBasket: (picks: { index: number; id: string }[]) => void = () => {};
 
   constructor() {
     this.style = document.createElement('style');
@@ -463,10 +466,12 @@ export class ShopUi {
 
   private sellPicked(): void {
     if (!this.basket.size) return;
-    const indices = [...this.basket.keys()];
+    // Отдаём и номер ячейки, и вещь, которую игрок видел при отборе: продажа
+    // по голому номеру продала бы то, что УСПЕЛО лечь в ячейку за этот кадр.
+    const picks = [...this.basket].map(([index, id]) => ({ index, id }));
     this.basket.clear();
     this.key = '';
-    this.onSellBasket(indices); // сцена продаст, обновит сумку и позовёт render
+    this.onSellBasket(picks); // сцена продаст, обновит сумку и позовёт render
   }
 
   /** Подсказка по товару: имя, что даёт, цена. */

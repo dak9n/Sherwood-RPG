@@ -243,12 +243,12 @@ export class GameScene extends MapScene {
       {
         label: 'Магазин', key: 'O', icon: { sheet: 'icons', x: 2 * 16, y: 0 * 16, w: 16, h: 16 },
         isOpen: () => this.shop.isOpen,
-        toggle: () => this.shop.toggle(),
+        toggle: () => this.toggleShop(),
       },
       {
         label: 'Кузница', key: 'K', icon: { sheet: 'icons', x: 0 * 16, y: 6 * 16, w: 16, h: 16 },
         isOpen: () => this.forge.isOpen,
-        toggle: () => this.forge.toggle(),
+        toggle: () => this.toggleForge(),
       },
       {
         label: 'Карта', key: 'M', icon: { sheet: 'icons', x: 4 * 16, y: 3 * 16, w: 16, h: 16 },
@@ -261,8 +261,8 @@ export class GameScene extends MapScene {
     // ты роешься в грибах, — иначе сумка станет способом переждать бой.
     this.input.keyboard?.on('keydown-I', () => this.inventory.toggle());
     this.input.keyboard?.on('keydown-U', () => this.skills.toggle());
-    this.input.keyboard?.on('keydown-O', () => this.shop.toggle());
-    this.input.keyboard?.on('keydown-K', () => this.forge.toggle());
+    this.input.keyboard?.on('keydown-O', () => this.toggleShop());
+    this.input.keyboard?.on('keydown-K', () => this.toggleForge());
     this.input.keyboard?.on('keydown-M', () => this.minimap.toggleFull());
     this.bindQuickKeys();
 
@@ -749,6 +749,22 @@ export class GameScene extends MapScene {
     this.forge.render();
   }
 
+  /**
+   * Магазин и кузница не живут одновременно: оба — центральные окна, и кузница
+   * (выше по z) накрывала магазин. Кнопка кузницы зовёт «купи в магазине (O)» —
+   * нажал O, и магазин обязан оказаться СВЕРХУ, а не под кузницей (нашла
+   * состязательная проверка). Открываешь одно — второе закрывается.
+   */
+  private toggleShop(): void {
+    if (!this.shop.isOpen) this.forge.close();
+    this.shop.toggle();
+  }
+
+  private toggleForge(): void {
+    if (!this.forge.isOpen) this.shop.close();
+    this.forge.toggle();
+  }
+
   /** Купить предмет в магазине. Все проверки — в чистой buyItem, окно только шлёт намерение. */
   private buy(id: string): void {
     const res = buyItem(this.gold, this.bag, id);
@@ -764,14 +780,15 @@ export class GameScene extends MapScene {
 
   /**
    * Продать отобранные в корзине ячейки — целыми стопками. Каждую продаёт чистая
-   * sellStack; неудачные (опустевшие, непродаваемые) просто пропускаем — корзина
-   * могла отстать от сумки на кадр.
+   * sellStack, сверяя, что в ячейке всё ещё ТА вещь, которую игрок отбирал:
+   * горячие клавиши живут и при открытом магазине, и надетый меч мог лечь в
+   * отобранную ячейку за кадр до продажи. Не совпало — ячейку пропускаем.
    */
-  private sellBasket(indices: number[]): void {
+  private sellBasket(picks: { index: number; id: string }[]): void {
     let total = 0;
     let count = 0;
-    for (const i of indices) {
-      const res = sellStack(this.gold, this.bag, i);
+    for (const p of picks) {
+      const res = sellStack(this.gold, this.bag, p.index, p.id);
       if (!res.ok) continue;
       this.gold = res.gold;
       total += res.total;

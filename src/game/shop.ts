@@ -95,10 +95,18 @@ export type SellStackResult =
  * Продать ВСЮ стопку из ячейки разом. Для корзины продажи: игрок отбирает вещи,
  * жмёт «продать выбранное», и каждая уходит целиком. Ячейка пустеет, золото
  * прибавляется на цену за штуку, помноженную на количество.
+ *
+ * expectedId — та вещь, которую игрок ВИДЕЛ, когда отбирал ячейку. Сумка живёт
+ * своей жизнью, пока окно открыто: горячая клавиша могла надеть меч, и в ту же
+ * ячейку лёг снятый. Продавать по голому номеру значило бы продать вещь,
+ * которую игрок не выбирал (нашла состязательная проверка). Не совпало — отказ.
  */
-export function sellStack(gold: number, bag: (Stack | null)[], index: number): SellStackResult {
+export function sellStack(gold: number, bag: (Stack | null)[], index: number, expectedId?: string): SellStackResult {
   const slot = bag[index];
   if (!slot) return { ok: false, reason: 'пусто' };
+  if (expectedId !== undefined && slot.id !== expectedId) {
+    return { ok: false, reason: 'вещь в ячейке сменилась' };
+  }
 
   const price = sellPrice(slot.id);
   if (price <= 0) return { ok: false, reason: 'это не продать' };
