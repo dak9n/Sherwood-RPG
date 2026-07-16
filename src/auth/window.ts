@@ -12,40 +12,91 @@ import { login, register } from './client';
  * клиенте: это была бы имитация защиты.
  */
 
+// Куски рамы из нашего набора — те же, что в окне инвентаря. Тянутся
+// девятислайсом (border-image), поэтому окно любого размера собирается без швов.
+const UI = 'assets/interface/ui';
+/** Масштаб рамки и вкладок. Только целый: на дробном пиксели поехали бы. */
+const S = 3;
+const TS = 2;
+/** Кадр мечника анфас для портрета — тот же, что в панели персонажа. */
+const HERO = {
+  sheet: 'assets/characters/PNG/Swordsman_lvl1/With_shadow/Swordsman_lvl1_Idle_with_shadow.png',
+  x: 19, y: 20, w: 20, h: 27, zoom: 3,
+};
+
 const CSS = `
   #auth {
     position: fixed; inset: 0; z-index: 100;
     display: flex; align-items: center; justify-content: center;
-    background: #14181b; background-image: radial-gradient(circle at 50% 30%, #223038, #14181b 70%);
-    font: 14px/1.5 system-ui, sans-serif; color: #cfd8dc;
+    background: radial-gradient(circle at 50% 35%, #2a3a2c, #12100c 72%);
+    font: 14px/1.5 system-ui, sans-serif; color: #f0e0c8;
   }
-  #auth .card {
-    width: 320px; max-width: 92vw; background: #20272b;
-    border: 1px solid #0d1114; border-radius: 8px;
-    box-shadow: 0 16px 50px rgba(0,0,0,.6); padding: 22px;
+  #auth * { image-rendering: pixelated; }
+  #auth i, #auth img { display: block; }
+
+  /* Окно целиком — кусок набора: зелёная шапка и коричневое тело одной рамой. */
+  #auth .win {
+    position: relative; width: 300px; max-width: 92vw;
+    border-image: url(${UI}/window.png) 16 5 5 5 fill / ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px repeat;
+    border-width: ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px; border-style: solid;
+    padding: 2px 16px 6px;
+    filter: drop-shadow(0 14px 40px rgba(0,0,0,.6));
   }
-  #auth h1 { margin: 0 0 2px; font-size: 20px; color: #eaf0f2; }
-  #auth .sub { margin: 0 0 18px; color: #8a9aa4; font-size: 13px; }
-  #auth .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  /* Заголовок ложится на зелёную шапку, уже нарисованную в рамке окна. */
+  #auth .title {
+    position: absolute; top: -${13 * S}px; left: 0; right: 0; text-align: center;
+    font-weight: 700; font-size: 16px; letter-spacing: .1em; text-transform: uppercase;
+    color: #eaf6f0; text-shadow: 1px 1px 0 #294040;
+  }
+  #auth .sub { margin: 0 0 12px; text-align: center; font-size: 12px; color: #d8c0a0; }
+
+  /* Портрет героя — тот же приём, что в панели персонажа: спрайт на цвете травы. */
+  #auth .portrait {
+    width: ${HERO.w * HERO.zoom + 16}px; height: ${HERO.h * HERO.zoom + 10}px;
+    margin: 2px auto 10px; position: relative; overflow: hidden;
+    background: #7aad55; border: ${S}px solid #3e1f1d; box-shadow: inset 0 0 0 ${S}px #70492a;
+    display: flex; align-items: flex-end; justify-content: center;
+  }
+  #auth .portrait i {
+    width: ${HERO.w}px; height: ${HERO.h}px; margin-bottom: 4px;
+    background: url(${HERO.sheet}) -${HERO.x}px -${HERO.y}px;
+    transform: scale(${HERO.zoom}); transform-origin: bottom center;
+  }
+
+  #auth .tabs { display: flex; gap: ${TS}px; margin-bottom: ${3 * TS}px; }
   #auth .tab {
-    flex: 1; padding: 7px; text-align: center; cursor: pointer;
-    background: #2a3237; border: 1px solid #0d1114; border-radius: 4px; color: #b7c2c8;
+    flex: 1; text-align: center; cursor: pointer; position: relative; top: ${2 * TS}px;
+    padding: ${2 * TS}px ${2 * TS}px ${TS}px; font-size: 12px; color: #e6d3b0;
+    border-image: url(${UI}/tab_off.png) 4 5 1 5 fill / ${4 * TS}px ${5 * TS}px ${TS}px ${5 * TS}px repeat;
+    border-width: ${4 * TS}px ${5 * TS}px ${TS}px ${5 * TS}px; border-style: solid;
   }
-  #auth .tab[aria-selected="true"] { background: #4a7a3f; border-color: #63a354; color: #fff; }
-  #auth label { display: block; margin: 10px 0 3px; color: #8a9aa4; font-size: 12px; }
+  #auth .tab:hover { filter: brightness(1.12); }
+  #auth .tab[aria-selected="true"] {
+    border-image-source: url(${UI}/tab_on.png); top: 0; padding-bottom: ${3 * TS}px; color: #eaf6f0;
+  }
+
+  #auth label { display: block; margin: 8px 0 3px; color: #b0916a; font-size: 12px; }
   #auth input {
-    width: 100%; box-sizing: border-box; font: inherit; padding: 8px 10px;
-    background: #12171a; color: #eaf0f2; border: 1px solid #3a464d; border-radius: 4px;
+    width: 100%; box-sizing: border-box; font: inherit; padding: 7px 9px; color: #f0e0c8;
+    background: #241811; border: 2px solid #70492a; border-radius: 2px;
+    image-rendering: auto;
   }
   #auth input:focus { outline: none; border-color: #63a354; }
+
+  /* Кнопка — зелёная из набора, той же рамой, что и в инвентаре. */
   #auth .go {
-    width: 100%; margin-top: 16px; padding: 9px; font: inherit; font-weight: 600; cursor: pointer;
-    background: #4a7a3f; color: #fff; border: 1px solid #63a354; border-radius: 4px;
+    width: 100%; margin-top: 16px; cursor: pointer; font: inherit; font-weight: 700; font-size: 14px;
+    padding: ${2 * S}px 8px; color: #eaf6f0; text-shadow: 1px 1px 0 #294040;
+    border-image: url(${UI}/button.png) 4 3 3 3 fill / ${4 * S}px ${3 * S}px ${3 * S}px ${3 * S}px repeat;
+    border-width: ${4 * S}px ${3 * S}px ${3 * S}px ${3 * S}px; border-style: solid;
   }
-  #auth .go:hover { background: #55893f; }
-  #auth .go:disabled { opacity: .5; cursor: default; }
-  #auth .msg { min-height: 18px; margin-top: 10px; font-size: 13px; color: #e2705f; text-align: center; }
-  #auth .hint { margin-top: 14px; font-size: 11px; color: #6b7c85; text-align: center; line-height: 1.5; }
+  #auth .go:hover { filter: brightness(1.12); }
+  #auth .go:active { transform: translateY(1px); }
+  #auth .go:disabled { filter: grayscale(.5) brightness(.8); cursor: default; }
+
+  #auth .msg { min-height: 16px; margin-top: 8px; font-size: 13px; color: #e2705f; text-align: center; }
+  #auth .hint { font-size: 11px; color: #9a835f; text-align: center; line-height: 1.5; }
+  #auth .hint:not(:empty) { margin-top: 8px; }
 `;
 
 type Mode = 'login' | 'register';
@@ -59,8 +110,9 @@ export function showAuthWindow(): Promise<string> {
     const root = document.createElement('div');
     root.id = 'auth';
     root.innerHTML = `
-      <div class="card">
-        <h1>Лес</h1>
+      <div class="win">
+        <div class="title">Лес</div>
+        <div class="portrait"><i></i></div>
         <p class="sub">Войдите или создайте героя, чтобы начать.</p>
         <div class="tabs">
           <div class="tab" data-mode="login">Вход</div>
