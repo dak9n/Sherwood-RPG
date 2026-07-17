@@ -14,6 +14,7 @@ const base = (over: Partial<Progress> = {}): Progress => ({
   mp: 50,
   gold: 0,
   sharpen: {},
+  skills: {},
   charName: '',
   bag: new Array(BAG).fill(null),
   equipped: {},
@@ -194,6 +195,23 @@ test('ник героя: туда-обратно и чистка', () => {
   const long = parseSave(serializeProgress(base({ charName: 'ДлинноеИмяГероя1234567890' })), BAG)!.charName;
   assert.ok(long.length <= 16, `ник обрезан до предела: «${long}»`);
   assert.equal(parseSave(serializeProgress(base({ charName: 42 as never })), BAG)!.charName, '', 'не строка -> пусто');
+});
+
+test('дерево навыков: туда-обратно, а сверх выданного за уровень — срезается', () => {
+  // Уровень 6 -> выдано 5 очков. Честное вложение читается как есть.
+  const ok = parseSave(serializeProgress(base({ level: 6, skills: { blade: 3, swift: 2 } })), BAG)!;
+  assert.deepEqual(ok.skills, { blade: 3, swift: 2 });
+
+  // Подделка: на 3 уровне (выдано 2) вложено 30 рангов — режется до 2 суммарно.
+  const cheat = parseSave(serializeProgress(base({ level: 3, skills: { blade: 10, vigor: 20 } as never })), BAG)!;
+  const total = Object.values(cheat.skills).reduce((n, r) => n + r, 0);
+  assert.ok(total <= 2, `вложено ${total}, а выдано за уровень 2`);
+});
+
+test('старый сейв без дерева навыков читается пустым', () => {
+  const old = serializeProgress(base({ level: 5 })) as Record<string, unknown>;
+  delete old.skills;
+  assert.deepEqual(parseSave(old, BAG)!.skills, {}, 'нет поля -> пустое дерево');
 });
 
 test('старый сейв без ника читается пустым', () => {

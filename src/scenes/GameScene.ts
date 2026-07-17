@@ -17,6 +17,8 @@ import { SkillsUi } from '../game/skills-ui';
 import { ShopUi } from '../game/shop-ui';
 import { ForgeUi } from '../game/forge-ui';
 import { trySharpen, plusOf, sharpenBonus, SCROLL_ID, type Sharpen } from '../game/forge';
+import { SkillTreeUi } from '../game/skilltree-ui';
+import { allocate as allocateSkill, skillBonuses, BASE_CRIT_MUL, type SkillRanks } from '../game/skilltree';
 import { MinimapUi } from '../game/minimap-ui';
 import { MenuUi } from '../game/menu-ui';
 import { HotbarUi } from '../game/hotbar-ui';
@@ -52,6 +54,7 @@ export class GameScene extends MapScene {
   private hud!: Hud;
   private inventory!: InventoryUi;
   private skills!: SkillsUi;
+  private skillTree!: SkillTreeUi;
   private shop!: ShopUi;
   private forge!: ForgeUi;
   private hotbar!: HotbarUi;
@@ -68,6 +71,10 @@ export class GameScene extends MapScene {
    * plusOf с hasOwn.
    */
   private sharpen: Sharpen = {};
+  /** Дерево навыков (L): узел -> ранг. Часть сейва. Отдельно от окна умений (U). */
+  private skillRanks: SkillRanks = {};
+  /** Вампиризм от навыков: доля урона возвращается здоровьем. Ставит applyGear. */
+  private lifesteal = 0;
   /** Ник героя (создание персонажа). Показывается над ним. Часть сейва. */
   private charName = '';
   /** Метка с ником над героем. */
@@ -171,6 +178,18 @@ export class GameScene extends MapScene {
       points: unspent(this.player.level, this.spent),
       fromPoints: bonusFrom(this.spent),
       sharpen: sharpenBonus(this.sharpen, this.equipped.weapon),
+      // Навыки дерева (L): урон «Меткости» входит в dmg только с луком — как и в бою.
+      skill: (() => {
+        const sb = skillBonuses(this.skillRanks);
+        return {
+          dmg: sb.dmg + (isRanged(this.equipped.weapon) ? sb.rangedDmg : 0),
+          def: sb.def,
+          speed: sb.speed,
+          hp: sb.hp,
+          mp: sb.mp,
+        };
+      })(),
+      crit: skillBonuses(this.skillRanks).critChance,
     }));
     this.inventory.setPlusFor((id) => plusOf(this.sharpen, id));
     this.inventory.onUse = (index) => this.useItem(index);
@@ -186,6 +205,12 @@ export class GameScene extends MapScene {
     this.skills = new SkillsUi();
     this.skills.setHero(() => ({ level: this.player.level, spent: this.spent }));
     this.skills.onSpend = (stat) => this.spendPointOn(stat);
+
+    // Дерево навыков (L): ветвящиеся пассивные навыки, отдельно от простых очков
+    // характеристик (U). Можно/нельзя решает чистая allocate; окно только рисует.
+    this.skillTree = new SkillTreeUi();
+    this.skillTree.setHero(() => ({ level: this.player.level, ranks: this.skillRanks }));
+    this.skillTree.onAllocate = (nodeId) => this.allocateSkill(nodeId);
 
     // Магазин (O): покупка и продажа за золото. Решает не окно, а сцена — через
     // чистые buyItem/sellStack, чтобы проверка была одна на все пути.
@@ -256,6 +281,11 @@ export class GameScene extends MapScene {
         toggle: () => this.skills.toggle(),
       },
       {
+        label: 'Навыки', key: 'L', icon: { sheet: 'icons', x: 1 * 16, y: 1 * 16, w: 16, h: 16 },
+        isOpen: () => this.skillTree.isOpen,
+        toggle: () => this.skillTree.toggle(),
+      },
+      {
         label: 'Магазин', key: 'O', icon: { sheet: 'icons', x: 2 * 16, y: 0 * 16, w: 16, h: 16 },
         isOpen: () => this.shop.isOpen,
         toggle: () => this.toggleShop(),
@@ -276,6 +306,7 @@ export class GameScene extends MapScene {
     // ты роешься в грибах, — иначе сумка станет способом переждать бой.
     this.input.keyboard?.on('keydown-I', () => this.inventory.toggle());
     this.input.keyboard?.on('keydown-U', () => this.skills.toggle());
+    this.input.keyboard?.on('keydown-L', () => this.skillTree.toggle());
     this.input.keyboard?.on('keydown-O', () => this.toggleShop());
     this.input.keyboard?.on('keydown-K', () => this.toggleForge());
     this.input.keyboard?.on('keydown-M', () => this.minimap.toggleFull());
@@ -310,6 +341,7 @@ export class GameScene extends MapScene {
       this.nameTag?.destroy();
       this.inventory.destroy();
       this.skills.destroy();
+      this.skillTree.destroy();
       this.shop.destroy();
       this.forge.destroy();
       for (const a of this.arrows) a.destroy();
@@ -421,7 +453,7 @@ export class GameScene extends MapScene {
     );
 
     for (const m of hitAny) {
-      this.hitMonster(m, strike.damage, strike.heavy);
+      this.hitMonster(m, strike.damage, strike.heavy, strike.crit);
     }
 
     if (hitAny.length) this.cameras.main.shake(strike.heavy ? 140 : 80, strike.heavy ? 0.006 : 0.003);
@@ -434,10 +466,14 @@ export class GameScene extends MapScene {
    * Награда только на переходе «жив -> мёртв»: takeDamage по трупу молчит, но без
    * этой проверки повторное попадание всё равно начислило бы опыт и золото ещё раз.
    */
-  private hitMonster(m: Monster, damage: number, heavy: boolean): void {
+  private hitMonster(m: Monster, damage: number, heavy: boolean, crit: boolean): void {
     if (m.isDead) return;
     m.takeDamage(damage);
-    this.damageNumber(m.sprite.x, m.sprite.y - 30, damage, heavy ? '#ffd35c' : '#ffffff');
+    // Крит — оранжевым и с восклицанием; тяжёлый — золотой; обычный — белый.
+    const color = crit ? '#ff6a4d' : heavy ? '#ffd35c' : '#ffffff';
+    this.damageNumber(m.sprite.x, m.sprite.y - 30, damage, color, crit ? `${damage}!` : undefined);
+    // Вампиризм (навык): часть нанесённого урона возвращается здоровьем.
+    this.healFromLifesteal(damage);
     if (m.isDead) {
       this.gainXp(m.stats.xp);
       this.dropLoot(m);
@@ -446,6 +482,15 @@ export class GameScene extends MapScene {
       const goldPart = gold > 0 ? `, +${gold} золота` : '';
       this.chat.system(`Повержен ${m.stats.name} (ур.${m.stats.level}) — +${m.stats.xp} опыта${goldPart}.`);
     }
+  }
+
+  /** Вампиризм: вернуть здоровьем долю нанесённого урона. Тихо, но с зелёной цифрой. */
+  private healFromLifesteal(damage: number): void {
+    if (this.lifesteal <= 0 || this.player.isDead) return;
+    const before = this.player.hp;
+    this.player.hp = Math.min(this.player.hpMax, this.player.hp + Math.max(1, Math.floor(damage * this.lifesteal)));
+    const gained = Math.round(this.player.hp - before);
+    if (gained > 0) this.damageNumber(this.player.sprite.x, this.player.sprite.y - 38, 0, '#8ad46a', `+${gained}`);
   }
 
   /** Золото за убитого. Считаем чистой rollGold, показываем цифрой. Возвращаем начисленное. */
@@ -460,7 +505,7 @@ export class GameScene extends MapScene {
 
   /** Лук выстрелил: рождаем стрелу. Дальше её ведёт updateArrows. */
   private spawnArrow(shot: Shot): void {
-    this.arrows.push(new Arrow(this, shot.x, shot.y, shot.angle, shot.damage, shot.heavy));
+    this.arrows.push(new Arrow(this, shot.x, shot.y, shot.angle, shot.damage, shot.heavy, shot.crit));
   }
 
   /**
@@ -487,7 +532,7 @@ export class GameScene extends MapScene {
         (m) => !m.isDead && Math.abs(m.sprite.x - ax) < 11 && ay > m.sprite.y - 24 && ay < m.sprite.y + 4,
       );
       if (hit) {
-        this.hitMonster(hit, a.damage, a.heavy);
+        this.hitMonster(hit, a.damage, a.heavy, a.crit);
         this.cameras.main.shake(a.heavy ? 120 : 60, a.heavy ? 0.005 : 0.0025);
         a.destroy();
         this.arrows.splice(i, 1);
@@ -621,6 +666,7 @@ export class GameScene extends MapScene {
       quick: this.quick,
       spent: this.spent,
       sharpen: this.sharpen,
+      skills: this.skillRanks,
       charName: this.charName,
     };
   }
@@ -669,8 +715,9 @@ export class GameScene extends MapScene {
     for (let i = 0; i < this.quick.length; i++) this.quick[i] = prog.quick[i] ?? null;
     this.spent = prog.spent;
     this.gold = prog.gold;
-    // Заточка — ДО applyGear: тот считает урон уже с ней.
+    // Заточка и навыки — ДО applyGear: тот считает урон, здоровье, крит уже с ними.
     this.sharpen = prog.sharpen;
+    this.skillRanks = prog.skills;
     if (prog.charName) this.charName = prog.charName;
 
     this.player.setPoints(bonusFrom(this.spent));
@@ -752,8 +799,32 @@ export class GameScene extends MapScene {
   private applyGear(): void {
     const bonus = totalBonuses(this.equipped);
     bonus.dmg += sharpenBonus(this.sharpen, this.equipped.weapon);
+
+    // Навыки дерева (L) — через тот же аггрегат, что вещи: их стат-бонусы
+    // складываются в gear и учитываются в здоровье, скорости, защите, уроне.
+    // Урон лука («Меткость») добавляем только когда надет лук.
+    const sb = skillBonuses(this.skillRanks);
+    const ranged = isRanged(this.equipped.weapon);
+    bonus.dmg += sb.dmg + (ranged ? sb.rangedDmg : 0);
+    bonus.speed += sb.speed;
+    bonus.mp += sb.mp;
+    bonus.hp += sb.hp;
+    bonus.def += sb.def;
+
     this.player.setGear(bonus);
-    this.player.setRanged(isRanged(this.equipped.weapon));
+    this.player.setRanged(ranged);
+    // Крит и вампиризм — не стат-бонусы, отдельными каналами.
+    this.player.setCrit(sb.critChance, BASE_CRIT_MUL + sb.critMul);
+    this.lifesteal = sb.lifesteal;
+  }
+
+  /** Вложить ранг навыка (дерево L). Проверки — в чистой allocate; окно только шлёт намерение. */
+  private allocateSkill(nodeId: string): void {
+    if (!allocateSkill(nodeId, this.skillRanks, this.player.level)) return;
+    this.applyGear(); // навык мог поднять здоровье/скорость/крит — пересобираем
+    this.skillTree.render();
+    this.inventory.refreshStats();
+    this.scheduleSave();
   }
 
   /**
@@ -1007,6 +1078,7 @@ export class GameScene extends MapScene {
     this.hud.setGold(this.gold);
     this.inventory.refreshStats();
     this.skills.render();
+    this.skillTree.render();
     this.shop.render();
     this.forge.render();
     this.menu.render();

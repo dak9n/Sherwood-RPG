@@ -345,6 +345,14 @@ export interface HeroView {
   fromPoints: { dmg: number; hp: number; mp: number; def: number };
   /** Прибавка урона от заточки надетого оружия (кузница, K). */
   sharpen: number;
+  /**
+   * Прибавки от дерева навыков (L). Считает сцена — с учётом лука (урон
+   * «Меткости» входит в dmg, только когда надет лук). Панель обязана их
+   * показать: в бою они уже работают, промолчать — солгать о цифрах.
+   */
+  skill: { dmg: number; def: number; speed: number; hp: number; mp: number };
+  /** Шанс крита от навыков, доля 0..1. Отдельной строкой, если больше нуля. */
+  crit: number;
 }
 
 export class InventoryUi {
@@ -654,7 +662,7 @@ export class InventoryUi {
     if (!h) return;
 
     const b = totalBonuses(this.equipped);
-    const key = `${Math.ceil(h.hp)}/${h.hpMax}/${Math.floor(h.mp)}/${h.mpMax}/${h.level}/${Math.floor(h.xp)}/${JSON.stringify(b)}/${h.points}/${JSON.stringify(h.fromPoints)}/${h.sharpen}`;
+    const key = `${Math.ceil(h.hp)}/${h.hpMax}/${Math.floor(h.mp)}/${h.mpMax}/${h.level}/${Math.floor(h.xp)}/${JSON.stringify(b)}/${h.points}/${JSON.stringify(h.fromPoints)}/${h.sharpen}/${JSON.stringify(h.skill)}/${h.crit}`;
     if (key === this.statsKey) return;
     this.statsKey = key;
 
@@ -673,23 +681,34 @@ export class InventoryUi {
     // насколько он сильнее базы, а не бухгалтерия по источникам. Разбор по
     // источникам — в подсказке.
     const p = h.fromPoints;
-    const src = (gear: number, pts: number): string =>
-      !gear && !pts ? '' : `от вещей ${gear >= 0 ? '+' : ''}${gear}, от очков +${pts}`;
+    const sk = h.skill;
+    // Разбор источников: вещи, очки, навыки (дерева L). Показываем непустые.
+    const src = (gear: number, pts: number, skill = 0): string =>
+      [
+        gear ? `от вещей ${gear >= 0 ? '+' : ''}${gear}` : '',
+        pts ? `от очков +${pts}` : '',
+        skill ? `навыки +${skill}` : '',
+      ].filter(Boolean).join(', ');
 
-    // Атака собирается из трёх источников; в подсказке разложено по полочкам.
-    const atk = b.dmg + p.dmg + h.sharpen;
+    // Атака собирается из четырёх источников; в подсказке разложено по полочкам.
+    const atk = b.dmg + p.dmg + h.sharpen + sk.dmg;
     const atkSrc = [
       b.dmg ? `от вещей ${b.dmg >= 0 ? '+' : ''}${b.dmg}` : '',
       p.dmg ? `от очков +${p.dmg}` : '',
       h.sharpen ? `заточка +${h.sharpen}` : '',
+      sk.dmg ? `навыки +${sk.dmg}` : '',
     ].filter(Boolean).join(', ');
 
     this.stats.innerHTML = [
-      this.statRow(STAT_ICON.hp, 'Здоровье', `${Math.ceil(h.hp)} / ${h.hpMax}`, mark(b.hp + p.hp), src(b.hp, p.hp)),
+      this.statRow(STAT_ICON.hp, 'Здоровье', `${Math.ceil(h.hp)} / ${h.hpMax}`, mark(b.hp + p.hp + sk.hp), src(b.hp, p.hp, sk.hp)),
       this.statRow(STAT_ICON.dmg, 'Атака', `${h.dmgMin + atk}–${h.dmgMax + atk}`, mark(atk), atkSrc),
-      this.statRow(STAT_ICON.mp, 'Мана', `${Math.floor(h.mp)} / ${h.mpMax}`, mark(b.mp + p.mp), src(b.mp, p.mp)),
-      this.statRow(STAT_ICON.def, 'Защита', String(b.def + p.def), '', src(b.def, p.def)),
-      this.statRow(STAT_ICON.speed, 'Скорость', String(HERO.speed + b.speed), mark(b.speed)),
+      this.statRow(STAT_ICON.mp, 'Мана', `${Math.floor(h.mp)} / ${h.mpMax}`, mark(b.mp + p.mp + sk.mp), src(b.mp, p.mp, sk.mp)),
+      this.statRow(STAT_ICON.def, 'Защита', String(b.def + p.def + sk.def), '', src(b.def, p.def, sk.def)),
+      this.statRow(STAT_ICON.speed, 'Скорость', String(HERO.speed + b.speed + sk.speed), mark(b.speed + sk.speed), src(b.speed, 0, sk.speed)),
+      // Крит показываем, только если навыки его дали: иначе пустая строка врёт.
+      h.crit > 0
+        ? this.statRow(STAT_ICON.dmg, 'Шанс крита', `${Math.round(h.crit * 100)}%`, '', 'Навык «Точный удар»: удар с этим шансом бьёт сильнее.')
+        : '',
       // Про здоровье оговорка обязательна: в бою оно не растёт, и молчать об
       // этом — значит обещать лечение, которого не будет.
       this.statRow(

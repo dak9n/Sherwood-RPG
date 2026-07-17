@@ -33,6 +33,7 @@ export class Arrow {
     angle: number,
     readonly damage: number,
     readonly heavy: boolean,
+    readonly crit: boolean,
   ) {
     Arrow.ensureTexture(scene);
     this.ox = x;

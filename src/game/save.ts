@@ -4,6 +4,7 @@ import { SLOTS, type Equipped } from './equipment.ts';
 import { canBind, HOTBAR_SIZE, emptyHotbar, type Hotbar } from './hotbar.ts';
 import { STATS, earned, emptySpent, type Spent } from './stats.ts';
 import { SHARPEN_MAX, type Sharpen } from './forge.ts';
+import { cleanSkills, type SkillRanks } from './skilltree.ts';
 
 /**
  * Разбор и санация сохранения. Чистая логика: ни сервера, ни браузера — поэтому
@@ -35,6 +36,8 @@ export interface Progress {
   spent: Spent;
   /** Заточка оружия: вид -> уровень. Тоже добавлено позже — старый сейв читается без неё. */
   sharpen: Sharpen;
+  /** Дерево навыков (L): узел -> ранг. Тоже добавлено позже — старый сейв читается без него. */
+  skills: SkillRanks;
   /** Ник героя, заданный при создании. Показывается над персонажем. Пусто — ещё не создан. */
   charName: string;
 }
@@ -178,6 +181,7 @@ export function parseSave(raw: unknown, bagSize: number): Progress | null {
     quick: cleanQuick(s.quick),
     spent: cleanSpent(s.spent, level),
     sharpen: cleanSharpen(s.sharpen),
+    skills: cleanSkills(s.skills, level),
     charName: cleanName(s.charName),
   };
 }

@@ -17,6 +17,8 @@ export interface Strike {
   rect: Rect;
   damage: number;
   heavy: boolean;
+  /** Крит (навык «Точный удар»): урон уже умножен, флаг — для цвета цифры. */
+  crit: boolean;
 }
 
 /** Выстрел из лука: откуда, под каким углом и с каким уроном полетит стрела. */
@@ -26,6 +28,7 @@ export interface Shot {
   angle: number;
   damage: number;
   heavy: boolean;
+  crit: boolean;
 }
 
 /**
@@ -128,6 +131,9 @@ export class Player {
   private ranged = false;
   /** Куда полетит стрела текущего замаха. Считаем при старте, чтобы курсор не «уехал». */
   private shotAngle = 0;
+  /** Шанс крита (навыки, дерево L), доля 0..1. Множитель — critMul. Ставит сцена. */
+  private critChance = 0;
+  private critMul = 1.5;
   private invulnUntil = 0;
   private lastHurtAt = -Infinity;
 
@@ -226,15 +232,20 @@ export class Player {
     // Урон = база + уровень + оружие + вложенные очки. Меч должен чувствоваться
     // в первом же ударе. Ту же формулу показывает окно персонажа — они обязаны
     // сходиться, иначе число на экране врёт. Лук считает так же: его прибавка —
-    // это gear.dmg надетого лука.
+    // это gear.dmg надетого лука (навык «Меткость» сцена тоже кладёт в gear.dmg).
     const bonus = this.level - 1 + this.gear.dmg + this.points.dmg;
     const base = rollDamage(HERO.dmgMin + bonus, HERO.dmgMax + bonus);
-    const damage = Math.round(this.heavySwing ? base * HERO.heavyMul : base);
+    let damage = Math.round(this.heavySwing ? base * HERO.heavyMul : base);
+
+    // Крит от навыков дерева: с шансом множим урон. Флаг несём дальше — для цвета
+    // цифры, урон уже учтён.
+    const crit = this.critChance > 0 && Math.random() < this.critChance;
+    if (crit) damage = Math.round(damage * this.critMul);
 
     if (this.ranged) {
       // Стрела вылетает от корпуса, а не от ног: иначе она стелется по земле.
       // Та же высота, из которой считался угол прицела, — иначе выстрел мажет.
-      this.onShoot({ x: this.sprite.x, y: this.sprite.y - CHEST_OFFSET, angle: this.shotAngle, damage, heavy: this.heavySwing });
+      this.onShoot({ x: this.sprite.x, y: this.sprite.y - CHEST_OFFSET, angle: this.shotAngle, damage, heavy: this.heavySwing, crit });
       return;
     }
 
@@ -244,6 +255,7 @@ export class Player {
       rect: hitRect(this.sprite.x, this.sprite.y, this.dir, reach, width),
       damage,
       heavy: this.heavySwing,
+      crit,
     });
   }
 
@@ -403,6 +415,12 @@ export class Player {
    */
   setRanged(ranged: boolean): void {
     this.ranged = ranged;
+  }
+
+  /** Крит от дерева навыков (L): шанс 0..1 и множитель урона. Ставит сцена. */
+  setCrit(chance: number, mul: number): void {
+    this.critChance = chance;
+    this.critMul = mul;
   }
 
   private regen(delta: number, now: number): void {
