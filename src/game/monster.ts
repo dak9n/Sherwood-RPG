@@ -20,6 +20,10 @@ const CORPSE_MS = 3000;
 const RESPAWN_MS = 30000;
 /** Разрешение текста метки: мелкий шрифт под зумом 3 без этого превратился бы в мыло. */
 const LABEL_RES = 5;
+/** Полоска здоровья — на сколько над ногами монстра (в его масштабе). */
+const BAR_DY = 34;
+/** Метка «имя ур.N» — на сколько над ногами (чуть выше полоски). */
+const NAME_DY = 37;
 
 /**
  * Цвет метки по разнице «уровень монстра − уровень игрока», как в MMORPG:
@@ -48,6 +52,8 @@ export class Monster {
   private barBg: Phaser.GameObjects.Rectangle;
   /** Метка «имя ур.N» над монстром. */
   private nameTag: Phaser.GameObjects.Text;
+  /** Во сколько уменьшён спрайт (1 — как есть). Метку и полоску сдвигаем в тот же масштаб, чтобы не висели над мелким грибом. */
+  private readonly scale: number;
   /** Последний выставленный цвет метки — чтобы не дёргать setColor каждый кадр. */
   private tagColor = '';
 
@@ -102,8 +108,13 @@ export class Monster {
     });
 
     this.hp = stats.hp;
+    this.scale = stats.scale ?? 1;
     this.sprite = scene.physics.add.sprite(homeX, homeY, `${k}-idle`);
     this.sprite.setOrigin(0.5, 0.75);
+    // Масштаб ДО setSize: тело считается от масштаба спрайта. Смещения (центр по
+    // ширине и низ у ног) от масштаба не зависят — множитель в них сокращается,
+    // так что тело просто ужимается пропорционально, оставаясь у ног.
+    this.sprite.setScale(this.scale);
 
     const body = this.sprite.body as Phaser.Physics.Arcade.Body;
     body.setSize(stats.body[0], stats.body[1]);
@@ -112,13 +123,13 @@ export class Monster {
     // толчок, чтобы толкнутый докатился и встал, а не скользил без конца.
     body.setDrag(600, 600);
 
-    this.barBg = scene.add.rectangle(homeX, homeY - 34, 22, 3, 0x000000).setOrigin(0.5).setVisible(false);
-    this.bar = scene.add.rectangle(homeX - 10, homeY - 34, 20, 2, 0x8ad46a).setOrigin(0, 0.5).setVisible(false);
+    this.barBg = scene.add.rectangle(homeX, homeY - BAR_DY * this.scale, 22, 3, 0x000000).setOrigin(0.5).setVisible(false);
+    this.bar = scene.add.rectangle(homeX - 10, homeY - BAR_DY * this.scale, 20, 2, 0x8ad46a).setOrigin(0, 0.5).setVisible(false);
 
     // Метка с именем и уровнем — видна всегда, пока монстр жив (как в MMORPG).
     // Мелкая: камера увеличивает втрое, крупный текст закрыл бы полкарты.
     this.nameTag = scene.add
-      .text(homeX, homeY - 37, `${stats.name} ур.${stats.level}`, {
+      .text(homeX, homeY - NAME_DY * this.scale, `${stats.name} ур.${stats.level}`, {
         fontFamily: 'monospace',
         fontSize: '4px',
         color: threatColor(0),
@@ -219,7 +230,7 @@ export class Monster {
   /** Метка идёт за монстром, сортируется вместе с ним и красится по угрозе. */
   private updateNameTag(playerLevel: number): void {
     const t = this.nameTag;
-    t.setPosition(this.sprite.x, this.sprite.y - 37);
+    t.setPosition(this.sprite.x, this.sprite.y - NAME_DY * this.scale);
     // Та же глубина, что у монстра (+чуть), чтобы уходила за крону вместе с ним.
     t.setDepth(this.sprite.depth + 0.03);
     const color = threatColor(this.stats.level - playerLevel);
@@ -235,7 +246,7 @@ export class Monster {
     this.bar.width = 20 * frac;
     this.bar.setFillStyle(frac > 0.5 ? 0x8ad46a : frac > 0.25 ? 0xd8c05a : 0xe05c4a);
 
-    const y = this.sprite.y - 34;
+    const y = this.sprite.y - BAR_DY * this.scale;
     this.barBg.setPosition(this.sprite.x, y);
     this.bar.setPosition(this.sprite.x - 10, y);
     // Глубина каждый кадр: иначе паук уйдёт за крону, а полоска останется поверх дерева.
