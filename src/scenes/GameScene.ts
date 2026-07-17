@@ -79,6 +79,10 @@ export class GameScene extends MapScene {
   private charName = '';
   /** Метка с ником над героем. */
   private nameTag?: Phaser.GameObjects.Text;
+  /** Облачко реплики над героем: что он написал в чат. */
+  private chatBubble?: Phaser.GameObjects.Text;
+  /** Докуда показывать облачко (время). 0 — скрыто. */
+  private chatBubbleUntil = 0;
   /** Чат слева: системные события и сообщения игрока. */
   private chat!: ChatUi;
   /** Сумка игрока. */
@@ -156,7 +160,10 @@ export class GameScene extends MapScene {
     // Чат слева: системные события и сообщения игрока. Пока игрок печатает —
     // клавиатуру игры глушим, иначе WASD и ходят, и печатаются разом.
     this.chat = new ChatUi();
-    this.chat.onSend = (text) => this.chat.local(this.charName, text);
+    this.chat.onSend = (text) => {
+      this.chat.local(this.charName, text);
+      this.showChatBubble(text); // и облачком над головой — видно, кто написал
+    };
     this.chat.onFocusChange = (typing) => {
       if (this.input.keyboard) this.input.keyboard.enabled = !typing;
     };
@@ -339,6 +346,7 @@ export class GameScene extends MapScene {
       this.hud.destroy();
       this.chat.destroy();
       this.nameTag?.destroy();
+      this.chatBubble?.destroy();
       this.inventory.destroy();
       this.skills.destroy();
       this.skillTree.destroy();
@@ -1018,6 +1026,34 @@ export class GameScene extends MapScene {
       .setResolution(ZOOM + 3);
   }
 
+  /**
+   * Показать над героем облачко с его репликой из чата: над самим ником, так
+   * что видно, кто написал. Живёт несколько секунд и гаснет. Текст рисуется как
+   * есть (Phaser Text — не HTML), поэтому тегам из ввода тут навредить нечем;
+   * длинное обрезаем, чтобы облачко не разрослось на пол-экрана.
+   */
+  private showChatBubble(text: string): void {
+    const msg = text.length > 60 ? `${text.slice(0, 59)}…` : text;
+    this.chatBubbleUntil = this.time.now + 5000;
+    if (!this.chatBubble) {
+      this.chatBubble = this.add
+        .text(this.player.sprite.x, this.player.sprite.y - 44, msg, {
+          fontFamily: 'monospace',
+          fontSize: '5px',
+          color: '#ffffff',
+          backgroundColor: 'rgba(20,16,12,0.82)',
+          padding: { x: 3, y: 2 },
+          align: 'center',
+          wordWrap: { width: 96 },
+        })
+        .setOrigin(0.5, 1)
+        .setResolution(ZOOM + 3);
+    } else {
+      this.chatBubble.setText(msg);
+    }
+    this.chatBubble.setVisible(true);
+  }
+
   protected onUpdate(delta: number): void {
     const now = this.time.now;
     this.player.update(now, delta);
@@ -1028,6 +1064,18 @@ export class GameScene extends MapScene {
       this.nameTag.setPosition(this.player.sprite.x, this.player.sprite.y - 33);
       this.nameTag.setDepth(this.player.sprite.depth + 0.03);
       this.nameTag.setVisible(!this.player.isDead);
+    }
+
+    // Облачко реплики над ником: следует за героем, к концу срока тает.
+    if (this.chatBubble && this.chatBubble.visible) {
+      if (now >= this.chatBubbleUntil || this.player.isDead) {
+        this.chatBubble.setVisible(false);
+      } else {
+        this.chatBubble.setPosition(this.player.sprite.x, this.player.sprite.y - 44);
+        this.chatBubble.setDepth(this.player.sprite.depth + 0.04);
+        const left = this.chatBubbleUntil - now;
+        this.chatBubble.setAlpha(left < 700 ? left / 700 : 1);
+      }
     }
 
     for (const m of this.monsters) {
