@@ -9,10 +9,11 @@ import { ITEMS, countOf, takeOne, type Stack } from './items.ts';
  * до +5 легко, дальше каждый уровень — азарт. Неудача СЖИГАЕТ свиток, но
  * заточку не сбрасывает: терять уровни обиднее, чем свитки, а игра у нас добрая.
  *
- * Заточка живёт в карте «вид оружия -> уровень» (часть сейва). Уровень числится
- * за ВИДОМ оружия, не за экземпляром: сумка хранит только id и количество, и
- * заводить экземплярам паспорта ради заточки значило бы перекроить весь формат
- * сейва. Из этого следует честная оговорка: два стальных меча точатся как один.
+ * Заточка числится за КОНКРЕТНЫМ экземпляром оружия, а не за его видом: точишь
+ * один меч — соседний такой же остаётся тупым. Уровень хранится на самом
+ * предмете (`Stack.sharpen` в сумке, отдельное число у надетого) — см. items.ts
+ * и сцену. Поэтому trySharpen не знает ни про какую карту: ей передают текущий
+ * уровень ЭТОГО экземпляра, а новый она возвращает — применяет уже вызывающий.
  */
 
 /** Выше этого не заточить. Так решил заказчик. */
@@ -20,9 +21,6 @@ export const SHARPEN_MAX = 20;
 
 /** Что съедает одна попытка. Продаётся в магазине. */
 export const SCROLL_ID = 'scroll_sharpen';
-
-/** Заточка всех видов оружия: id -> уровень. Часть сейва. */
-export type Sharpen = Record<string, number>;
 
 /**
  * Шанс успеха попытки на указанный УРОВЕНЬ (не с уровня, а НА уровень).
@@ -36,14 +34,9 @@ export function sharpenChance(target: number): number {
   return 0.1;
 }
 
-/** Текущий уровень заточки оружия. Пустая карта и чужие ключи дают ноль. */
-export function plusOf(sharpen: Sharpen, weaponId: string | undefined): number {
-  return weaponId && Object.hasOwn(sharpen, weaponId) ? sharpen[weaponId] : 0;
-}
-
 /** Прибавка к урону от заточки: +1 за уровень. Формулу знает и окно кузницы. */
-export function sharpenBonus(sharpen: Sharpen, weaponId: string | undefined): number {
-  return plusOf(sharpen, weaponId);
+export function sharpenBonus(plus: number | undefined): number {
+  return Math.max(0, Math.min(SHARPEN_MAX, Math.floor(plus ?? 0)));
 }
 
 export type SharpenResult =
@@ -51,15 +44,17 @@ export type SharpenResult =
   | { ok: false; reason: string };
 
 /**
- * Попытка заточки. Мутирует сумку (съедает свиток) и карту заточки (при успехе).
- * rng параметром — ради воспроизводимых тестов, как везде в игре.
+ * Попытка заточки ОДНОГО экземпляра оружия. Мутирует сумку (съедает свиток), но
+ * НЕ трогает сам предмет: новый уровень возвращается в `level`, а проставляет его
+ * вызывающий — тому виднее, надетое это оружие или ячейка сумки. rng параметром —
+ * ради воспроизводимых тестов, как везде в игре.
  *
  * Свиток сгорает В ЛЮБОМ исходе попытки, но НЕ тратится, если попытка вообще
  * невозможна (нет оружия, предел, нет свитков): игрок не должен платить за
  * кнопку, которая ничего не могла сделать.
  */
 export function trySharpen(
-  sharpen: Sharpen,
+  currentPlus: number,
   weaponId: string | undefined,
   bag: (Stack | null)[],
   rng: () => number = Math.random,
@@ -71,7 +66,7 @@ export function trySharpen(
     return { ok: false, reason: 'это не точится' };
   }
 
-  const current = plusOf(sharpen, weaponId);
+  const current = sharpenBonus(currentPlus);
   if (current >= SHARPEN_MAX) return { ok: false, reason: 'заточен до предела' };
 
   if (countOf(bag, SCROLL_ID) < 1) return { ok: false, reason: 'нет свитков заточки' };
@@ -80,7 +75,6 @@ export function trySharpen(
 
   const target = current + 1;
   const success = rng() < sharpenChance(target);
-  if (success) sharpen[weaponId] = target;
 
   return { ok: true, success, level: success ? target : current, target };
 }

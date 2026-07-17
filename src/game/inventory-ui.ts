@@ -369,8 +369,6 @@ export class InventoryUi {
   private equipped: Equipped = {};
   /** Спрашиваем героя, а не запоминаем: здоровье меняется каждый кадр. */
   private hero: (() => HeroView) | null = null;
-  /** Заточка вида оружия — для подписи «+N» у надетого. Ставит сцена. */
-  private plusFor: (id: string) => number = () => 0;
   private statsKey = '';
 
   /** Зовётся, когда игрок хочет применить предмет из ячейки. */
@@ -511,23 +509,21 @@ export class InventoryUi {
     this.hero = get;
   }
 
-  /** Откуда узнавать заточку вида оружия (кузница, K). */
-  setPlusFor(get: (id: string) => number): void {
-    this.plusFor = get;
-  }
-
   /**
    * Карточка предмета при наведении — как в MMORPG: имя цветом редкости,
    * «+N» заточки, что даёт, а для оружия — урон, которым герой БУДЕТ бить,
    * взяв его в руку. Та же формула, что у настоящего удара: база + уровень +
    * прочие вещи (кольцо) + бонус ЭТОГО оружия + его заточка + очки.
+   *
+   * sharpen — заточка ИМЕННО этого экземпляра (у надетого своя, у каждой ячейки
+   * сумки своя): её и показываем, и учитываем в «твоём уроне с ним».
    */
-  private tipHtml(id: string, action: string, qty = 1): string {
+  private tipHtml(id: string, action: string, qty = 1, sharpen = 0): string {
     const def = ITEMS[id];
     if (!def) return '';
     const rarity = rarityOf(id);
     const isWeapon = def.slot === 'weapon';
-    const plus = isWeapon ? this.plusFor(id) : 0;
+    const plus = isWeapon ? sharpen : 0;
 
     const kind = isWeapon
       ? (def.ranged ? 'Лук' : 'Меч')
@@ -566,7 +562,9 @@ export class InventoryUi {
       const wornWeapon = this.equipped.weapon;
       const wornBonus = wornWeapon ? ITEMS[wornWeapon]?.bonus?.dmg ?? 0 : 0;
       const gearOther = totalBonuses(this.equipped).dmg - wornBonus;
-      const add = gearOther + (b?.dmg ?? 0) + plus + h.fromPoints.dmg;
+      // Урон навыков дерева (h.skill.dmg) входит и в панель, и в настоящий удар —
+      // подсказка обязана его учитывать, иначе занижает и «врёт».
+      const add = gearOther + (b?.dmg ?? 0) + plus + h.fromPoints.dmg + h.skill.dmg;
       dmg = `<div class="ln dmg"><span>Твой урон с ним</span><b>${h.dmgMin + add}–${h.dmgMax + add}</b></div>`;
     }
 
@@ -602,8 +600,8 @@ export class InventoryUi {
   }
 
   /** Повесить карточку на ячейку. Один помощник на сумку и на гнёзда. */
-  private bindTip(el: HTMLElement, id: string, action: string, qty = 1): void {
-    el.onmouseenter = (e) => this.showTip(this.tipHtml(id, action, qty), e);
+  private bindTip(el: HTMLElement, id: string, action: string, qty = 1, sharpen = 0): void {
+    el.onmouseenter = (e) => this.showTip(this.tipHtml(id, action, qty, sharpen), e);
     el.onmousemove = (e) => this.moveTip(e);
     el.onmouseleave = () => this.hideTip();
   }
@@ -632,13 +630,13 @@ export class InventoryUi {
 
       const def = ITEMS[id];
       el.append(this.iconEl(def.icon, 'item'));
-      // Заточенное оружие носит значок «+N» — как его знает кузница.
-      const plus = def.slot === 'weapon' ? this.plusFor(id) : 0;
+      // Заточка НАДЕТОГО оружия — своя (weaponSharpen через HeroView), не «по виду».
+      const plus = def.slot === 'weapon' ? this.hero?.().sharpen ?? 0 : 0;
       if (plus > 0) {
         el.append(Object.assign(document.createElement('span'), { className: 'plusb', textContent: `+${plus}` }));
       }
       el.onclick = () => this.onUnequip(key);
-      this.bindTip(el, id, 'Клик — снять');
+      this.bindTip(el, id, 'Клик — снять', 1, plus);
     }
   }
 
@@ -787,17 +785,15 @@ export class InventoryUi {
         }));
       }
 
-      // Заточенное оружие носит значок «+N», как в MMORPG.
-      if (def.slot === 'weapon') {
-        const plus = this.plusFor(def.id);
-        if (plus > 0) {
-          slot.append(Object.assign(document.createElement('span'), { className: 'plusb', textContent: `+${plus}` }));
-        }
+      // Заточка — своя у КАЖДОЙ ячейки (Stack.sharpen), а не «по виду».
+      const sharpen = def.slot === 'weapon' ? entry.stack.sharpen ?? 0 : 0;
+      if (sharpen > 0) {
+        slot.append(Object.assign(document.createElement('span'), { className: 'plusb', textContent: `+${sharpen}` }));
       }
 
       // Вместо голого title — карточка с характеристиками (см. tipHtml).
       const action = def.slot ? 'Клик — надеть' : def.use ? 'Клик — применить' : '';
-      this.bindTip(slot, def.id, action, entry.stack.qty);
+      this.bindTip(slot, def.id, action, entry.stack.qty, sharpen);
 
       // На панель внизу вещь попадает перетаскиванием. Тащим ВИД предмета, а не
       // номер ячейки: номер живёт до первой раскладки сумки.

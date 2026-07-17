@@ -16,7 +16,7 @@ import { InventoryUi } from '../game/inventory-ui';
 import { SkillsUi } from '../game/skills-ui';
 import { ShopUi } from '../game/shop-ui';
 import { ForgeUi } from '../game/forge-ui';
-import { trySharpen, plusOf, sharpenBonus, SCROLL_ID, type Sharpen } from '../game/forge';
+import { trySharpen, SCROLL_ID } from '../game/forge';
 import { SkillTreeUi } from '../game/skilltree-ui';
 import { allocate as allocateSkill, skillBonuses, BASE_CRIT_MUL, type SkillRanks } from '../game/skilltree';
 import { MinimapUi } from '../game/minimap-ui';
@@ -66,11 +66,11 @@ export class GameScene extends MapScene {
   /** Золото игрока. Падает с монстров, тратится в магазине. Часть сейва. */
   private gold = 0;
   /**
-   * Заточка оружия: вид -> уровень (кузница, K). Часть сейва. Ключи всегда
-   * проверены по таблице предметов (trySharpen и санация сейва), чтение — через
-   * plusOf с hasOwn.
+   * Заточка НАДЕТОГО оружия, +N (кузница, K). Часть сейва. Заточка оружия в
+   * сумке живёт на самих ячейках (`Stack.sharpen`): каждый меч точится отдельно.
+   * Снял меч — его заточка уезжает в сумку вместе с ним, надел — возвращается.
    */
-  private sharpen: Sharpen = {};
+  private weaponSharpen = 0;
   /** Дерево навыков (L): узел -> ранг. Часть сейва. Отдельно от окна умений (U). */
   private skillRanks: SkillRanks = {};
   /** Вампиризм от навыков: доля урона возвращается здоровьем. Ставит applyGear. */
@@ -184,7 +184,7 @@ export class GameScene extends MapScene {
       dmgMax: HERO.dmgMax + this.player.level - 1,
       points: unspent(this.player.level, this.spent),
       fromPoints: bonusFrom(this.spent),
-      sharpen: sharpenBonus(this.sharpen, this.equipped.weapon),
+      sharpen: this.weaponSharpen,
       // Навыки дерева (L): урон «Меткости» входит в dmg только с луком — как и в бою.
       skill: (() => {
         const sb = skillBonuses(this.skillRanks);
@@ -198,7 +198,6 @@ export class GameScene extends MapScene {
       })(),
       crit: skillBonuses(this.skillRanks).critChance,
     }));
-    this.inventory.setPlusFor((id) => plusOf(this.sharpen, id));
     this.inventory.onUse = (index) => this.useItem(index);
     this.inventory.onEquip = (index) => this.equipItem(index);
     this.inventory.onUnequip = (slot) => this.unequipItem(slot as EquipSlot);
@@ -224,33 +223,33 @@ export class GameScene extends MapScene {
     this.shop = new ShopUi();
     this.shop.setBag(this.bag);
     this.shop.setGold(() => this.gold);
-    this.shop.setPlusFor((id) => plusOf(this.sharpen, id));
     this.shop.onBuy = (id) => this.buy(id);
     this.shop.onSellBasket = (indices) => this.sellBasket(indices);
 
     // Кузница (K): заточка оружия свитками — любого своего, не только надетого.
     // Бросок — в чистой trySharpen; окно только показывает состояние и шлёт
-    // намерение. Одинаковые мечи показываются одной ячейкой: заточка числится
-    // за видом оружия (см. forge.ts).
+    // намерение. Каждый экземпляр — отдельная ячейка: заточка числится за
+    // конкретным мечом (см. forge.ts). Адрес экземпляра — key: 'equipped' или
+    // 'bag:<индекс>'; id несём рядом, чтобы сцена сверила, что за это время оружие
+    // в ячейке не подменилось.
     this.forge = new ForgeUi();
     this.forge.setState(() => {
-      const weapons: { id: string; plus: number; equipped: boolean }[] = [];
-      const seen = new Set<string>();
-      const add = (id: string | undefined, equipped: boolean): void => {
-        if (!id || seen.has(id)) return;
-        if (!Object.hasOwn(ITEMS, id) || ITEMS[id].slot !== 'weapon') return;
-        seen.add(id);
-        weapons.push({ id, plus: plusOf(this.sharpen, id), equipped });
-      };
-      add(this.equipped.weapon, true);
-      for (const s of this.bag) add(s?.id, false);
+      const isWeapon = (id: string | undefined): id is string =>
+        !!id && Object.hasOwn(ITEMS, id) && ITEMS[id].slot === 'weapon';
+      const weapons: { key: string; id: string; plus: number; equipped: boolean }[] = [];
+      if (isWeapon(this.equipped.weapon)) {
+        weapons.push({ key: 'equipped', id: this.equipped.weapon, plus: this.weaponSharpen, equipped: true });
+      }
+      this.bag.forEach((s, i) => {
+        if (s && isWeapon(s.id)) weapons.push({ key: `bag:${i}`, id: s.id, plus: s.sharpen ?? 0, equipped: false });
+      });
       return { weapons, scrolls: countOf(this.bag, SCROLL_ID) };
     });
-    this.forge.onSharpen = (weaponId) => this.sharpenWeapon(weaponId);
+    this.forge.onSharpen = (key, id) => this.sharpenWeapon(key, id);
 
     this.hotbar = new HotbarUi();
     this.hotbar.setData(this.quick, this.bag, this.equipped);
-    this.hotbar.setPlusFor((id) => plusOf(this.sharpen, id));
+    this.hotbar.setPlusFor((id) => this.weaponPlusFor(id));
     this.hotbar.onTrigger = (slot) => this.useQuick(slot);
     this.hotbar.onBind = (slot, id) => {
       bind(this.quick, slot, id);
@@ -721,7 +720,7 @@ export class GameScene extends MapScene {
       equipped: this.equipped,
       quick: this.quick,
       spent: this.spent,
-      sharpen: this.sharpen,
+      weaponSharpen: this.weaponSharpen,
       skills: this.skillRanks,
       charName: this.charName,
     };
@@ -772,7 +771,7 @@ export class GameScene extends MapScene {
     this.spent = prog.spent;
     this.gold = prog.gold;
     // Заточка и навыки — ДО applyGear: тот считает урон, здоровье, крит уже с ними.
-    this.sharpen = prog.sharpen;
+    this.weaponSharpen = prog.weaponSharpen;
     this.skillRanks = prog.skills;
     if (prog.charName) this.charName = prog.charName;
 
@@ -825,8 +824,22 @@ export class GameScene extends MapScene {
 
   /** Надеть вещь из ячейки сумки. */
   private equipItem(index: number): void {
+    const stack = this.bag[index];
+    const isWeapon = !!stack && Object.hasOwn(ITEMS, stack.id) && ITEMS[stack.id].slot === 'weapon';
+    // Заточка едет С оружием. Снимаем снимок ДО обмена: equipFromBag перезапишет ячейку.
+    const incomingSharpen = stack?.sharpen ?? 0;
+    const prevWeaponSharpen = this.weaponSharpen;
+
     const res = equipFromBag(this.bag, index, this.equipped);
     if (!res.ok) return;
+
+    if (isWeapon) {
+      // Надетым становится взятый меч — с его заточкой; снятый лёг на его место
+      // в сумке (bag[index]) и уносит СВОЮ прежнюю заточку.
+      this.weaponSharpen = incomingSharpen;
+      const swapped = this.bag[index];
+      if (swapped && prevWeaponSharpen > 0) swapped.sharpen = prevWeaponSharpen;
+    }
 
     this.applyGear();
     this.refreshBags();
@@ -834,15 +847,30 @@ export class GameScene extends MapScene {
 
   /** Снять надетое обратно в сумку. */
   private unequipItem(slot: EquipSlot): void {
-    const res = unequip(this.equipped, slot, (id) => addToBag(this.bag, id, 1) === 0);
+    const isWeapon = slot === 'weapon';
+    // Снимаемое оружие уносит заточку в сумку — той же ячейкой, что заводит addToBag.
+    const res = unequip(this.equipped, slot, (id) =>
+      addToBag(this.bag, id, 1, isWeapon ? this.weaponSharpen : undefined) === 0);
     if (!res.ok) {
       // Сумка полна: вещь осталась надетой, и игрок должен понять почему.
       this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#b0a08a', 'сумка полна');
       return;
     }
 
+    if (isWeapon) this.weaponSharpen = 0; // рука пуста — заточки надетого больше нет
+
     this.applyGear();
     this.refreshBags();
+  }
+
+  /**
+   * «Представительная» заточка для ВИДА оружия — нужна планке быстрого доступа,
+   * где ячейка помнит вид, а не экземпляр. Надето — заточка надетого; иначе —
+   * первого такого меча в сумке (тот, что планка и наденет).
+   */
+  private weaponPlusFor(id: string): number {
+    if (this.equipped.weapon === id) return this.weaponSharpen;
+    return this.bag.find((s) => s?.id === id)?.sharpen ?? 0;
   }
 
   /**
@@ -854,7 +882,7 @@ export class GameScene extends MapScene {
    */
   private applyGear(): void {
     const bonus = totalBonuses(this.equipped);
-    bonus.dmg += sharpenBonus(this.sharpen, this.equipped.weapon);
+    bonus.dmg += this.weaponSharpen; // заточка НАДЕТОГО оружия: +1 урона за уровень
 
     // Навыки дерева (L) — через тот же аггрегат, что вещи: их стат-бонусы
     // складываются в gear и учитываются в здоровье, скорости, защите, уроне.
@@ -885,35 +913,59 @@ export class GameScene extends MapScene {
 
   /**
    * Попытка заточки из окна кузницы. Бросок и все проверки — в чистой trySharpen;
-   * здесь только применяем итог: свиток сгорел (сумка изменилась), при успехе
-   * урон пересчитан, и оба исхода честно показаны в окне.
+   * здесь только резолвим КОНКРЕТНЫЙ экземпляр по адресу из окна, применяем итог
+   * (свиток сгорел — сумка изменилась; при успехе поднимаем заточку этого меча) и
+   * честно показываем оба исхода.
    *
-   * Оружие приходит из окна (точить можно и лежащее в сумке), поэтому первым
-   * делом проверяем, что оно у игрока вообще есть: окну верить нельзя, оно DOM.
+   * Адрес приходит из окна (DOM — ему верить нельзя): key + id. Сверяем, что в
+   * ячейке всё ещё то самое оружие, иначе за это время его могли снять/потратить.
    */
-  private sharpenWeapon(weaponId: string): void {
-    const owned = this.equipped.weapon === weaponId || this.bag.some((s) => s?.id === weaponId);
-    if (!owned) {
+  private sharpenWeapon(key: string, id: string): void {
+    let currentPlus: number;
+    let bagIndex = -1;
+
+    if (key === 'equipped') {
+      if (this.equipped.weapon !== id) {
+        this.forge.flash('это оружие уже не надето', false);
+        return;
+      }
+      currentPlus = this.weaponSharpen;
+    } else if (key.startsWith('bag:')) {
+      bagIndex = Number(key.slice(4));
+      const stack = this.bag[bagIndex];
+      if (!stack || stack.id !== id) {
+        this.forge.flash('этого оружия у тебя нет', false);
+        return;
+      }
+      currentPlus = stack.sharpen ?? 0;
+    } else {
       this.forge.flash('этого оружия у тебя нет', false);
       return;
     }
 
-    const res = trySharpen(this.sharpen, weaponId, this.bag);
+    const res = trySharpen(currentPlus, id, this.bag);
     if (!res.ok) {
       this.forge.flash(res.reason, false);
       return;
     }
 
-    this.refreshBags(); // свиток съеден: сумка, панель и автосейв
     if (res.success) {
-      // Пересчёт урона: если точили надетое, прибавка работает сразу.
+      // Заточку поднимаем ИМЕННО у этого экземпляра.
+      if (key === 'equipped') this.weaponSharpen = res.level;
+      else {
+        const st = this.bag[bagIndex];
+        if (st) st.sharpen = res.level;
+      }
+      // Урон надетого пересчитываем всегда (для сумки безвредно).
       this.applyGear();
-      this.forge.flash(`Успех! ${ITEMS[weaponId].name} теперь +${res.level}`);
-      this.chat.system(`Заточка удалась: ${ITEMS[weaponId].name} теперь +${res.level}!`);
+      this.forge.flash(`Успех! ${ITEMS[id].name} теперь +${res.level}`);
+      this.chat.system(`Заточка удалась: ${ITEMS[id].name} теперь +${res.level}!`);
     } else {
       this.forge.flash(`Неудача на +${res.target} — свиток сгорел, заточка +${res.level} цела`, false);
       this.chat.system(`Заточка на +${res.target} не удалась — свиток сгорел, заточка +${res.level} цела.`);
     }
+
+    this.refreshBags(); // свиток съеден: сумка, панель и автосейв
     this.forge.render();
   }
 

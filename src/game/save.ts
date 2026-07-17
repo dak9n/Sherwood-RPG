@@ -3,7 +3,7 @@ import { ITEMS, type Stack } from './items.ts';
 import { SLOTS, type Equipped } from './equipment.ts';
 import { canBind, HOTBAR_SIZE, emptyHotbar, type Hotbar } from './hotbar.ts';
 import { STATS, earned, emptySpent, type Spent } from './stats.ts';
-import { SHARPEN_MAX, type Sharpen } from './forge.ts';
+import { SHARPEN_MAX } from './forge.ts';
 import { cleanSkills, type SkillRanks } from './skilltree.ts';
 
 /**
@@ -34,8 +34,12 @@ export interface Progress {
   equipped: Equipped;
   quick: Hotbar;
   spent: Spent;
-  /** Заточка оружия: вид -> уровень. Тоже добавлено позже — старый сейв читается без неё. */
-  sharpen: Sharpen;
+  /**
+   * Заточка НАДЕТОГО оружия, +N. Заточка оружия в СУМКЕ живёт на самих ячейках
+   * (`Stack.sharpen`), а не здесь: каждый меч точится отдельно. Раньше заточка
+   * была картой «вид -> уровень» — старый сейв мигрируется (см. deriveWeaponSharpen).
+   */
+  weaponSharpen: number;
   /** Дерево навыков (L): узел -> ранг. Тоже добавлено позже — старый сейв читается без него. */
   skills: SkillRanks;
   /** Ник героя, заданный при создании. Показывается над персонажем. Пусто — ещё не создан. */
@@ -77,7 +81,7 @@ function cleanBag(raw: unknown, bagSize: number): (Stack | null)[] {
   for (let i = 0; i < bagSize; i++) {
     const cell = src[i];
     if (!cell || typeof cell !== 'object') continue;
-    const { id, qty } = cell as { id?: unknown; qty?: unknown };
+    const { id, qty, sharpen } = cell as { id?: unknown; qty?: unknown; sharpen?: unknown };
     // hasOwn, а не просто ITEMS[id]: иначе id вроде 'constructor' или '__proto__'
     // вернул бы УНАСЛЕДОВАННЫЙ член Object.prototype (он truthy), фантом прошёл бы
     // санацию и уронил игру при открытии сумки.
@@ -87,6 +91,12 @@ function cleanBag(raw: unknown, bagSize: number): (Stack | null)[] {
     const n = Math.floor(num(qty, 0));
     if (n < 1) continue;
     bag[i] = { id: id as string, qty: Math.min(n, def.stack) }; // не больше предела стопки
+
+    // Заточка — только у оружия и только в честном диапазоне 0..SHARPEN_MAX.
+    if (def.slot === 'weapon') {
+      const sp = Math.min(SHARPEN_MAX, Math.floor(num(sharpen, 0)));
+      if (sp > 0) bag[i]!.sharpen = sp;
+    }
   }
   return bag;
 }
@@ -117,24 +127,30 @@ function cleanQuick(raw: unknown): Hotbar {
 }
 
 /**
- * Заточка из сейва. Берём только НАШИ виды оружия (своим полем таблицы, не
- * унаследованным — та же защита от __proto__/constructor, что у сумки) и режем
- * уровень в honest-диапазон 0..SHARPEN_MAX: выше игра не выдаёт.
+ * Заточка НАДЕТОГО оружия из сейва.
+ *
+ * Новый формат хранит её отдельным числом `weaponSharpen`. Старый формат хранил
+ * карту «вид оружия -> уровень» (`sharpen`); из неё берём уровень ТОЛЬКО того
+ * оружия, что сейчас надето, — заказчик выбрал: при переходе на «за экземпляр»
+ * +N остаётся на мече в руке, а копии обнуляются. Режем в честный диапазон.
+ *
+ * hasOwn от __proto__/constructor — та же защита, что и в остальной санации.
  */
-function cleanSharpen(raw: unknown): Sharpen {
-  // Обычный объект, а не Object.create(null): внутрь попадают ТОЛЬКО ключи,
-  // прошедшие hasOwn по таблице предметов, — __proto__ и родня сюда не пролезут,
-  // а все чтения карты идут через plusOf с тем же hasOwn.
-  const out: Sharpen = {};
-  if (!raw || typeof raw !== 'object') return out;
+function deriveWeaponSharpen(s: Record<string, unknown>, weaponId: string | undefined): number {
+  const clamp = (v: unknown): number => Math.max(0, Math.min(SHARPEN_MAX, Math.floor(num(v, 0))));
 
-  for (const [id, v] of Object.entries(raw as Record<string, unknown>)) {
-    const def = Object.hasOwn(ITEMS, id) ? ITEMS[id] : undefined;
-    if (!def || def.slot !== 'weapon') continue;
-    const level = Math.min(SHARPEN_MAX, Math.floor(num(v, 0)));
-    if (level > 0) out[id] = level;
+  // Нет надетого оружия — нет и его заточки. Иначе сейв, где оружие пропало
+  // (переименовали/удалили id), дал бы «фантомную» прибавку голому герою:
+  // applyGear прибавляет weaponSharpen к урону безусловно.
+  if (typeof s.weaponSharpen === 'number' && Number.isFinite(s.weaponSharpen)) {
+    return weaponId ? clamp(s.weaponSharpen) : 0;
   }
-  return out;
+
+  const map = s.sharpen;
+  if (weaponId && map && typeof map === 'object' && Object.hasOwn(map, weaponId)) {
+    return clamp((map as Record<string, unknown>)[weaponId]);
+  }
+  return 0;
 }
 
 function cleanSpent(raw: unknown, level: number): Spent {
@@ -167,6 +183,9 @@ export function parseSave(raw: unknown, bagSize: number): Progress | null {
   if (s.version !== SAVE_VERSION) return null;
 
   const level = Math.min(MAX_LEVEL, Math.max(1, Math.floor(num(s.level, 1))));
+  // Надетое считаем заранее: заточка надетого оружия при миграции берётся из
+  // старой карты именно по надетому виду.
+  const equipped = cleanEquipped(s.equipped);
 
   return {
     level,
@@ -177,10 +196,10 @@ export function parseSave(raw: unknown, bagSize: number): Progress | null {
     // читаем 0, а не роняем загрузку: поле необязательное, версию не меняем.
     gold: Math.max(0, Math.floor(num(s.gold, 0))),
     bag: cleanBag(s.bag, bagSize),
-    equipped: cleanEquipped(s.equipped),
+    equipped,
     quick: cleanQuick(s.quick),
     spent: cleanSpent(s.spent, level),
-    sharpen: cleanSharpen(s.sharpen),
+    weaponSharpen: deriveWeaponSharpen(s, equipped.weapon),
     skills: cleanSkills(s.skills, level),
     charName: cleanName(s.charName),
   };

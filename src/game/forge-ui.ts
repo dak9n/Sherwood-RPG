@@ -13,7 +13,8 @@ import { SHARPEN_MAX, sharpenChance } from './forge';
  * в магазине. Чего игра не делает — того окно не обещает.
  *
  * Точить можно ЛЮБОЕ своё оружие — надетое или из сумки. Заточка числится за
- * видом оружия (см. forge.ts), поэтому одинаковые мечи показаны одной ячейкой.
+ * КОНКРЕТНЫМ мечом (см. forge.ts), поэтому одинаковые мечи — это разные ячейки,
+ * и каждая точится сама по себе.
  *
  * Окно шлёт намерение в сцену, а решает чистая trySharpen — как у магазина.
  */
@@ -41,8 +42,10 @@ const RARITY_COLOR: Record<Rarity, string> = {
   epic: '#7b3ca8',
 };
 
-/** Одно оружие игрока в списке слева. */
+/** Один ЭКЗЕМПЛЯР оружия игрока в списке слева. */
 export interface ForgeWeapon {
+  /** Адрес экземпляра: 'equipped' или 'bag:<индекс>'. По нему сцена его и найдёт. */
+  key: string;
   id: string;
   plus: number;
   /** Надето сейчас — помечаем: его заточка работает в бою прямо сейчас. */
@@ -51,7 +54,8 @@ export interface ForgeWeapon {
 
 /** Что окно знает о герое. Сцена отдаёт живые данные, окно только рисует. */
 export interface ForgeState {
-  /** Все виды оружия у игрока: надетое первым, дальше по сумке. */
+  /** Все экземпляры оружия у игрока: надетое первым, дальше по сумке. Одинаковые
+   *  мечи — РАЗНЫЕ ячейки: каждый точится сам по себе. */
   weapons: ForgeWeapon[];
   /** Сколько свитков в сумке. */
   scrolls: number;
@@ -235,8 +239,9 @@ export class ForgeUi {
   private msgText = '';
   private msgColor = '#9a835f';
 
-  /** Игрок жмёт «Улучшить» по выбранному оружию. Решает сцена через trySharpen. */
-  onSharpen: (weaponId: string) => void = () => {};
+  /** Игрок жмёт «Улучшить» по выбранному оружию: адрес экземпляра + его вид (для
+   *  сверки на стороне сцены). Решает сцена через trySharpen. */
+  onSharpen: (key: string, id: string) => void = () => {};
 
   constructor() {
     this.style = document.createElement('style');
@@ -332,18 +337,18 @@ export class ForgeUi {
     if (!this.isOpen) return;
     const st = this.state();
 
-    // Выбор обязан указывать на живое оружие: надетое — первым по умолчанию.
-    if (!st.weapons.some((w) => w.id === this.selected)) {
-      this.selected = st.weapons[0]?.id ?? null;
+    // Выбор обязан указывать на живой экземпляр: надетое — первым по умолчанию.
+    if (!st.weapons.some((w) => w.key === this.selected)) {
+      this.selected = st.weapons[0]?.key ?? null;
     }
 
-    const sig = st.weapons.map((w) => `${w.id}:${w.plus}:${w.equipped ? 1 : 0}`).join(',');
+    const sig = st.weapons.map((w) => `${w.key}:${w.id}:${w.plus}:${w.equipped ? 1 : 0}`).join(',');
     const key = `${sig}|${st.scrolls}|${this.selected}`;
     if (key === this.key) return;
     this.key = key;
 
     this.renderGrid(st);
-    const sel = st.weapons.find((w) => w.id === this.selected) ?? null;
+    const sel = st.weapons.find((w) => w.key === this.selected) ?? null;
     this.renderCenter(sel, st.scrolls);
     this.renderRight(sel);
   }
@@ -357,7 +362,7 @@ export class ForgeUi {
     for (const w of st.weapons) {
       const def = ITEMS[w.id];
       const slot = document.createElement('div');
-      slot.className = `slot r-${rarityOf(w.id)}${w.id === this.selected ? ' sel' : ''}`;
+      slot.className = `slot r-${rarityOf(w.id)}${w.key === this.selected ? ' sel' : ''}`;
       slot.title = `${def.name} +${w.plus}${w.equipped ? ' (надето)' : ''}`;
       slot.append(this.iconEl(def.icon));
       slot.append(Object.assign(document.createElement('span'), { className: 'plus', textContent: `+${w.plus}` }));
@@ -365,7 +370,7 @@ export class ForgeUi {
         slot.append(Object.assign(document.createElement('span'), { className: 'on', textContent: 'надето' }));
       }
       slot.onclick = () => {
-        this.selected = w.id;
+        this.selected = w.key;
         this.key = '';
         this.msgText = '';
         this.render();
@@ -434,9 +439,7 @@ export class ForgeUi {
     const can = !atMax && scrolls >= 1;
     this.goBtn.disabled = !can;
     this.goBtn.textContent = atMax ? `Предел +${SHARPEN_MAX}` : scrolls < 1 ? 'Нет свитков' : 'Улучшить';
-    this.goBtn.onclick = () => {
-      if (this.selected) this.onSharpen(this.selected);
-    };
+    this.goBtn.onclick = () => this.onSharpen(sel.key, sel.id);
     this.center.append(this.goBtn);
 
     this.msgEl = document.createElement('div');

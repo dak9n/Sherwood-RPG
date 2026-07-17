@@ -38,6 +38,20 @@ test('оружие не складывается в стопку', () => {
   assert.equal(b[1]?.qty, 1, 'второй меч занял свою ячейку');
 });
 
+test('addToBag переносит заточку экземпляра оружия на новую ячейку', () => {
+  const b: (Stack | null)[] = [null, null];
+  addToBag(b, 'sword', 1, 7);
+  assert.equal(b[0]?.sharpen, 7, 'заточка легла на заведённую ячейку');
+
+  const b2: (Stack | null)[] = [null];
+  addToBag(b2, 'sword', 1); // без заточки — поля нет
+  assert.equal(b2[0]?.sharpen, undefined);
+
+  const b3: (Stack | null)[] = [null];
+  addToBag(b3, 'sword', 1, 0); // нулевую заточку не пишем
+  assert.equal(b3[0]?.sharpen, undefined);
+});
+
 test('полная сумка говорит, сколько не влезло — а не теряет добычу молча', () => {
   const b = bag(2);
   const left = addToBag(b, 'sword', 5); // 2 ячейки по 1
@@ -195,4 +209,23 @@ test('раскладка не превышает размер стопки', () 
   sortBag(b);
   for (const s of b) if (s) assert.ok(s.qty <= ITEMS[s.id].stack, `${s.id}: стопка ${s.qty} больше предела`);
   assert.equal(countOf(b, 'mush_red'), 150);
+});
+
+test('раскладка сохраняет заточку каждого экземпляра оружия', () => {
+  const b: (Stack | null)[] = new Array(6).fill(null);
+  b[4] = { id: 'sword', qty: 1, sharpen: 8 };
+  b[1] = { id: 'sword', qty: 1, sharpen: 5 }; // ВТОРОЙ стальной меч, своя заточка
+  b[3] = { id: 'sword_blue', qty: 1 }; // не заточен
+  b[0] = { id: 'mush_red', qty: 3 };
+
+  sortBag(b);
+
+  const swords = b.filter((s) => s?.id === 'sword');
+  assert.equal(swords.length, 2, 'оба стальных меча уцелели поштучно, а не слились в ×2');
+  assert.deepEqual(
+    swords.map((s) => s!.sharpen).sort((x, y) => (x ?? 0) - (y ?? 0)),
+    [5, 8],
+    'обе заточки целы — не обнулились и не перепутались',
+  );
+  assert.equal(b.find((s) => s?.id === 'sword_blue')?.sharpen, undefined, 'незаточенный меч — без поля');
 });

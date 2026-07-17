@@ -195,8 +195,6 @@ export class ShopUi {
   private hintEl: HTMLElement;
   private bag: (Stack | null)[] = [];
   private gold: () => number = () => 0;
-  /** Заточка вида оружия — для значка «+N». Ставит сцена. */
-  private plusFor: (id: string) => number = () => 0;
   /** Отобрано на продажу: номер ячейки сумки -> id вещи на момент выбора. */
   private basket = new Map<number, string>();
   private key = '';
@@ -266,11 +264,6 @@ export class ShopUi {
 
   setGold(get: () => number): void {
     this.gold = get;
-  }
-
-  /** Откуда узнавать заточку вида оружия (кузница, K). */
-  setPlusFor(get: (id: string) => number): void {
-    this.plusFor = get;
   }
 
   get isOpen(): boolean {
@@ -387,7 +380,7 @@ export class ShopUi {
       const def = ITEMS[stack.id];
       const price = sellPrice(stack.id);
       const sellable = price > 0;
-      const plus = def?.slot === 'weapon' ? this.plusFor(stack.id) : 0;
+      const plus = def?.slot === 'weapon' ? stack.sharpen ?? 0 : 0;
       const nm = def ? `${def.name}${plus > 0 ? ` +${plus}` : ''}` : '';
       slot.className = `slot has r-${rarityOf(stack.id)}${this.basket.has(index) ? ' picked' : ''}`;
       slot.title = def
@@ -434,7 +427,7 @@ export class ShopUi {
         continue;
       }
       const def = ITEMS[stack.id];
-      const plus = def.slot === 'weapon' ? this.plusFor(stack.id) : 0;
+      const plus = def.slot === 'weapon' ? stack.sharpen ?? 0 : 0;
       slot.className = `slot has r-${rarityOf(stack.id)}`;
       slot.title = `${def.name}${plus > 0 ? ` +${plus}` : ''} — убрать из продажи`;
       slot.append(this.iconEl(def.icon));

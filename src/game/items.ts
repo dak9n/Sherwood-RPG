@@ -183,6 +183,12 @@ export const rarityOf = (id: string): Rarity => ITEMS[id]?.rarity ?? 'common';
 export interface Stack {
   id: string;
   qty: number;
+  /**
+   * Заточка ЭТОГО экземпляра оружия, +N (кузница, K). Живёт на самом предмете, а
+   * НЕ на его виде: два одинаковых меча точатся врозь. Только у оружия — оно
+   * stack:1, поэтому у экземпляра всегда одна штука. undefined/0 — не заточен.
+   */
+  sharpen?: number;
 }
 
 /**
@@ -190,8 +196,13 @@ export interface Stack {
  *
  * Возвращает, сколько НЕ влезло: сумка не резиновая, и молча терять добычу
  * нельзя — игрок должен узнать, что она полна.
+ *
+ * sharpen переносит заточку экземпляра оружия — когда оружие возвращается в
+ * сумку из руки (снятие). Только для оружия (stack:1, qty:1): ложится ровно на
+ * ту новую ячейку, которую под него завели. Для стопкующихся предметов не имеет
+ * смысла и не передаётся.
  */
-export function addToBag(bag: (Stack | null)[], id: string, qty: number): number {
+export function addToBag(bag: (Stack | null)[], id: string, qty: number, sharpen?: number): number {
   const def = ITEMS[id];
   if (!def) return qty;
 
@@ -211,6 +222,7 @@ export function addToBag(bag: (Stack | null)[], id: string, qty: number): number
     if (bag[i]) continue;
     const put = Math.min(def.stack, left);
     bag[i] = { id, qty: put };
+    if (sharpen && sharpen > 0) bag[i]!.sharpen = sharpen;
     left -= put;
   }
 
@@ -258,30 +270,43 @@ const TAB_ORDER: Tab[] = ['weapon', 'armor', 'resource', 'food'];
  * Ничего не теряет и не создаёт: после раскладки количество каждого предмета
  * ровно то же, что было. За этим следит тест — иначе кнопка «Разложить» стала
  * бы способом размножить или потерять добычу.
+ *
+ * ОРУЖИЕ (stack:1) храним ПОШТУЧНО, а не сливаем в счётчик по виду: у каждого
+ * меча своя заточка (`Stack.sharpen`), и слить два меча в «×2» значило бы стереть
+ * её. Сливаем по виду только по-настоящему стопкующееся (грибы, зелья).
  */
 export function sortBag(bag: (Stack | null)[]): void {
-  const total = new Map<string, number>();
-  for (const s of bag) if (s) total.set(s.id, (total.get(s.id) ?? 0) + s.qty);
+  const merged = new Map<string, number>(); // стопкующееся: вид -> общее число
+  const cells: Stack[] = []; // поштучные экземпляры (оружие) — целиком, с заточкой
 
-  const ids = [...total.keys()].sort((a, b) => {
-    const da = ITEMS[a];
-    const db = ITEMS[b];
-    const tab = TAB_ORDER.indexOf(da.tab) - TAB_ORDER.indexOf(db.tab);
-    if (tab) return tab;
-    // Внутри вкладки редкое — выше: за ним игрок и лезет в сумку.
-    const rare = RARITY_ORDER.indexOf(rarityOf(b)) - RARITY_ORDER.indexOf(rarityOf(a));
-    if (rare) return rare;
-    return da.name.localeCompare(db.name, 'ru');
-  });
+  for (const s of bag) {
+    if (!s) continue;
+    if (ITEMS[s.id].stack === 1) cells.push(s.sharpen ? { id: s.id, qty: s.qty, sharpen: s.sharpen } : { id: s.id, qty: s.qty });
+    else merged.set(s.id, (merged.get(s.id) ?? 0) + s.qty);
+  }
 
-  bag.fill(null);
-  let at = 0;
-  for (const id of ids) {
-    let left = total.get(id)!;
-    while (left > 0 && at < bag.length) {
+  for (const [id, qty] of merged) {
+    let left = qty;
+    while (left > 0) {
       const put = Math.min(ITEMS[id].stack, left);
-      bag[at++] = { id, qty: put };
+      cells.push({ id, qty: put });
       left -= put;
     }
   }
+
+  cells.sort((a, b) => {
+    const da = ITEMS[a.id];
+    const db = ITEMS[b.id];
+    const tab = TAB_ORDER.indexOf(da.tab) - TAB_ORDER.indexOf(db.tab);
+    if (tab) return tab;
+    // Внутри вкладки редкое — выше: за ним игрок и лезет в сумку.
+    const rare = RARITY_ORDER.indexOf(rarityOf(b.id)) - RARITY_ORDER.indexOf(rarityOf(a.id));
+    if (rare) return rare;
+    const name = da.name.localeCompare(db.name, 'ru');
+    if (name) return name;
+    return (b.sharpen ?? 0) - (a.sharpen ?? 0); // среди одинаковых заточенное выше
+  });
+
+  bag.fill(null);
+  for (let i = 0; i < cells.length && i < bag.length; i++) bag[i] = cells[i];
 }
