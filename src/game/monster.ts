@@ -19,7 +19,7 @@ const CORPSE_MS = 3000;
 /** Через сколько паук возвращается на своё место. */
 const RESPAWN_MS = 30000;
 /** Разрешение текста метки: мелкий шрифт под зумом 3 без этого превратился бы в мыло. */
-const LABEL_RES = 4;
+const LABEL_RES = 5;
 
 /**
  * Цвет метки по разнице «уровень монстра − уровень игрока», как в MMORPG:
@@ -118,12 +118,12 @@ export class Monster {
     // Метка с именем и уровнем — видна всегда, пока монстр жив (как в MMORPG).
     // Мелкая: камера увеличивает втрое, крупный текст закрыл бы полкарты.
     this.nameTag = scene.add
-      .text(homeX, homeY - 40, `${stats.name} ур.${stats.level}`, {
+      .text(homeX, homeY - 37, `${stats.name} ур.${stats.level}`, {
         fontFamily: 'monospace',
-        fontSize: '6px',
+        fontSize: '4px',
         color: threatColor(0),
         stroke: '#000000',
-        strokeThickness: 2,
+        strokeThickness: 1,
       })
       .setOrigin(0.5, 1)
       .setResolution(LABEL_RES);
@@ -219,7 +219,7 @@ export class Monster {
   /** Метка идёт за монстром, сортируется вместе с ним и красится по угрозе. */
   private updateNameTag(playerLevel: number): void {
     const t = this.nameTag;
-    t.setPosition(this.sprite.x, this.sprite.y - 40);
+    t.setPosition(this.sprite.x, this.sprite.y - 37);
     // Та же глубина, что у монстра (+чуть), чтобы уходила за крону вместе с ним.
     t.setDepth(this.sprite.depth + 0.03);
     const color = threatColor(this.stats.level - playerLevel);

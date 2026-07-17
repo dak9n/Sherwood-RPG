@@ -1007,15 +1007,15 @@ export class GameScene extends MapScene {
   /** Метка с ником над героем: идёт за ним и сортируется вместе с ним. */
   private buildNameTag(): void {
     this.nameTag = this.add
-      .text(this.player.sprite.x, this.player.sprite.y - 42, this.charName, {
+      .text(this.player.sprite.x, this.player.sprite.y - 33, this.charName, {
         fontFamily: 'monospace',
-        fontSize: '7px',
+        fontSize: '4px',
         color: '#eaf6f0',
         stroke: '#000000',
-        strokeThickness: 2,
+        strokeThickness: 1,
       })
       .setOrigin(0.5, 1)
-      .setResolution(ZOOM + 1);
+      .setResolution(ZOOM + 3);
   }
 
   protected onUpdate(delta: number): void {
@@ -1025,7 +1025,7 @@ export class GameScene extends MapScene {
 
     // Ник идёт за героем; глубина как у него — уходит за крону вместе с ним.
     if (this.nameTag) {
-      this.nameTag.setPosition(this.player.sprite.x, this.player.sprite.y - 42);
+      this.nameTag.setPosition(this.player.sprite.x, this.player.sprite.y - 33);
       this.nameTag.setDepth(this.player.sprite.depth + 0.03);
       this.nameTag.setVisible(!this.player.isDead);
     }
