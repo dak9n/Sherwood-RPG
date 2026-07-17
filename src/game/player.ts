@@ -19,6 +19,8 @@ export interface Strike {
   heavy: boolean;
   /** Крит (навык «Точный удар»): урон уже умножен, флаг — для цвета цифры. */
   crit: boolean;
+  /** Сторона взмаха (одна из 4), радианы — по ней сцена рисует росчерк тяжёлого удара. */
+  angle: number;
 }
 
 /** Выстрел из лука: откуда, под каким углом и с каким уроном полетит стрела. */
@@ -256,6 +258,7 @@ export class Player {
       damage,
       heavy: this.heavySwing,
       crit,
+      angle: DIR_ANGLE[this.dir],
     });
   }
 

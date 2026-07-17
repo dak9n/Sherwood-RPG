@@ -450,6 +450,9 @@ export class GameScene extends MapScene {
 
   /** Игрок махнул мечом: кому досталось. */
   private playerStrike(strike: Strike): void {
+    // Тяжёлый удар (ПКМ) — со своим росчерком, даже если взмах прошёл по воздуху.
+    if (strike.heavy) this.heavySwingFx(strike.angle);
+
     const { x, y, w, h } = strike.rect;
     const hitAny = this.monsters.filter(
       (m) =>
@@ -465,6 +468,51 @@ export class GameScene extends MapScene {
     }
 
     if (hitAny.length) this.cameras.main.shake(strike.heavy ? 140 : 80, strike.heavy ? 0.006 : 0.003);
+  }
+
+  /**
+   * Зрелище тяжёлого удара (ПКМ): светящийся росчерк-дуга по стороне взмаха и
+   * короткая вспышка-ядро в точке удара. Рисуем ПОВЕРХ героя, его костюм и тинт
+   * не трогаем — герой остаётся собой (белую вспышку тинтом занимает урон), а
+   * удар всё равно читается как мощный. Лёгкий удар этого не получает.
+   */
+  private heavySwingFx(angle: number): void {
+    const hero = this.player.sprite;
+    const depth = hero.depth + 0.5;
+    // Центр эффекта — перед грудью героя, в сторону взмаха.
+    const ox = hero.x + Math.cos(angle) * 12;
+    const oy = hero.y - CHEST_OFFSET + Math.sin(angle) * 12;
+
+    // Полумесяц-росчерк: толстая светящаяся дуга, развёрнутая по удару, растёт и тает.
+    const slash = this.add.graphics({ x: ox, y: oy });
+    slash.lineStyle(3, 0xbfefff, 1).beginPath();
+    slash.arc(0, 0, 14, -1, 1, false);
+    slash.strokePath();
+    slash.setRotation(angle).setBlendMode(Phaser.BlendModes.ADD).setDepth(depth);
+    this.tweens.add({
+      targets: slash,
+      scaleX: 1.9,
+      scaleY: 1.9,
+      alpha: 0,
+      duration: 210,
+      ease: 'Cubic.Out',
+      onComplete: () => slash.destroy(),
+    });
+
+    // Вспышка-ядро: короткий яркий блик в точке удара. Голубой, а не белый, —
+    // чтобы не путать с вспышкой получения урона.
+    const core = this.add.graphics({ x: ox, y: oy });
+    core.fillStyle(0xeaffff, 0.9).fillCircle(0, 0, 5);
+    core.setBlendMode(Phaser.BlendModes.ADD).setDepth(depth + 0.01);
+    this.tweens.add({
+      targets: core,
+      scaleX: 2.2,
+      scaleY: 2.2,
+      alpha: 0,
+      duration: 150,
+      ease: 'Quad.Out',
+      onComplete: () => core.destroy(),
+    });
   }
 
   /**
