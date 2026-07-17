@@ -48,6 +48,10 @@ export interface MonsterStats {
   sheet: string;
   /** Короткий префикс ключей анимаций. */
   key: string;
+  /** Как зовётся — показывается над монстром вместе с уровнем. */
+  name: string;
+  /** Уровень монстра. Над ним же; цвет метки — по разнице с уровнем игрока. */
+  level: number;
   hp: number;
   dmg: number;
   speed: number;
@@ -115,7 +119,7 @@ export const HERO: HeroStats = {
  */
 export const MONSTERS: Record<string, MonsterStats> = {
   spider1: {
-    sheet: 'Mushroom1', key: 'm1',
+    sheet: 'Mushroom1', key: 'm1', name: 'Грибок', level: 1,
     hp: 30, dmg: 3, speed: 50,
     aggro: 80, deaggro: 136, reach: 16, hitW: 18, hitFrame: 4,
     cooldown: 1200, body: [12, 8], leash: 150, xp: 6, gold: [2, 5],
@@ -129,7 +133,7 @@ export const MONSTERS: Record<string, MonsterStats> = {
     ],
   },
   spider2: {
-    sheet: 'Mushroom2', key: 'm2',
+    sheet: 'Mushroom2', key: 'm2', name: 'Гриб-воин', level: 3,
     hp: 50, dmg: 6, speed: 45,
     aggro: 90, deaggro: 153, reach: 16, hitW: 18, hitFrame: 4,
     cooldown: 1300, body: [12, 8], leash: 170, xp: 12, gold: [5, 11],
@@ -145,7 +149,7 @@ export const MONSTERS: Record<string, MonsterStats> = {
     ],
   },
   spider3: {
-    sheet: 'Mushroom3', key: 'm3',
+    sheet: 'Mushroom3', key: 'm3', name: 'Гриб-вожак', level: 6,
     hp: 90, dmg: 10, speed: 38,
     aggro: 100, deaggro: 170, reach: 18, hitW: 22, hitFrame: 4,
     cooldown: 1500, body: [12, 8], leash: 190, xp: 25, gold: [14, 26],

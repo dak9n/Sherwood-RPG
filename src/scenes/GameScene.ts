@@ -11,7 +11,7 @@ import { Hud } from '../game/hud';
 import { draftCollision, mergeCollision } from '../map/collision-draft';
 import { drawnBounds } from '../map/doc';
 import { Loot, registerItemFrames } from '../game/loot';
-import { addToBag, takeOne, sortBag, isRanged, countOf, ITEMS, type Stack, type EquipSlot } from '../game/items';
+import { addToBag, takeOne, sortBag, isRanged, countOf, rarityOf, ITEMS, type Stack, type EquipSlot } from '../game/items';
 import { InventoryUi } from '../game/inventory-ui';
 import { SkillsUi } from '../game/skills-ui';
 import { ShopUi } from '../game/shop-ui';
@@ -25,7 +25,8 @@ import { bind, swap, unbind, findInBag, emptyHotbar, type Hotbar } from '../game
 import { equipFromBag, unequip, totalBonuses, slotWearing, ensureStarterWeapon, STARTER_WEAPON, type Equipped } from '../game/equipment';
 import { emptySpent, unspent, spendPoint, bonusFrom, POINTS_PER_LEVEL, type Spent, type Stat } from '../game/stats';
 import { parseSave, serializeProgress, type Progress } from '../game/save';
-import { takePendingSave, pushProgress, loadFailed } from '../auth/progress';
+import { takePendingSave, takePendingChar, pushProgress, loadFailed } from '../auth/progress';
+import { ChatUi } from '../game/chat-ui';
 
 /** Целый зум: при дробном пиксели карты не легли бы на пиксели экрана. */
 const ZOOM = 3;
@@ -67,6 +68,12 @@ export class GameScene extends MapScene {
    * plusOf с hasOwn.
    */
   private sharpen: Sharpen = {};
+  /** Ник героя (создание персонажа). Показывается над ним. Часть сейва. */
+  private charName = '';
+  /** Метка с ником над героем. */
+  private nameTag?: Phaser.GameObjects.Text;
+  /** Чат слева: системные события и сообщения игрока. */
+  private chat!: ChatUi;
   /** Сумка игрока. */
   bag: (Stack | null)[] = new Array(BAG_SIZE).fill(null);
   /** Надетое. Новый герой начинает с мечом в руке — у каждого героя он есть. */
@@ -138,6 +145,14 @@ export class GameScene extends MapScene {
     this.spawnMonsters(tall, x, y, walls);
 
     this.hud = new Hud();
+
+    // Чат слева: системные события и сообщения игрока. Пока игрок печатает —
+    // клавиатуру игры глушим, иначе WASD и ходят, и печатаются разом.
+    this.chat = new ChatUi();
+    this.chat.onSend = (text) => this.chat.local(this.charName, text);
+    this.chat.onFocusChange = (typing) => {
+      if (this.input.keyboard) this.input.keyboard.enabled = !typing;
+    };
 
     this.inventory = new InventoryUi();
     this.inventory.setBag(this.bag);
@@ -270,6 +285,13 @@ export class GameScene extends MapScene {
     // панель: applySave кладёт в те же самые объекты, на которые уже смотрят окна.
     this.applySave();
 
+    // Ник героя: main.ts кладёт его до старта (из сейва или создания персонажа).
+    const pendingName = takePendingChar();
+    if (pendingName) this.charName = pendingName;
+    if (!this.charName) this.charName = 'Герой';
+    this.buildNameTag();
+    this.chat.system(`Добро пожаловать в лес, ${this.charName}!`);
+
     // Сохраняемся, когда вкладку прячут или закрывают — не только по таймеру.
     // keepalive у запроса (см. pushProgress) даёт ему дожить после закрытия.
     this.onHide = () => {
@@ -284,6 +306,8 @@ export class GameScene extends MapScene {
       document.removeEventListener('visibilitychange', this.onHide);
       window.removeEventListener('pagehide', this.onLeave);
       this.hud.destroy();
+      this.chat.destroy();
+      this.nameTag?.destroy();
       this.inventory.destroy();
       this.skills.destroy();
       this.shop.destroy();
@@ -309,6 +333,12 @@ export class GameScene extends MapScene {
     // локальное хранилище (см. auth/progress.ts), loadFailed всегда false, и
     // сохраняться можно всегда — прогресс не теряется даже без сервера.
     this.saveReady = !loadFailed();
+
+    // Сразу сохраняемся: у нового героя ник и класс заданы, но геймплейной
+    // правки, которая запустила бы автосейв, ещё не было. Закрой он вкладку
+    // тут же — имя пропало бы. Один сейв на старте это закрывает.
+    this.saveDirty = true;
+    this.flushSave();
   }
 
   /**
@@ -411,17 +441,21 @@ export class GameScene extends MapScene {
     if (m.isDead) {
       this.gainXp(m.stats.xp);
       this.dropLoot(m);
-      this.awardGold(m);
+      const gold = this.awardGold(m);
+      // Одна строка в чат на убийство: опыт и золото вместе.
+      const goldPart = gold > 0 ? `, +${gold} золота` : '';
+      this.chat.system(`Повержен ${m.stats.name} (ур.${m.stats.level}) — +${m.stats.xp} опыта${goldPart}.`);
     }
   }
 
-  /** Золото за убитого. Считаем чистой rollGold, показываем цифрой и сохраняемся. */
-  private awardGold(m: Monster): void {
+  /** Золото за убитого. Считаем чистой rollGold, показываем цифрой. Возвращаем начисленное. */
+  private awardGold(m: Monster): number {
     const amount = rollGold(m.stats.gold);
-    if (amount <= 0) return;
+    if (amount <= 0) return 0;
     this.gold += amount;
     this.damageNumber(m.sprite.x, m.sprite.y - 46, 0, '#ffd35c', `+${amount} зол.`);
     this.scheduleSave();
+    return amount;
   }
 
   /** Лук выстрелил: рождаем стрелу. Дальше её ведёт updateArrows. */
@@ -525,6 +559,11 @@ export class GameScene extends MapScene {
       l.flyTo(px, py, () => {
         this.damageNumber(px, py - 44, 0, '#d8c07a', `${name}${taken > 1 ? ` ×${taken}` : ''}`);
       });
+      // В чат — только заметную добычу (необычное и выше), иначе лента утонет
+      // в грибах: обычные подборы и так видно всплывающей цифрой.
+      if (rarityOf(l.id) !== 'common') {
+        this.chat.system(`Добыча: ${name}${taken > 1 ? ` ×${taken}` : ''}.`);
+      }
     }
   }
 
@@ -582,6 +621,7 @@ export class GameScene extends MapScene {
       quick: this.quick,
       spent: this.spent,
       sharpen: this.sharpen,
+      charName: this.charName,
     };
   }
 
@@ -631,6 +671,7 @@ export class GameScene extends MapScene {
     this.gold = prog.gold;
     // Заточка — ДО applyGear: тот считает урон уже с ней.
     this.sharpen = prog.sharpen;
+    if (prog.charName) this.charName = prog.charName;
 
     this.player.setPoints(bonusFrom(this.spent));
     this.applyGear(); // прибавки вещей — до restore, чтобы hpMax был верным
@@ -741,8 +782,10 @@ export class GameScene extends MapScene {
       // Пересчёт урона: если точили надетое, прибавка работает сразу.
       this.applyGear();
       this.forge.flash(`Успех! ${ITEMS[weaponId].name} теперь +${res.level}`);
+      this.chat.system(`Заточка удалась: ${ITEMS[weaponId].name} теперь +${res.level}!`);
     } else {
       this.forge.flash(`Неудача на +${res.target} — свиток сгорел, заточка +${res.level} цела`, false);
+      this.chat.system(`Заточка на +${res.target} не удалась — свиток сгорел, заточка +${res.level} цела.`);
     }
     this.forge.render();
   }
@@ -774,6 +817,7 @@ export class GameScene extends MapScene {
     this.refreshBags(); // сумка + панель + автосейв
     this.shop.render(); // витрина: обновить кошелёк и доступность кнопок
     this.shop.flash(`Куплено: ${ITEMS[id].name} (−${res.price})`);
+    this.chat.system(`Покупка: ${ITEMS[id].name} за ${res.price} золота.`);
   }
 
   /**
@@ -801,6 +845,7 @@ export class GameScene extends MapScene {
     this.refreshBags();
     this.shop.render();
     this.shop.flash(`Продано ×${count} за +${total}`);
+    this.chat.system(`Продажа: ${count} шт. за ${total} золота.`);
   }
 
   /**
@@ -858,6 +903,7 @@ export class GameScene extends MapScene {
         this.player.sprite.x, this.player.sprite.y - 56, 0, '#e0c48a',
         `+${POINTS_PER_LEVEL} очка (U)`,
       );
+      this.chat.system(`Новый уровень: ${this.player.level}! +${POINTS_PER_LEVEL} очка умений (U).`);
     }
   }
 
@@ -887,10 +933,31 @@ export class GameScene extends MapScene {
     });
   }
 
+  /** Метка с ником над героем: идёт за ним и сортируется вместе с ним. */
+  private buildNameTag(): void {
+    this.nameTag = this.add
+      .text(this.player.sprite.x, this.player.sprite.y - 42, this.charName, {
+        fontFamily: 'monospace',
+        fontSize: '7px',
+        color: '#eaf6f0',
+        stroke: '#000000',
+        strokeThickness: 2,
+      })
+      .setOrigin(0.5, 1)
+      .setResolution(ZOOM + 1);
+  }
+
   protected onUpdate(delta: number): void {
     const now = this.time.now;
     this.player.update(now, delta);
     this.updateFlow();
+
+    // Ник идёт за героем; глубина как у него — уходит за крону вместе с ним.
+    if (this.nameTag) {
+      this.nameTag.setPosition(this.player.sprite.x, this.player.sprite.y - 42);
+      this.nameTag.setDepth(this.player.sprite.depth + 0.03);
+      this.nameTag.setVisible(!this.player.isDead);
+    }
 
     for (const m of this.monsters) {
       m.update(this.player);
@@ -916,6 +983,7 @@ export class GameScene extends MapScene {
     if (this.player.isDead && !this.deathAt) {
       this.deathAt = now;
       this.hud.showDeath(true);
+      this.chat.system('Ты пал в бою. Часть опыта потеряна — скоро возрождение.');
     }
     if (this.deathAt && now - this.deathAt > 2000) {
       this.deathAt = 0;

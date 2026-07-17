@@ -35,6 +35,20 @@ export interface Progress {
   spent: Spent;
   /** Заточка оружия: вид -> уровень. Тоже добавлено позже — старый сейв читается без неё. */
   sharpen: Sharpen;
+  /** Ник героя, заданный при создании. Показывается над персонажем. Пусто — ещё не создан. */
+  charName: string;
+}
+
+/** Предел длины ника: длиннее не влезет над персонажем и в чат. */
+export const MAX_NAME = 16;
+
+/** Ник героя из UI/сейва: режем управляющие символы, лишние пробелы и длину. */
+export function cleanName(raw: unknown): string {
+  if (typeof raw !== 'string') return '';
+  // Управляющие символы (переносы строк, табы) выкидываем — ник в одну строку;
+  // цепочки пробелов схлопываем в один.
+  const stripped = [...raw].filter((ch) => ch >= ' ' && ch !== '\u007f').join('');
+  return stripped.replace(/\s+/g, ' ').trim().slice(0, MAX_NAME);
 }
 
 export interface SaveFile extends Progress {
@@ -164,5 +178,6 @@ export function parseSave(raw: unknown, bagSize: number): Progress | null {
     quick: cleanQuick(s.quick),
     spent: cleanSpent(s.spent, level),
     sharpen: cleanSharpen(s.sharpen),
+    charName: cleanName(s.charName),
   };
 }

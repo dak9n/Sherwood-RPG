@@ -27,6 +27,23 @@ export function setAccount(name: string): void {
   account = name;
 }
 
+/**
+ * Ник героя, выбранный при создании (или взятый из сейва). main.ts кладёт его
+ * ДО старта игры, сцена забирает в onReady — как и сам сейв. Отдельно от сейва,
+ * потому что у нового игрока сейва ещё нет, а ник уже есть.
+ */
+let pendingChar = '';
+
+export function setPendingChar(name: string): void {
+  pendingChar = name;
+}
+
+export function takePendingChar(): string {
+  const c = pendingChar;
+  pendingChar = '';
+  return c;
+}
+
 /** Ключ локального сейва: у каждого аккаунта свой, чтобы не путать прогресс. */
 const localKey = (): string => (account ? `progress:${account}` : '');
 

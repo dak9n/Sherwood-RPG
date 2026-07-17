@@ -14,6 +14,7 @@ const base = (over: Partial<Progress> = {}): Progress => ({
   mp: 50,
   gold: 0,
   sharpen: {},
+  charName: '',
   bag: new Array(BAG).fill(null),
   equipped: {},
   quick: emptyHotbar(),
@@ -182,6 +183,23 @@ test('id-ключ прототипа в заточке отбрасываетс�
   const evil = JSON.parse('{"__proto__": 9, "constructor": 9, "sword": 2}');
   const p = parseSave({ ...serializeProgress(base()), sharpen: evil }, BAG)!;
   assert.deepEqual(p.sharpen, { sword: 2 }, 'фантомные ключи вычищены');
+});
+
+test('ник героя: туда-обратно и чистка', () => {
+  assert.equal(parseSave(serializeProgress(base({ charName: 'Гэндальф' })), BAG)!.charName, 'Гэндальф');
+  // Управляющие символы и хвост длиннее предела режутся.
+  const dirty = parseSave(serializeProgress(base({ charName: '  Ар\nаг\tорн  ' })), BAG)!.charName;
+  assert.equal(dirty, 'Арагорн', 'переносы/табы убраны, края обрезаны');
+  assert.equal(parseSave(serializeProgress(base({ charName: 'Дед  Мороз' })), BAG)!.charName, 'Дед Мороз', 'двойной пробел схлопнут');
+  const long = parseSave(serializeProgress(base({ charName: 'ДлинноеИмяГероя1234567890' })), BAG)!.charName;
+  assert.ok(long.length <= 16, `ник обрезан до предела: «${long}»`);
+  assert.equal(parseSave(serializeProgress(base({ charName: 42 as never })), BAG)!.charName, '', 'не строка -> пусто');
+});
+
+test('старый сейв без ника читается пустым', () => {
+  const old = serializeProgress(base({ level: 3 })) as Record<string, unknown>;
+  delete old.charName;
+  assert.equal(parseSave(old, BAG)!.charName, '', 'нет поля -> пустой ник, загрузка цела');
 });
 
 test('hp/mp очищаются до неотрицательных чисел', () => {

@@ -18,6 +18,21 @@ type State = 'idle' | 'chase' | 'leash' | 'attack' | 'hurt' | 'dead';
 const CORPSE_MS = 3000;
 /** Через сколько паук возвращается на своё место. */
 const RESPAWN_MS = 30000;
+/** Разрешение текста метки: мелкий шрифт под зумом 3 без этого превратился бы в мыло. */
+const LABEL_RES = 4;
+
+/**
+ * Цвет метки по разнице «уровень монстра − уровень игрока», как в MMORPG:
+ * серый — добыча пустяковая, зелёный — легко, жёлтый — ровня, оранжевый —
+ * опасно, красный — сильно выше. По цвету сразу видно, лезть или обойти.
+ */
+function threatColor(diff: number): string {
+  if (diff >= 4) return '#e05c4a';
+  if (diff >= 2) return '#e0a34a';
+  if (diff >= -1) return '#e6d36a';
+  if (diff >= -3) return '#8ad46a';
+  return '#a7a7a7';
+}
 
 export class Monster {
   readonly sprite: Phaser.Physics.Arcade.Sprite;
@@ -31,6 +46,10 @@ export class Monster {
   private deadAt = 0;
   private bar: Phaser.GameObjects.Rectangle;
   private barBg: Phaser.GameObjects.Rectangle;
+  /** Метка «имя ур.N» над монстром. */
+  private nameTag: Phaser.GameObjects.Text;
+  /** Последний выставленный цвет метки — чтобы не дёргать setColor каждый кадр. */
+  private tagColor = '';
 
   /** Большие деревья: чтобы паук прятался за ними так же, как игрок. */
   private tallObjects: Map<number, number> = new Map();
@@ -95,6 +114,19 @@ export class Monster {
 
     this.barBg = scene.add.rectangle(homeX, homeY - 34, 22, 3, 0x000000).setOrigin(0.5).setVisible(false);
     this.bar = scene.add.rectangle(homeX - 10, homeY - 34, 20, 2, 0x8ad46a).setOrigin(0, 0.5).setVisible(false);
+
+    // Метка с именем и уровнем — видна всегда, пока монстр жив (как в MMORPG).
+    // Мелкая: камера увеличивает втрое, крупный текст закрыл бы полкарты.
+    this.nameTag = scene.add
+      .text(homeX, homeY - 40, `${stats.name} ур.${stats.level}`, {
+        fontFamily: 'monospace',
+        fontSize: '6px',
+        color: threatColor(0),
+        stroke: '#000000',
+        strokeThickness: 2,
+      })
+      .setOrigin(0.5, 1)
+      .setResolution(LABEL_RES);
 
     this.sprite.on(Phaser.Animations.Events.ANIMATION_UPDATE, this.onAnimFrame, this);
     this.sprite.on(Phaser.Animations.Events.ANIMATION_COMPLETE, this.onAnimDone, this);
@@ -175,12 +207,26 @@ export class Monster {
 
     this.bar.setVisible(false);
     this.barBg.setVisible(false);
+    this.nameTag.setVisible(false);
     this.play('death');
   }
 
   private showBar(): void {
     this.bar.setVisible(true);
     this.barBg.setVisible(true);
+  }
+
+  /** Метка идёт за монстром, сортируется вместе с ним и красится по угрозе. */
+  private updateNameTag(playerLevel: number): void {
+    const t = this.nameTag;
+    t.setPosition(this.sprite.x, this.sprite.y - 40);
+    // Та же глубина, что у монстра (+чуть), чтобы уходила за крону вместе с ним.
+    t.setDepth(this.sprite.depth + 0.03);
+    const color = threatColor(this.stats.level - playerLevel);
+    if (color !== this.tagColor) {
+      this.tagColor = color;
+      t.setColor(color);
+    }
   }
 
   private updateBar(): void {
@@ -211,6 +257,7 @@ export class Monster {
     this.sprite.setAlpha(1);
     this.sprite.clearTint();
     this.scene.physics.world.enableBody(this.sprite);
+    this.nameTag.setVisible(true);
     this.play('idle');
   }
 
@@ -230,6 +277,8 @@ export class Monster {
       if (age > CORPSE_MS) this.sprite.setAlpha(Math.max(0, 1 - (age - CORPSE_MS) / 1000));
       return;
     }
+
+    this.updateNameTag(player.level);
 
     const body = this.sprite.body as Phaser.Physics.Arcade.Body;
 
@@ -354,5 +403,6 @@ export class Monster {
     this.sprite.destroy();
     this.bar.destroy();
     this.barBg.destroy();
+    this.nameTag.destroy();
   }
 }

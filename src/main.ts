@@ -3,7 +3,9 @@ import { GameScene } from './scenes/GameScene';
 import { EditorScene } from './scenes/EditorScene';
 import { whoami, logout } from './auth/client';
 import { showAuthWindow, showAccountBadge } from './auth/window';
-import { fetchProgress, setPendingSave, setAccount } from './auth/progress';
+import { showCharacterCreate } from './auth/character-window';
+import { fetchProgress, setPendingSave, setPendingChar, setAccount } from './auth/progress';
+import { cleanName } from './game/save';
 
 /** Игра и редактор — две разные сцены, вместе они не запускаются никогда. */
 const editMode = import.meta.env.DEV && new URLSearchParams(location.search).has('edit');
@@ -60,7 +62,15 @@ async function main(): Promise<void> {
 
   // Прогресс тянем ДО старта игры: сцена в onReady применяет его синхронно, а
   // из сети в момент создания сцены его не подгрузить.
-  setPendingSave(await fetchProgress());
+  const save = await fetchProgress();
+
+  // Нет героя (новый игрок) — экран создания: класс и ник. Есть ник в сейве —
+  // идём сразу в игру. Ник передаём сцене отдельно (у нового сейва ещё нет).
+  const savedName = cleanName((save as { charName?: unknown } | null)?.charName);
+  const charName = savedName || (await showCharacterCreate()).name;
+  setPendingChar(charName);
+
+  setPendingSave(save);
   bootGame();
 
   // Плашка «вошёл как …»: без неё аккаунт не сменить. Выход гасит сессию и
