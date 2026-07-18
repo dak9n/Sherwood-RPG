@@ -145,7 +145,7 @@ test('золото: туда-обратно и защита от порчи', ()
 test('сейв ПЕРВОЙ версии без золота читается (золото = 0), а не роняет загрузку', () => {
   // Старый сейв поля gold не знал вовсе. Версию мы не поднимали — он обязан
   // прогрузиться, иначе игроки с прогрессом потеряли бы его при обновлении.
-  const old = serializeProgress(base({ level: 4 })) as Record<string, unknown>;
+  const old = serializeProgress(base({ level: 4 })) as unknown as Record<string, unknown>;
   delete old.gold;
   const p = parseSave(old, BAG)!;
   assert.equal(p.gold, 0, 'нет поля — читаем ноль');
@@ -259,13 +259,13 @@ test('дерево навыков: туда-обратно, а сверх выд
 });
 
 test('старый сейв без дерева навыков читается пустым', () => {
-  const old = serializeProgress(base({ level: 5 })) as Record<string, unknown>;
+  const old = serializeProgress(base({ level: 5 })) as unknown as Record<string, unknown>;
   delete old.skills;
   assert.deepEqual(parseSave(old, BAG)!.skills, {}, 'нет поля -> пустое дерево');
 });
 
 test('старый сейв без ника читается пустым', () => {
-  const old = serializeProgress(base({ level: 3 })) as Record<string, unknown>;
+  const old = serializeProgress(base({ level: 3 })) as unknown as Record<string, unknown>;
   delete old.charName;
   assert.equal(parseSave(old, BAG)!.charName, '', 'нет поля -> пустой ник, загрузка цела');
 });

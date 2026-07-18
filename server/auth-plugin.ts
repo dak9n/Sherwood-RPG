@@ -12,9 +12,12 @@ import type { Plugin, ViteDevServer } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { AuthStore } from './auth-store.ts';
 import { loadUsers, saveUsers, loadProgress, saveProgress } from './auth-persist.ts';
+import { MarketStore, PAGE_SIZE, type BrowseFilter } from './market-store.ts';
+import { loadMarket, saveMarket } from './market-persist.ts';
 
 const AUTH_FILE = '.auth/users.json';
 const PROGRESS_FILE = '.auth/progress.json';
+const MARKET_FILE = '.auth/market.json';
 const MAX_BODY = 256 * 1024; // сейв крошечный, но с запасом; больше — точно порча
 
 function readBody(req: IncomingMessage): Promise<string> {
@@ -63,6 +66,11 @@ export function authPlugin(): Plugin {
 
       // Прогресс держим в памяти и сбрасываем на диск при каждой записи.
       const progress = loadProgress(progressFile);
+
+      // Торговый рынок: лоты и почта между аккаунтами. Тот же AuthStore решает,
+      // кто выставил/купил (keyOf по токену). Живёт только на дев-сервере.
+      const marketFile = resolve(server.config.root, MARKET_FILE);
+      const market = new MarketStore(loadMarket(marketFile), (snap) => saveMarket(marketFile, snap));
 
       /**
        * Тело как json. Требование content-type — это и защита от чужой вкладки:
@@ -154,6 +162,94 @@ export function authPlugin(): Plugin {
           if (!key) return send(res, 401, { error: 'нужен вход' });
           send(res, 200, { save: progress[key] ?? null });
         })().catch((e: Error) => send(res, 400, { error: e.message }));
+      });
+
+      // --- Торговый рынок ---
+
+      /** Кто делает запрос: ключ аккаунта (владение) и показное имя (продавец/покупатель). */
+      const who = async (req: IncomingMessage): Promise<{ key: string; name: string } | null> => {
+        const store = await ready;
+        const now = Date.now();
+        const token = tokenOf(req);
+        const key = store.keyOf(token, now);
+        const name = store.whoami(token, now);
+        return key && name ? { key, name } : null;
+      };
+
+      /** Обёртка ручки рынка: метод, вход обязателен, ошибки — 400. */
+      const marketRoute = (
+        path: string,
+        method: 'GET' | 'POST',
+        handler: (me: { key: string; name: string }, req: IncomingMessage, res: ServerResponse) => Promise<void>,
+      ): void => {
+        server.middlewares.use(path, (req, res, next) => {
+          if (req.method !== method) return next();
+          void (async () => {
+            const me = await who(req);
+            if (!me) return send(res, 401, { error: 'нужен вход' });
+            await handler(me, req, res);
+          })().catch((e: Error) => send(res, 400, { ok: false, error: e.message }));
+        });
+      };
+
+      const query = (req: IncomingMessage): URLSearchParams => new URLSearchParams((req.url ?? '').split('?')[1] ?? '');
+
+      // Выставить лот: тело { item, price }. Предмет игрок уже списал у себя.
+      marketRoute('/__market-list', 'POST', async (me, req, res) => {
+        const body = await jsonBody(req, res);
+        if (!body) return;
+        send(res, 200, market.list(me.key, me.name, body.item, body.price, Date.now()));
+      });
+
+      // Витрина: чужие лоты с фильтрами. Свои лоты — во вкладке «Мои лоты».
+      marketRoute('/__market-browse', 'GET', async (me, req, res) => {
+        const q = query(req);
+        const filter: BrowseFilter = {
+          category: (q.get('category') as BrowseFilter['category']) ?? 'all',
+          search: q.get('search') ?? '',
+          rarity: (q.get('rarity') as BrowseFilter['rarity']) ?? 'any',
+          sort: (q.get('sort') as BrowseFilter['sort']) ?? 'newest',
+          page: Number(q.get('page') ?? 1),
+          pageSize: Number(q.get('pageSize') ?? PAGE_SIZE),
+          excludeSeller: me.key,
+        };
+        send(res, 200, market.browse(filter, Date.now()));
+      });
+
+      // Купить лот: тело { lotId }. По успеху вернём предмет и цену — клиент спишет золото и положит вещь.
+      marketRoute('/__market-buy', 'POST', async (me, req, res) => {
+        const body = await jsonBody(req, res);
+        if (!body) return;
+        send(res, 200, market.buy(me.key, me.name, body.lotId, Date.now()));
+      });
+
+      // Снять свой лот: тело { lotId }. Предмет вернётся владельцу по почте.
+      marketRoute('/__market-cancel', 'POST', async (me, req, res) => {
+        const body = await jsonBody(req, res);
+        if (!body) return;
+        send(res, 200, market.cancel(me.key, body.lotId, Date.now()));
+      });
+
+      // Мои активные лоты.
+      marketRoute('/__market-mine', 'GET', async (me, _req, res) => {
+        send(res, 200, { ok: true, lots: market.mine(me.key, Date.now()) });
+      });
+
+      // Почта: выручка и возвраты. Клиент зачислит и подтвердит принятое ack-ом.
+      marketRoute('/__market-mail', 'GET', async (me, _req, res) => {
+        send(res, 200, { ok: true, mail: market.mailFor(me.key) });
+      });
+
+      // Подтвердить приём записей почты: тело { ids }. Удаляем только принятое.
+      marketRoute('/__market-mail-ack', 'POST', async (me, req, res) => {
+        const body = await jsonBody(req, res);
+        if (!body) return;
+        send(res, 200, { ok: true, ...market.ackMail(me.key, body.ids) });
+      });
+
+      // История сделок игрока.
+      marketRoute('/__market-history', 'GET', async (me, _req, res) => {
+        send(res, 200, { ok: true, history: market.historyFor(me.key, 50) });
       });
     },
   };

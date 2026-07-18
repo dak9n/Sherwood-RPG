@@ -310,3 +310,34 @@ export function sortBag(bag: (Stack | null)[]): void {
   bag.fill(null);
   for (let i = 0; i < cells.length && i < bag.length; i++) bag[i] = cells[i];
 }
+
+/** Категория предмета на торговом рынке (клавиша T). Общая для сервера и окна. */
+export type MarketCategory = 'weapon' | 'armor' | 'accessory' | 'consumable' | 'scroll' | 'resource' | 'misc';
+
+/** Столбец категорий в окне рынка — как на образце заказчика. 'all' — без фильтра. */
+export const MARKET_CATEGORIES: { id: MarketCategory | 'all'; label: string }[] = [
+  { id: 'all', label: 'Все' },
+  { id: 'weapon', label: 'Оружие' },
+  { id: 'armor', label: 'Броня' },
+  { id: 'accessory', label: 'Аксессуары' },
+  { id: 'consumable', label: 'Расходники' },
+  { id: 'scroll', label: 'Свитки' },
+  { id: 'resource', label: 'Ресурсы' },
+  { id: 'misc', label: 'Разное' },
+];
+
+/**
+ * К какой категории рынка отнести предмет. Свитки — отдельно от прочих ресурсов;
+ * кольцо/амулет — «Аксессуары», а не «Броня». Неизвестный id — «Разное».
+ */
+export function marketCategory(id: string): MarketCategory {
+  const def = Object.hasOwn(ITEMS, id) ? ITEMS[id] : undefined;
+  if (!def) return 'misc';
+  if (id.startsWith('scroll')) return 'scroll';
+  if (def.slot === 'weapon') return 'weapon';
+  if (def.slot === 'ring' || def.slot === 'amulet') return 'accessory';
+  if (def.slot) return 'armor'; // шлем/латы/щит/сапоги
+  if (def.tab === 'food') return 'consumable';
+  if (def.tab === 'resource') return 'resource';
+  return 'misc';
+}
