@@ -31,3 +31,6 @@ public/assets/hero/
 
 # База аккаунтов: хеши паролей, не место в репозитории и не место в сборке.
 .auth/
+
+# Карта в работе (macos) — пока не готова, на GitHub не пушим.
+public/assets/maps/macos.json
