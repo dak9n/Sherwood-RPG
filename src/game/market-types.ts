@@ -55,6 +55,8 @@ export interface BrowseFilter {
   search?: string;
   rarity?: Rarity | 'any';
   sort?: 'newest' | 'price_asc' | 'price_desc' | 'unit_asc' | 'expires';
+  /** «Только по карману»: не показывать лоты дороже этой цены (обычно = золоту игрока). */
+  maxPrice?: number;
   page?: number;
   pageSize?: number;
   /** Скрыть лоты этого продавца (свои — на вкладке «Мои лоты»). */

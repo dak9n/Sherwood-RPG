@@ -209,6 +209,7 @@ export function authPlugin(): Plugin {
           search: q.get('search') ?? '',
           rarity: (q.get('rarity') as BrowseFilter['rarity']) ?? 'any',
           sort: (q.get('sort') as BrowseFilter['sort']) ?? 'newest',
+          maxPrice: q.get('maxPrice') != null ? Number(q.get('maxPrice')) : undefined,
           page: Number(q.get('page') ?? 1),
           pageSize: Number(q.get('pageSize') ?? PAGE_SIZE),
           excludeSeller: me.key,

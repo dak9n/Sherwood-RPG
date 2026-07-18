@@ -74,6 +74,10 @@ export class GameScene extends MapScene {
   private mkLoading = false;
   private mkNotice: { text: string; ok: boolean } | undefined;
   private mkFilter: BrowseFilter = { category: 'all', search: '', rarity: 'any', sort: 'newest', page: 1 };
+  /** Идёт покупка/выставление/снятие — блокирует новые действия, чтобы не было гонок золота/предметов. */
+  private mkBusy = false;
+  /** Текущий сбор почты — чтобы два наложенных сбора не задвоили выручку/предметы. */
+  private mkMailRun: Promise<void> | undefined;
   private hotbar!: HotbarUi;
   private minimap!: MinimapUi;
   private menu!: MenuUi;
@@ -287,9 +291,11 @@ export class GameScene extends MapScene {
       mine: this.mkMine,
       history: this.mkHistory,
       notice: this.mkNotice,
+      busy: this.mkBusy,
     }));
     this.market.setActions({
       onQuery: (f) => void this.marketQuery(f),
+      onRefresh: (tab) => void this.marketOnRefresh(tab),
       onBuy: (id) => void this.marketBuyLot(id),
       onList: (item, price) => void this.marketListItem(item, price),
       onCancel: (id) => void this.marketCancelLot(id),
@@ -1215,6 +1221,7 @@ export class GameScene extends MapScene {
     if (!this.market.isOpen) {
       this.shop.close();
       this.forge.close();
+      this.mkNotice = undefined; // не тащим старое сообщение в свежеоткрытое окно
       this.market.open();
       void this.marketRefreshAll();
     } else {
@@ -1234,7 +1241,13 @@ export class GameScene extends MapScene {
     this.market.render();
   }
 
-  /** При открытии рынка: забрать почту (выручку/возвраты) и подтянуть мои лоты и историю. */
+  /** Обновить данные активной вкладки (смена вкладки / «↻»): чужие могли купить твой лот. */
+  private async marketOnRefresh(tab: 'market' | 'mine' | 'history'): Promise<void> {
+    if (tab === 'market') return; // витрину обновляет marketQuery от «↻»
+    await this.marketRefreshAll();
+  }
+
+  /** При открытии/обновлении: забрать почту (выручку/возвраты) и подтянуть мои лоты и историю. */
   private async marketRefreshAll(): Promise<void> {
     await this.collectMarketMail();
     const [mine, hist] = await Promise.all([marketMine(), marketHistory()]);
@@ -1244,68 +1257,107 @@ export class GameScene extends MapScene {
     this.market.render();
   }
 
-  /** Купить лот: проверяем золото и место, затем сервер атомарно отдаёт предмет. */
+  /**
+   * Купить лот. Золото РЕЗЕРВИРУЕМ до запроса (иначе две быстрые покупки увели бы
+   * его в минус), при отказе возвращаем. Предмет приходит покупателю ПОЧТОЙ —
+   * забираем через collectMarketMail (он же следит за местом в сумке). Блокируемся
+   * флагом mkBusy, чтобы второе действие не началось поверх этого.
+   */
   private async marketBuyLot(lotId: string): Promise<void> {
+    if (this.mkBusy) return;
     const lot = this.mkBrowse?.lots.find((l) => l.id === lotId);
     if (!lot) return;
     if (this.gold < lot.price) return this.marketFlash('Не хватает золота', false);
-    if (roomFor(this.bag, lot.item.id) < lot.item.qty) return this.marketFlash('В сумке нет места', false);
 
-    const r = await marketBuy(lotId);
-    if (r.ok && r.item && r.price != null) {
-      this.gold -= r.price;
-      addToBag(this.bag, r.item.id, r.item.qty, r.item.sharpen);
-      this.mkNotice = { text: `Куплено: ${ITEMS[r.item.id]?.name ?? r.item.id}`, ok: true };
+    this.mkBusy = true;
+    this.gold -= lot.price; // резерв: следующая покупка сразу увидит уменьшённое золото
+    this.market.render();
+    try {
+      const r = await marketBuy(lotId);
+      if (r.ok) {
+        await this.collectMarketMail(); // купленный предмет ждёт на почте — заберём (с учётом места)
+        this.mkNotice = { text: `Куплено: ${ITEMS[lot.item.id]?.name ?? lot.item.id}`, ok: true };
+      } else {
+        this.gold += lot.price; // не купили — вернуть резерв
+        this.mkNotice = { text: r.error ?? 'Не удалось купить', ok: false };
+      }
+      await this.marketQuery(this.mkFilter); // лот ушёл — обновляем витрину
+    } finally {
+      this.mkBusy = false;
       this.refreshBags();
-    } else {
-      this.mkNotice = { text: r.error ?? 'Не удалось купить', ok: false };
+      this.market.render();
     }
-    await this.marketQuery(this.mkFilter); // лот ушёл — обновляем витрину
   }
 
   /** Выставить лот: предмет резервируем из сумки сразу, при неудаче возвращаем. */
   private async marketListItem(item: TradeItem, price: number): Promise<void> {
+    if (this.mkBusy) return;
     const idx = this.bag.findIndex(
       (s) => s && s.id === item.id && (s.sharpen ?? 0) === (item.sharpen ?? 0) && s.qty >= item.qty,
     );
     if (idx < 0) return this.marketFlash('Этого предмета нет в сумке', false);
 
     const sharpen = this.bag[idx]!.sharpen;
+    this.mkBusy = true;
     this.takeFromBag(idx, item.qty);
     this.refreshBags();
-
-    const r = await marketList(item, price);
-    if (r.ok) {
-      this.mkNotice = { text: `Выставлено: ${ITEMS[item.id]?.name ?? item.id}`, ok: true };
-      const mine = await marketMine();
-      this.mkMine = mine.lots;
-    } else {
-      addToBag(this.bag, item.id, item.qty, sharpen); // сервер не принял — вернём предмет
-      this.refreshBags();
-      this.mkNotice = { text: r.error ?? 'Не удалось выставить', ok: false };
-    }
     this.market.render();
+    try {
+      const r = await marketList(item, price);
+      if (r.ok) {
+        this.mkNotice = { text: `Выставлено: ${ITEMS[item.id]?.name ?? item.id}`, ok: true };
+        const mine = await marketMine();
+        this.mkMine = mine.lots;
+      } else {
+        addToBag(this.bag, item.id, item.qty, sharpen); // сервер не принял — вернём предмет
+        this.mkNotice = { text: r.error ?? 'Не удалось выставить', ok: false };
+      }
+    } finally {
+      this.mkBusy = false;
+      this.refreshBags();
+      this.market.render();
+    }
   }
 
   /** Снять свой лот: предмет вернётся по почте, тут же её и заберём. */
   private async marketCancelLot(lotId: string): Promise<void> {
-    const r = await marketCancel(lotId);
-    if (r.ok) {
-      await this.collectMarketMail();
-      const mine = await marketMine();
-      this.mkMine = mine.lots;
-      if (!this.mkNotice) this.mkNotice = { text: 'Лот снят', ok: true };
-    } else {
-      this.mkNotice = { text: r.error ?? 'Не удалось снять лот', ok: false };
-    }
+    if (this.mkBusy) return;
+    this.mkBusy = true;
     this.market.render();
+    try {
+      const r = await marketCancel(lotId);
+      if (r.ok) {
+        await this.collectMarketMail();
+        const mine = await marketMine();
+        this.mkMine = mine.lots;
+        this.mkNotice = { text: 'Лот снят, предмет на почте получен', ok: true };
+      } else {
+        // Лота уже нет (например, его купили) — обновим «Мои лоты», чтобы призрак исчез.
+        const mine = await marketMine();
+        this.mkMine = mine.lots;
+        this.mkNotice = { text: r.error ?? 'Не удалось снять лот', ok: false };
+      }
+    } finally {
+      this.mkBusy = false;
+      this.refreshBags();
+      this.market.render();
+    }
   }
 
   /**
    * Забрать почту рынка: золото зачисляем всегда, предметы — если влезли в сумку.
    * Принятое подтверждаем (ack), не влезшее остаётся ждать — так вещь не теряется.
+   *
+   * Защита от повторного входа: пока идёт сбор, повторный вызов ждёт тот же запуск,
+   * иначе два наложенных сбора успели бы забрать одну и ту же почту дважды.
    */
-  private async collectMarketMail(): Promise<void> {
+  private collectMarketMail(): Promise<void> {
+    if (this.mkMailRun) return this.mkMailRun;
+    this.mkMailRun = this.doCollectMail().finally(() => { this.mkMailRun = undefined; });
+    return this.mkMailRun;
+  }
+
+  private async doCollectMail(): Promise<void> {
     const r = await marketMail();
     this.mkUnavailable = !!r.unavailable;
     if (!r.ok || !r.mail.length) return;

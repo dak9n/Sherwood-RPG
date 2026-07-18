@@ -49,11 +49,15 @@ export interface MarketView {
   history: TradeRecord[];
   /** Короткое сообщение (куплено/выставлено/почта/ошибка). */
   notice?: { text: string; ok: boolean };
+  /** Идёт покупка/выставление/снятие — блокируем кнопки, чтобы не было гонок и двойных трат. */
+  busy?: boolean;
 }
 
 export interface MarketActions {
-  /** Спросить витрину под фильтром (смена категории/поиска/сортировки/страницы/обновить). */
+  /** Спросить витрину под фильтром (смена категории/поиска/сортировки/страницы). */
   onQuery: (filter: BrowseFilter) => void;
+  /** Обновить данные активной вкладки (мои лоты/история/почта) — при смене вкладки и «↻». */
+  onRefresh: (tab: 'market' | 'mine' | 'history') => void;
   onBuy: (lotId: string) => void;
   onList: (item: TradeItem, price: number) => void;
   onCancel: (lotId: string) => void;
@@ -202,8 +206,8 @@ const CSS = `
   #market .notice.ok { color: #8ad46a; } #market .notice.bad { color: #e0885a; }
   #market .footer { display: flex; gap: 18px; justify-content: center; font-size: 11px; color: #b8a284; padding-top: 6px; border-top: 1px solid rgba(255,255,255,.06); margin-top: 4px; }
 
-  /* Диалог создания лота */
-  #market .dlg { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.5); z-index: 2; }
+  /* Диалог создания лота. pointer-events: auto обязателен — .dlg сосед .win, а #market выключил клики. */
+  #market .dlg { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.5); z-index: 2; pointer-events: auto; }
   #market .dlg.open { display: flex; }
   #market .dlg .card { width: 380px; padding: 14px; border-image: url(${UI}/window.png) 16 5 5 5 fill / ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px repeat;
     border-width: ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px; border-style: solid; }
@@ -219,12 +223,14 @@ export class MarketUi {
   private root: HTMLDivElement;
   private style: HTMLStyleElement;
   private state: () => MarketView = () => ({ gold: 0, bag: [], unavailable: false, loading: false, browse: null, mine: [], history: [] });
-  private actions: MarketActions = { onQuery: () => {}, onBuy: () => {}, onList: () => {}, onCancel: () => {} };
+  private actions: MarketActions = { onQuery: () => {}, onRefresh: () => {}, onBuy: () => {}, onList: () => {}, onCancel: () => {} };
 
   private tab: Tab = 'market';
   private filter: BrowseFilter = { category: 'all', search: '', rarity: 'any', sort: 'newest', page: 1 };
   private onlyAffordable = false;
   private key = '';
+  /** id таймера обновления «Истекает», пока окно открыто. */
+  private ticker?: number;
   /** Выбранный для выставления стак (индекс в сумке) и введённые цена/кол-во. */
   private pick: { index: number; qty: number; price: number } | null = null;
 
@@ -312,9 +318,19 @@ export class MarketUi {
   }
 
   private wire(): void {
+    // Ввод в поля рынка не должен долетать до игры: иначе печатаешь «t» — окно
+    // закрывается, цифры кастуют фаербол/жмут хотбар, wasd водят героя. Гасим
+    // всплытие на корне окна (Phaser слушает клавиатуру на window).
+    this.root.addEventListener('keydown', (e) => e.stopPropagation());
+
     this.q('.close').addEventListener('click', () => this.close());
     for (const t of this.root.querySelectorAll<HTMLElement>('.tab')) {
-      t.addEventListener('click', () => { this.tab = t.dataset.tab as Tab; this.key = ''; this.render(); });
+      t.addEventListener('click', () => {
+        this.tab = t.dataset.tab as Tab;
+        this.key = '';
+        this.render();
+        this.actions.onRefresh(this.tab); // свежие данные вкладки: чужие могли купить твой лот
+      });
     }
     // Категории
     const cats = this.q('.cats');
@@ -333,10 +349,11 @@ export class MarketUi {
       this.filter.rarity = (e.target as HTMLSelectElement).value as BrowseFilter['rarity']; this.filter.page = 1; this.requery();
     });
     const search = this.q<HTMLInputElement>('.search');
-    const doSearch = (): void => { this.filter.search = search.value.trim(); this.filter.page = 1; this.requery(); };
-    search.addEventListener('keydown', (e) => { if ((e as KeyboardEvent).key === 'Enter') doSearch(); });
-    this.q('.afford').addEventListener('change', (e) => { this.onlyAffordable = (e.target as HTMLInputElement).checked; this.key = ''; this.render(); });
-    this.q('.refresh').addEventListener('click', () => this.requery());
+    // input держит фильтр в синхроне (чтобы обновление/сортировка учли набранное), Enter шлёт запрос.
+    search.addEventListener('input', () => { this.filter.search = search.value.trim(); });
+    search.addEventListener('keydown', (e) => { if ((e as KeyboardEvent).key === 'Enter') { this.filter.page = 1; this.requery(); } });
+    this.q('.afford').addEventListener('change', (e) => { this.onlyAffordable = (e.target as HTMLInputElement).checked; this.filter.page = 1; this.requery(); });
+    this.q('.refresh').addEventListener('click', () => { this.requery(); this.actions.onRefresh(this.tab); });
     this.q('.reset').addEventListener('click', () => {
       this.filter = { category: 'all', search: '', rarity: 'any', sort: 'newest', page: 1 };
       this.onlyAffordable = false;
@@ -361,15 +378,20 @@ export class MarketUi {
     this.root.classList.add('open');
     this.key = '';
     this.requery();
+    // Тикаем раз в 30 с, чтобы «Истекает» не застывало, пока окно открыто без действий.
+    if (this.ticker === undefined) this.ticker = window.setInterval(() => { this.key = ''; this.render(); }, 30000);
   }
 
   close(): void {
     this.root.classList.remove('open');
     this.closeDialog();
+    if (this.ticker !== undefined) { window.clearInterval(this.ticker); this.ticker = undefined; }
   }
 
   /** Попросить сцену обновить витрину под текущим фильтром, затем перерисовать. */
   private requery(): void {
+    // «Только по карману» — серверный фильтр по актуальному золоту (чтобы страницы и счётчик не врали).
+    this.filter.maxPrice = this.onlyAffordable ? this.state().gold : undefined;
     this.key = '';
     this.actions.onQuery({ ...this.filter });
     this.render();
@@ -393,7 +415,7 @@ export class MarketUi {
     // Снимок для сравнения — чтобы не перестраивать DOM каждый кадр.
     const sig = JSON.stringify({
       tab: this.tab, f: this.filter, aff: this.onlyAffordable, gold: v.gold,
-      un: v.unavailable, ld: v.loading, notice: v.notice,
+      un: v.unavailable, ld: v.loading, busy: v.busy, notice: v.notice,
       browse: v.browse?.lots.map((l) => [l.id, l.price]), page: v.browse?.page, pages: v.browse?.pages, total: v.browse?.total,
       mine: v.mine.map((l) => [l.id, l.price, l.expiresAt]),
       hist: v.history.map((h) => [h.ts, h.itemId, h.price]),
@@ -447,8 +469,8 @@ export class MarketUi {
     }
     if (v.loading && !v.browse) { box.innerHTML = '<div class="empty">Загрузка…</div>'; return; }
 
-    let lots = v.browse?.lots ?? [];
-    if (this.onlyAffordable) lots = lots.filter((l) => l.price <= v.gold);
+    // «Только по карману» теперь серверный фильтр (страницы и счётчик честные) — клиентом не режем.
+    const lots = v.browse?.lots ?? [];
     if (!lots.length) { box.innerHTML = '<div class="empty">Ничего не найдено.</div>'; return; }
 
     const now = Date.now();
@@ -463,7 +485,7 @@ export class MarketUi {
       const tdLeft = document.createElement('td'); tdLeft.className = 'sub'; tdLeft.textContent = fmtLeft(lot.expiresAt - now);
       const tdBtn = document.createElement('td');
       const buy = Object.assign(document.createElement('button'), { className: 'btn sm', textContent: 'Купить' });
-      buy.disabled = lot.price > v.gold;
+      buy.disabled = !!v.busy || lot.price > v.gold; // busy: не даём начать вторую покупку (гонка золота)
       buy.title = lot.price > v.gold ? 'Не хватает золота' : '';
       buy.addEventListener('click', () => this.actions.onBuy(lot.id));
       tdBtn.append(buy);
@@ -506,6 +528,7 @@ export class MarketUi {
       const c = document.createElement('td'); c.className = 'sub'; c.textContent = fmtLeft(lot.expiresAt - now);
       const d = document.createElement('td');
       const cancel = Object.assign(document.createElement('button'), { className: 'btn sm danger', textContent: 'Отменить' });
+      cancel.disabled = !!v.busy; // не даём запустить второе снятие во время текущего (гонка почты)
       cancel.addEventListener('click', () => this.actions.onCancel(lot.id));
       d.append(cancel);
       tr.append(a, b, c, d);
@@ -576,6 +599,7 @@ export class MarketUi {
     this.q('.dlg').classList.remove('open');
     this.pick = null;
     this.key = '';
+    this.render(); // иначе ячейки инвентаря остаются «выбираемыми» (класс pick + клик) после закрытия
   }
 
   private pickForLot(index: number): void {
@@ -611,14 +635,16 @@ export class MarketUi {
     body.querySelector('.cancel')!.addEventListener('click', () => this.closeDialog());
     body.querySelector('.go')!.addEventListener('click', () => {
       const qty = qtyEl ? Math.max(1, Math.min(maxQty, Math.floor(Number(qtyEl.value) || 1))) : 1;
-      const price = Math.floor(Number(priceEl.value) || 0);
-      if (price < 1) { this.flash('Укажи цену', false); return; }
+      const raw = Math.floor(Number(priceEl.value) || 0);
+      if (raw < 1) { this.flash('Укажи цену', false); return; }
+      const price = Math.min(MAX_PRICE, raw); // тот же потолок, что рисует input — не шлём заведомо отказную цену
       this.actions.onList({ id: stack.id, qty, ...(stack.sharpen ? { sharpen: stack.sharpen } : {}) }, price);
       this.closeDialog();
     });
   }
 
   destroy(): void {
+    if (this.ticker !== undefined) window.clearInterval(this.ticker);
     this.root.remove();
     this.style.remove();
   }

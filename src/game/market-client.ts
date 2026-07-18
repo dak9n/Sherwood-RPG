@@ -58,6 +58,7 @@ export async function marketBrowse(filter: BrowseFilter): Promise<BrowseReply> {
   if (filter.search) q.set('search', filter.search);
   if (filter.rarity && filter.rarity !== 'any') q.set('rarity', filter.rarity);
   if (filter.sort) q.set('sort', filter.sort);
+  if (filter.maxPrice != null) q.set('maxPrice', String(filter.maxPrice));
   q.set('page', String(filter.page ?? 1));
   const r = await api(`/__market-browse?${q.toString()}`);
   const d = r.data as unknown as BrowseResult;

@@ -136,6 +136,8 @@ export class MarketStore {
 
   /** Выставить лот. Предмет игрок уже списал у себя — сервер лишь регистрирует. */
   list(sellerKey: string, sellerName: string, rawItem: unknown, rawPrice: unknown, now: number): Result<{ lot: Lot }> {
+    this.expireDue(now); // иначе истёкшие свои лоты зря считаются против лимита
+
     const item = cleanTradeItem(rawItem);
     if (!item) return { ok: false, error: 'Такой предмет выставить нельзя' };
     const price = cleanPrice(rawPrice);
@@ -163,10 +165,12 @@ export class MarketStore {
     this.expireDue(now);
 
     const search = (filter.search ?? '').trim().toLowerCase();
-    let arr = [...this.lots.values()].filter((lot) => {
+    const maxPrice = Number.isFinite(filter.maxPrice) ? (filter.maxPrice as number) : Infinity;
+    const arr = [...this.lots.values()].filter((lot) => {
       if (filter.excludeSeller && lot.sellerKey === filter.excludeSeller) return false;
       if (filter.category && filter.category !== 'all' && marketCategory(lot.item.id) !== filter.category) return false;
       if (filter.rarity && filter.rarity !== 'any' && rarityOf(lot.item.id) !== filter.rarity) return false;
+      if (lot.price > maxPrice) return false; // «только по карману»: серверный фильтр, чтобы страницы и счётчик не врали
       if (search && !(ITEMS[lot.item.id]?.name.toLowerCase().includes(search))) return false;
       return true;
     });
@@ -183,10 +187,13 @@ export class MarketStore {
       }
     });
 
-    const pageSize = Math.max(1, Math.floor(filter.pageSize ?? PAGE_SIZE));
+    // Number.isFinite-защита: кривой ?page=x / ?pageSize=x не должен давать NaN-страницу.
+    const rawSize = Number(filter.pageSize);
+    const pageSize = Math.max(1, Math.floor(Number.isFinite(rawSize) ? rawSize : PAGE_SIZE));
     const total = arr.length;
     const pages = Math.max(1, Math.ceil(total / pageSize));
-    const page = Math.min(Math.max(1, Math.floor(filter.page ?? 1)), pages);
+    const rawPage = Number(filter.page);
+    const page = Math.min(Math.max(1, Math.floor(Number.isFinite(rawPage) ? rawPage : 1)), pages);
     const lots = arr.slice((page - 1) * pageSize, page * pageSize);
     return { lots, total, page, pages };
   }
@@ -198,11 +205,15 @@ export class MarketStore {
   }
 
   /**
-   * Купить лот. Атомарно: лот либо есть (тогда удаляем и начисляем выручку
-   * продавцу по почте), либо уже куплен/истёк. Свой лот купить нельзя. Клиент по
-   * успеху спишет у себя цену и положит предмет в сумку.
+   * Купить лот. Атомарно: лот либо есть (удаляем, начисляем выручку продавцу и
+   * КЛАДЁМ ПРЕДМЕТ ПОКУПАТЕЛЮ ПО ПОЧТЕ), либо уже куплен/истёк. Свой лот нельзя.
+   *
+   * Предмет уходит покупателю почтой, а не «инлайн» в ответе: так его не потерять,
+   * если сумка полна или ответ не дошёл (тот же надёжный путь, что и выручка
+   * продавца). Клиент по успеху спишет цену и заберёт предмет из почты (с учётом
+   * места). Возвращаем цену — для списания золота у клиента.
    */
-  buy(buyerKey: string, buyerName: string, lotId: unknown, now: number): Result<{ item: TradeItem; price: number }> {
+  buy(buyerKey: string, buyerName: string, lotId: unknown, now: number): Result<{ price: number; item: TradeItem }> {
     this.expireDue(now);
     if (typeof lotId !== 'string') return { ok: false, error: 'Лот не найден' };
     const lot = this.lots.get(lotId);
@@ -213,11 +224,19 @@ export class MarketStore {
 
     const fee = Math.round(lot.price * MARKET_COMMISSION);
     const payout = lot.price - fee;
+    const name = `${ITEMS[lot.item.id]?.name ?? lot.item.id}${lot.item.qty > 1 ? ` ×${lot.item.qty}` : ''}`;
     this.pushMail(lot.sellerKey, {
       id: this.nextId('m'),
       kind: 'gold',
       amount: payout,
-      note: `Продано: ${ITEMS[lot.item.id]?.name ?? lot.item.id}${lot.item.qty > 1 ? ` ×${lot.item.qty}` : ''} (комиссия ${fee})`,
+      note: `Продано: ${name} (комиссия ${fee})`,
+      ts: now,
+    });
+    this.pushMail(buyerKey, {
+      id: this.nextId('m'),
+      kind: 'item',
+      item: lot.item,
+      note: `Куплено: ${name}`,
       ts: now,
     });
 
@@ -234,7 +253,7 @@ export class MarketStore {
     if (this.history.length > MAX_HISTORY) this.history.length = MAX_HISTORY;
 
     this.save();
-    return { ok: true, item: lot.item, price: lot.price };
+    return { ok: true, price: lot.price, item: lot.item };
   }
 
   /** Снять свой лот. Предмет вернётся владельцу по почте (заберёт при collectMail). */
