@@ -22,6 +22,8 @@ export const FIREBALL_RANGE = 220;
 export const FIREBALL_MP_COST = 12;
 /** Перезарядка, мс: умение не спамится, между кастами — пауза. */
 export const FIREBALL_COOLDOWN = 1200;
+/** Время каста, мс: герой «читает» заклинание, и лишь потом шар вылетает. */
+export const FIREBALL_CAST_TIME = 1000;
 
 // Урон умения — в combat.ts (fireballDamage): чистую формулу проверяют тесты, а
 // этот файл тянет Phaser и не грузится в node напрямую.

@@ -3,7 +3,7 @@ import { MapScene } from './MapScene';
 import { Player, CHEST_OFFSET, type Strike, type Shot } from '../game/player';
 import { Monster } from '../game/monster';
 import { Arrow, ARROW_RANGE } from '../game/arrow';
-import { Fireball, FIREBALL_RANGE, FIREBALL_MP_COST, FIREBALL_COOLDOWN } from '../game/fireball';
+import { Fireball, FIREBALL_RANGE, FIREBALL_MP_COST, FIREBALL_COOLDOWN, FIREBALL_CAST_TIME } from '../game/fireball';
 import { fireballDamage } from '../game/combat';
 import { findTallObjects } from '../game/tall-objects';
 import { pickSpawns } from '../game/spawn';
@@ -72,6 +72,13 @@ export class GameScene extends MapScene {
   private fireballs: Fireball[] = [];
   /** Докуда умение «Огненный шар» на перезарядке (время сцены). 0 — готово. */
   private fireballReadyAt = 0;
+  /** Идёт каст: время его завершения. 0 — не кастуем. Пока кастуем — герой «читает». */
+  private fireballCastUntil = 0;
+  /** Когда каст начался — для полоски прогресса над героем. */
+  private fireballCastStart = 0;
+  /** Полоска каста над героем (фон + оранжевая заливка). Создаётся при первом касте. */
+  private castBarBg?: Phaser.GameObjects.Rectangle;
+  private castBar?: Phaser.GameObjects.Rectangle;
   /** Золото игрока. Падает с монстров, тратится в магазине. Часть сейва. */
   private gold = 0;
   /**
@@ -367,6 +374,8 @@ export class GameScene extends MapScene {
       this.forge.destroy();
       for (const a of this.arrows) a.destroy();
       for (const f of this.fireballs) f.destroy();
+      this.castBarBg?.destroy();
+      this.castBar?.destroy();
       this.hotbar.destroy();
       this.minimap.destroy();
       this.menu.destroy();
@@ -621,15 +630,21 @@ export class GameScene extends MapScene {
   }
 
   /**
-   * Каст «Огненного шара» — умение слота 1 (клавиша «1» или клик по слоту). В
-   * отличие от бесконечного лука, стоит ману и перезаряжается. Летит в курсор.
+   * Нажали умение «Огненный шар» (клавиша «1» или клик по слоту). Не выпускаем
+   * шар сразу: герой секунду «читает» заклинание (полоска каста над головой), и
+   * только потом снаряд вылетает — см. updateCast. Ману резервируем в начале,
+   * перезарядку ставим уже на вылете.
    */
   private castFireball(): void {
     if (this.player.isDead) return;
 
     const now = this.time.now;
+    if (this.fireballCastUntil > 0) {
+      this.hotbar.flash(SKILL_SLOT); // уже читаем заклинание — второй каст не начать
+      return;
+    }
     if (now < this.fireballReadyAt) {
-      this.hotbar.flash(SKILL_SLOT); // нажатие заметно, но идёт перезарядка — каста нет
+      this.hotbar.flash(SKILL_SLOT); // идёт перезарядка — каста нет
       return;
     }
     if (this.player.mp < FIREBALL_MP_COST) {
@@ -637,13 +652,51 @@ export class GameScene extends MapScene {
       return;
     }
 
+    // Ману резервируем сразу; если каст прервётся (смерть) — вернём (см. cancelCast).
     this.player.mp -= FIREBALL_MP_COST;
-    this.fireballReadyAt = now + FIREBALL_COOLDOWN;
+    this.fireballCastStart = now;
+    this.fireballCastUntil = now + FIREBALL_CAST_TIME;
+    this.hotbar.flash(SKILL_SLOT);
+    this.showCastBar();
+  }
 
-    // Прицел на курсор — от груди, как у лука: от ног снаряд стелился бы по земле.
+  /** Идёт каст: двигаем полоску, а на завершении выпускаем шар. Смерть — отмена. */
+  private updateCast(now: number): void {
+    if (this.fireballCastUntil <= 0) return;
+
+    if (this.player.isDead) {
+      this.cancelCast(true); // помер во время чтения — вернём ману, шар не летит
+      return;
+    }
+
+    if (now >= this.fireballCastUntil) {
+      this.spawnFireball();
+      this.fireballReadyAt = now + FIREBALL_COOLDOWN; // перезарядка идёт от ВЫЛЕТА
+      this.fireballCastUntil = 0;
+      if (this.castBarBg) this.castBarBg.setVisible(false);
+      if (this.castBar) this.castBar.setVisible(false);
+      return;
+    }
+
+    // Прогресс полоски и её место над героем (полоска идёт за ним).
+    const frac = (now - this.fireballCastStart) / FIREBALL_CAST_TIME;
+    this.updateCastBar(frac);
+  }
+
+  /** Отменить каст (смерть). refundMana — вернуть зарезервированную ману. */
+  private cancelCast(refundMana: boolean): void {
+    if (this.fireballCastUntil <= 0) return;
+    this.fireballCastUntil = 0;
+    if (refundMana) this.player.mp = Math.min(this.player.mpMax, this.player.mp + FIREBALL_MP_COST);
+    if (this.castBarBg) this.castBarBg.setVisible(false);
+    if (this.castBar) this.castBar.setVisible(false);
+  }
+
+  /** Выпустить шар в курсор — в момент завершения каста. Прицел берём АКТУАЛЬНЫЙ. */
+  private spawnFireball(): void {
     const p = this.input.activePointer;
     const ox = this.player.sprite.x;
-    const oy = this.player.sprite.y - CHEST_OFFSET;
+    const oy = this.player.sprite.y - CHEST_OFFSET; // от груди, а не от ног — иначе стелется
     const angle = Math.atan2(p.worldY - oy, p.worldX - ox);
     this.player.faceToward(p.worldX, p.worldY);
 
@@ -654,7 +707,30 @@ export class GameScene extends MapScene {
     if (crit) dmg = Math.round(dmg * (BASE_CRIT_MUL + sb.critMul));
 
     this.fireballs.push(new Fireball(this, ox, oy, angle, dmg, crit));
-    this.hotbar.flash(SKILL_SLOT);
+  }
+
+  /** Полоску каста создаём при первом касте и показываем над героем. */
+  private showCastBar(): void {
+    const x = this.player.sprite.x;
+    const y = this.player.sprite.y - 28;
+    if (!this.castBarBg) {
+      this.castBarBg = this.add.rectangle(x, y, 24, 4, 0x000000).setOrigin(0.5);
+      this.castBar = this.add.rectangle(x - 11, y, 0, 2, 0xffa030).setOrigin(0, 0.5);
+    }
+    this.updateCastBar(0);
+    this.castBarBg.setVisible(true);
+    this.castBar!.setVisible(true);
+  }
+
+  /** Полоска каста идёт за героем и заполняется по мере чтения заклинания. */
+  private updateCastBar(frac: number): void {
+    if (!this.castBarBg || !this.castBar) return;
+    const x = this.player.sprite.x;
+    const y = this.player.sprite.y - 28;
+    const depth = this.player.sprite.depth + 0.05;
+    this.castBarBg.setPosition(x, y).setDepth(depth);
+    this.castBar.setPosition(x - 11, y).setDepth(depth + 0.01);
+    this.castBar.width = 22 * Math.max(0, Math.min(1, frac));
   }
 
   /** Двигаем огненные шары и проверяем попадания — как стрелы, но на попадании взрыв. */
@@ -1307,6 +1383,7 @@ export class GameScene extends MapScene {
     }
 
     this.updateArrows(delta);
+    this.updateCast(now); // сначала докрутить каст: он может выпустить шар в этот кадр
     this.updateFireballs(delta);
     // Перезарядка умения на планке: 1 — только откастовал, 0 — готов.
     this.hotbar.setSkillCooldown(this.fireballReadyAt > now ? (this.fireballReadyAt - now) / FIREBALL_COOLDOWN : 0);
