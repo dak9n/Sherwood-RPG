@@ -12,82 +12,43 @@
  * выручку один раз — лот удаляется атомарно), а честной игре вдвоём этого хватает.
  */
 
-import { ITEMS, marketCategory, rarityOf, type MarketCategory, type Rarity } from '../src/game/items.ts';
+import { ITEMS, marketCategory, rarityOf } from '../src/game/items.ts';
 import { SHARPEN_MAX } from '../src/game/forge.ts';
+import {
+  MARKET_COMMISSION,
+  MAX_LOTS_PER_SELLER,
+  MAX_PRICE,
+  LISTING_TTL,
+  PAGE_SIZE,
+  type TradeItem,
+  type Lot,
+  type MailEntry,
+  type TradeRecord,
+  type BrowseFilter,
+  type BrowseResult,
+  type MarketSnapshot,
+} from '../src/game/market-types.ts';
 
-/** Комиссия рынка: доля выручки, что не доходит до продавца. Как на образце — 5%. */
-export const MARKET_COMMISSION = 0.05;
-/** Сколько живёт лот, мс. Сутки: не куплено — вернётся продавцу по почте. */
-export const LISTING_TTL = 24 * 60 * 60 * 1000;
-/** Больше стольких активных лотов на игрока не выставить — от засорения рынка. */
-export const MAX_LOTS_PER_SELLER = 20;
-/** Потолок цены: выше — почти наверняка порча/чит. */
-export const MAX_PRICE = 10_000_000;
+// Реэкспорт: серверные модули (persist, ручки) и тесты тянут всё из market-store.
+export {
+  MARKET_COMMISSION,
+  MAX_LOTS_PER_SELLER,
+  MAX_PRICE,
+  LISTING_TTL,
+  PAGE_SIZE,
+  type TradeItem,
+  type Lot,
+  type MailEntry,
+  type TradeRecord,
+  type BrowseFilter,
+  type BrowseResult,
+  type MarketSnapshot,
+};
+
 /** Сколько записей истории держим (глобально). */
 const MAX_HISTORY = 500;
-/** Размер страницы выдачи по умолчанию. */
-export const PAGE_SIZE = 8;
-
-/** Предмет в лоте/почте: как в сумке, с заточкой конкретного экземпляра оружия. */
-export interface TradeItem {
-  id: string;
-  qty: number;
-  sharpen?: number;
-}
-
-export interface Lot {
-  id: string;
-  sellerKey: string;
-  sellerName: string;
-  item: TradeItem;
-  /** Цена за ВЕСЬ лот, в золоте. */
-  price: number;
-  createdAt: number;
-  expiresAt: number;
-}
-
-export type MailEntry =
-  | { id: string; kind: 'gold'; amount: number; note: string; ts: number }
-  | { id: string; kind: 'item'; item: TradeItem; note: string; ts: number };
-
-export interface TradeRecord {
-  ts: number;
-  itemId: string;
-  qty: number;
-  price: number;
-  sellerKey: string;
-  sellerName: string;
-  buyerKey: string;
-  buyerName: string;
-}
-
-export interface BrowseFilter {
-  category?: MarketCategory | 'all';
-  search?: string;
-  rarity?: Rarity | 'any';
-  sort?: 'newest' | 'price_asc' | 'price_desc' | 'unit_asc' | 'expires';
-  page?: number;
-  pageSize?: number;
-  /** Скрыть лоты этого продавца (свои — на вкладке «Мои лоты»). */
-  excludeSeller?: string;
-}
-
-export interface BrowseResult {
-  lots: Lot[];
-  total: number;
-  page: number;
-  pages: number;
-}
 
 export type Result<T> = ({ ok: true } & T) | { ok: false; error: string };
-
-/** Данные для persist/восстановления — ровно то, что переживает перезапуск. */
-export interface MarketSnapshot {
-  lots: Lot[];
-  mail: Record<string, MailEntry[]>;
-  history: TradeRecord[];
-  seq: number;
-}
 
 /** Санация предмета: только наш id (своим полем таблицы), количество и заточка в рамках. */
 export function cleanTradeItem(raw: unknown): TradeItem | null {
