@@ -13,7 +13,10 @@ import { Hud } from '../game/hud';
 import { draftCollision, mergeCollision } from '../map/collision-draft';
 import { drawnBounds } from '../map/doc';
 import { Loot, registerItemFrames } from '../game/loot';
-import { addToBag, takeOne, sortBag, isRanged, countOf, rarityOf, ITEMS, type Stack, type EquipSlot } from '../game/items';
+import { addToBag, takeOne, sortBag, isRanged, countOf, rarityOf, roomFor, ITEMS, type Stack, type EquipSlot } from '../game/items';
+import { MarketUi } from '../game/market-ui';
+import { marketBrowse, marketBuy, marketList, marketCancel, marketMine, marketHistory, marketMail, marketMailAck } from '../game/market-client';
+import type { BrowseFilter, BrowseResult, Lot, TradeItem, TradeRecord } from '../game/market-types';
 import { InventoryUi } from '../game/inventory-ui';
 import { SkillsUi } from '../game/skills-ui';
 import { ShopUi } from '../game/shop-ui';
@@ -62,6 +65,15 @@ export class GameScene extends MapScene {
   private skillTree!: SkillTreeUi;
   private shop!: ShopUi;
   private forge!: ForgeUi;
+  private market!: MarketUi;
+  /** Снимок рынка для окна: витрина/мои/история и состояние запроса. Сервер ходит через market-client. */
+  private mkBrowse: BrowseResult | null = null;
+  private mkMine: Lot[] = [];
+  private mkHistory: TradeRecord[] = [];
+  private mkUnavailable = false;
+  private mkLoading = false;
+  private mkNotice: { text: string; ok: boolean } | undefined;
+  private mkFilter: BrowseFilter = { category: 'all', search: '', rarity: 'any', sort: 'newest', page: 1 };
   private hotbar!: HotbarUi;
   private minimap!: MinimapUi;
   private menu!: MenuUi;
@@ -263,6 +275,26 @@ export class GameScene extends MapScene {
     });
     this.forge.onSharpen = (key, id) => this.sharpenWeapon(key, id);
 
+    // Торговый рынок (T): аукцион между аккаунтами. Окно только рисует снимок и
+    // шлёт намерения; на сервер (market-client) ходит сцена — одно место оркестрации.
+    this.market = new MarketUi();
+    this.market.setState(() => ({
+      gold: this.gold,
+      bag: this.bag,
+      unavailable: this.mkUnavailable,
+      loading: this.mkLoading,
+      browse: this.mkBrowse,
+      mine: this.mkMine,
+      history: this.mkHistory,
+      notice: this.mkNotice,
+    }));
+    this.market.setActions({
+      onQuery: (f) => void this.marketQuery(f),
+      onBuy: (id) => void this.marketBuyLot(id),
+      onList: (item, price) => void this.marketListItem(item, price),
+      onCancel: (id) => void this.marketCancelLot(id),
+    });
+
     this.hotbar = new HotbarUi();
     this.hotbar.setData(this.quick, this.bag, this.equipped);
     this.hotbar.setPlusFor((id) => this.weaponPlusFor(id));
@@ -323,6 +355,11 @@ export class GameScene extends MapScene {
         toggle: () => this.toggleForge(),
       },
       {
+        label: 'Рынок', key: 'T', icon: { sheet: 'icons', x: 0, y: 16 * 16, w: 16, h: 16 },
+        isOpen: () => this.market.isOpen,
+        toggle: () => this.toggleMarket(),
+      },
+      {
         label: 'Карта', key: 'M', icon: { sheet: 'icons', x: 4 * 16, y: 3 * 16, w: 16, h: 16 },
         isOpen: () => this.minimap.isFullOpen,
         toggle: () => this.minimap.toggleFull(),
@@ -336,6 +373,7 @@ export class GameScene extends MapScene {
     this.input.keyboard?.on('keydown-L', () => this.skillTree.toggle());
     this.input.keyboard?.on('keydown-O', () => this.toggleShop());
     this.input.keyboard?.on('keydown-K', () => this.toggleForge());
+    this.input.keyboard?.on('keydown-T', () => this.toggleMarket());
     this.input.keyboard?.on('keydown-M', () => this.minimap.toggleFull());
     this.bindQuickKeys();
 
@@ -372,6 +410,7 @@ export class GameScene extends MapScene {
       this.skillTree.destroy();
       this.shop.destroy();
       this.forge.destroy();
+      this.market.destroy();
       for (const a of this.arrows) a.destroy();
       for (const f of this.fireballs) f.destroy();
       this.castBarBg?.destroy();
@@ -1162,13 +1201,147 @@ export class GameScene extends MapScene {
    * состязательная проверка). Открываешь одно — второе закрывается.
    */
   private toggleShop(): void {
-    if (!this.shop.isOpen) this.forge.close();
+    if (!this.shop.isOpen) { this.forge.close(); this.market.close(); }
     this.shop.toggle();
   }
 
   private toggleForge(): void {
-    if (!this.forge.isOpen) this.shop.close();
+    if (!this.forge.isOpen) { this.shop.close(); this.market.close(); }
     this.forge.toggle();
+  }
+
+  /** Открыть/закрыть рынок (T). Центральные окна не живут вместе. При открытии — забрать почту и обновить данные. */
+  private toggleMarket(): void {
+    if (!this.market.isOpen) {
+      this.shop.close();
+      this.forge.close();
+      this.market.open();
+      void this.marketRefreshAll();
+    } else {
+      this.market.close();
+    }
+  }
+
+  /** Спросить витрину под фильтром (окно сменило категорию/поиск/сортировку/страницу). */
+  private async marketQuery(filter: BrowseFilter): Promise<void> {
+    this.mkFilter = filter;
+    this.mkLoading = true;
+    this.market.render();
+    const r = await marketBrowse(filter);
+    this.mkUnavailable = !!r.unavailable;
+    this.mkBrowse = r.result ?? null;
+    this.mkLoading = false;
+    this.market.render();
+  }
+
+  /** При открытии рынка: забрать почту (выручку/возвраты) и подтянуть мои лоты и историю. */
+  private async marketRefreshAll(): Promise<void> {
+    await this.collectMarketMail();
+    const [mine, hist] = await Promise.all([marketMine(), marketHistory()]);
+    this.mkUnavailable = !!mine.unavailable;
+    this.mkMine = mine.lots;
+    this.mkHistory = hist.history;
+    this.market.render();
+  }
+
+  /** Купить лот: проверяем золото и место, затем сервер атомарно отдаёт предмет. */
+  private async marketBuyLot(lotId: string): Promise<void> {
+    const lot = this.mkBrowse?.lots.find((l) => l.id === lotId);
+    if (!lot) return;
+    if (this.gold < lot.price) return this.marketFlash('Не хватает золота', false);
+    if (roomFor(this.bag, lot.item.id) < lot.item.qty) return this.marketFlash('В сумке нет места', false);
+
+    const r = await marketBuy(lotId);
+    if (r.ok && r.item && r.price != null) {
+      this.gold -= r.price;
+      addToBag(this.bag, r.item.id, r.item.qty, r.item.sharpen);
+      this.mkNotice = { text: `Куплено: ${ITEMS[r.item.id]?.name ?? r.item.id}`, ok: true };
+      this.refreshBags();
+    } else {
+      this.mkNotice = { text: r.error ?? 'Не удалось купить', ok: false };
+    }
+    await this.marketQuery(this.mkFilter); // лот ушёл — обновляем витрину
+  }
+
+  /** Выставить лот: предмет резервируем из сумки сразу, при неудаче возвращаем. */
+  private async marketListItem(item: TradeItem, price: number): Promise<void> {
+    const idx = this.bag.findIndex(
+      (s) => s && s.id === item.id && (s.sharpen ?? 0) === (item.sharpen ?? 0) && s.qty >= item.qty,
+    );
+    if (idx < 0) return this.marketFlash('Этого предмета нет в сумке', false);
+
+    const sharpen = this.bag[idx]!.sharpen;
+    this.takeFromBag(idx, item.qty);
+    this.refreshBags();
+
+    const r = await marketList(item, price);
+    if (r.ok) {
+      this.mkNotice = { text: `Выставлено: ${ITEMS[item.id]?.name ?? item.id}`, ok: true };
+      const mine = await marketMine();
+      this.mkMine = mine.lots;
+    } else {
+      addToBag(this.bag, item.id, item.qty, sharpen); // сервер не принял — вернём предмет
+      this.refreshBags();
+      this.mkNotice = { text: r.error ?? 'Не удалось выставить', ok: false };
+    }
+    this.market.render();
+  }
+
+  /** Снять свой лот: предмет вернётся по почте, тут же её и заберём. */
+  private async marketCancelLot(lotId: string): Promise<void> {
+    const r = await marketCancel(lotId);
+    if (r.ok) {
+      await this.collectMarketMail();
+      const mine = await marketMine();
+      this.mkMine = mine.lots;
+      if (!this.mkNotice) this.mkNotice = { text: 'Лот снят', ok: true };
+    } else {
+      this.mkNotice = { text: r.error ?? 'Не удалось снять лот', ok: false };
+    }
+    this.market.render();
+  }
+
+  /**
+   * Забрать почту рынка: золото зачисляем всегда, предметы — если влезли в сумку.
+   * Принятое подтверждаем (ack), не влезшее остаётся ждать — так вещь не теряется.
+   */
+  private async collectMarketMail(): Promise<void> {
+    const r = await marketMail();
+    this.mkUnavailable = !!r.unavailable;
+    if (!r.ok || !r.mail.length) return;
+
+    const accepted: string[] = [];
+    const parts: string[] = [];
+    for (const e of r.mail) {
+      if (e.kind === 'gold') {
+        this.gold += e.amount;
+        accepted.push(e.id);
+        parts.push(`+${e.amount} зол.`);
+      } else if (roomFor(this.bag, e.item.id) >= e.item.qty) {
+        addToBag(this.bag, e.item.id, e.item.qty, e.item.sharpen);
+        accepted.push(e.id);
+        parts.push(`${ITEMS[e.item.id]?.name ?? e.item.id}${e.item.qty > 1 ? ` ×${e.item.qty}` : ''}`);
+      }
+      // предмет не влез — оставляем на почте (не подтверждаем)
+    }
+    if (accepted.length) {
+      await marketMailAck(accepted);
+      this.refreshBags();
+      this.mkNotice = { text: `С почты: ${parts.join(', ')}`, ok: true };
+    }
+  }
+
+  private marketFlash(text: string, ok: boolean): void {
+    this.mkNotice = { text, ok };
+    this.market.render();
+  }
+
+  /** Убрать qty из ячейки сумки (для выставления лота). Оружие — stack:1 → ячейка пустеет. */
+  private takeFromBag(index: number, qty: number): void {
+    const s = this.bag[index];
+    if (!s) return;
+    s.qty -= qty;
+    if (s.qty <= 0) this.bag[index] = null;
   }
 
   /** Купить предмет в магазине. Все проверки — в чистой buyItem, окно только шлёт намерение. */
