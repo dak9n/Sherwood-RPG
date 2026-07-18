@@ -31,7 +31,7 @@ const CSS = `
   #menu {
     position: absolute; right: 12px; top: ${TOP}px; z-index: 10;
     display: flex; flex-direction: column; gap: 4px;
-    font: 11px/1 system-ui, sans-serif;
+    font: 11px/1 'Survival Kit', system-ui, sans-serif;
   }
   #menu .mi {
     display: flex; align-items: center; gap: 5px; cursor: pointer;

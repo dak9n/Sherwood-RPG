@@ -36,7 +36,7 @@ const CSS = `
     background: url(assets/interface/ui/hotbar.png) no-repeat 0 0 / 100% 100%;
     image-rendering: pixelated;
     z-index: 15;
-    font: 12px/1 system-ui, sans-serif;
+    font: 12px/1 'Survival Kit', system-ui, sans-serif;
     filter: drop-shadow(0 3px 8px rgba(0, 0, 0, .5));
   }
   #hotbar .hs {

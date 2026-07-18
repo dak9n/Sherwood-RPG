@@ -27,7 +27,7 @@ const CSS = `
     position: absolute; left: 10px; bottom: 12px; z-index: 16;
     width: 320px; max-width: 42vw;
     display: flex; flex-direction: column;
-    font: 12px/1.45 system-ui, sans-serif;
+    font: 12px/1.45 'Survival Kit', system-ui, sans-serif;
     pointer-events: none;
   }
   #chat .tabs { display: flex; gap: 4px; margin-bottom: 4px; pointer-events: auto; }

@@ -65,7 +65,7 @@ const CSS = `
   #forge {
     position: absolute; inset: 0; z-index: 23; display: none;
     align-items: center; justify-content: center;
-    font: 12px/1.4 system-ui, sans-serif; color: #f0e0c8;
+    font: 12px/1.4 'Survival Kit', system-ui, sans-serif; color: #f0e0c8;
     pointer-events: none;
   }
   #forge.open { display: flex; }
