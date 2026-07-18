@@ -393,6 +393,17 @@ export class Player {
     this.dir = dirFromVelocity(x - this.sprite.x, y - this.sprite.y, this.dir);
   }
 
+  /**
+   * Развернуть героя к точке для каста умения (огненный шар в сторону курсора).
+   * В атаке или мёртвым не разворачиваем; стоящего — сразу перерисовываем в новую
+   * сторону, идущего трогать незачем: его направление задаёт движение.
+   */
+  faceToward(x: number, y: number): void {
+    if (this.state === 'attack' || this.state === 'dead') return;
+    this.faceTo(x, y);
+    if (this.state === 'idle') this.play('idle');
+  }
+
   private startAttack(wantHeavy: boolean, angle: number): void {
     // Тяжёлый удар тратит ману. Обычный бесплатный: кончившаяся мана не должна
     // отнимать у игрока единственное действие.

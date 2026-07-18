@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hitRect, distSq, rollDamage } from './combat.ts';
+import { hitRect, distSq, rollDamage, fireballDamage } from './combat.ts';
 
 const X = 100;
 const Y = 100;
@@ -70,4 +70,13 @@ test('урон всегда в заданных пределах', () => {
     const d = rollDamage(8, 12, () => roll);
     assert.ok(d >= 8 && d <= 12, `выпало ${d}`);
   }
+});
+
+test('урон огненного шара растёт с уровнем и не уходит в минус', () => {
+  assert.equal(fireballDamage(1), 16, 'на первом уровне — база');
+  assert.equal(fireballDamage(2), 19, '+3 за уровень');
+  assert.equal(fireballDamage(5), 28);
+  assert.equal(fireballDamage(0), 16, 'уровень ниже 1 — как первый');
+  assert.equal(fireballDamage(-3), 16);
+  assert.equal(fireballDamage(3.9), 22, 'дробный уровень — вниз до целого');
 });

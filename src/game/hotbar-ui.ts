@@ -76,6 +76,21 @@ const CSS = `
     from { background: rgba(255, 255, 255, .75); }
     to { background: rgba(255, 255, 255, 0); }
   }
+
+  /* Слот умения (первый): огненный шар, а не предмет. Кладётся не сумкой. */
+  #hotbar .hs.skill { cursor: pointer; }
+  #hotbar .hs.skill .fire {
+    position: absolute; inset: 3px; border-radius: 50%; pointer-events: none;
+    background: radial-gradient(circle at 50% 42%,
+      #fff2a8 0 14%, #ffb02e 14% 34%, #e8641a 34% 60%, #7a2a08 60% 82%, transparent 82%);
+    box-shadow: 0 0 6px 1px rgba(232, 100, 26, .7);
+  }
+  /* Затемнение перезарядки: «стекает» по кругу от полного к пустому. */
+  #hotbar .hs.skill .cd {
+    position: absolute; inset: 0; border-radius: 3px; pointer-events: none;
+    background: transparent;
+  }
+  #hotbar .hs.skill.ready .fire { box-shadow: 0 0 8px 2px rgba(255, 176, 46, .9); }
 `;
 
 export class HotbarUi {
@@ -96,6 +111,13 @@ export class HotbarUi {
   onSwap: (from: number, to: number) => void = () => {};
   /** Сбросили ячейку правой кнопкой. */
   onClear: (slot: number) => void = () => {};
+  /** Нажали слот умения (первый) — кастуем огненный шар. */
+  onSkill: () => void = () => {};
+
+  /** Слот умения — первый: он не предметный, точить/класть в него нельзя. */
+  private static readonly SKILL_SLOT = 0;
+  /** Затемнение-перезарядка на слоте умения. */
+  private cdEl!: HTMLDivElement;
 
   constructor() {
     this.style = document.createElement('style');
@@ -112,7 +134,20 @@ export class HotbarUi {
       el.dataset.i = String(i);
       el.style.left = `${(BAR.first + i * BAR.step) * SCALE}px`;
       el.append(Object.assign(document.createElement('span'), { className: 'key', textContent: KEYS[i] }));
-      this.wire(el, i);
+
+      if (i === HotbarUi.SKILL_SLOT) {
+        // Слот умения: огонёк + затемнение перезарядки. Ни перетащить, ни сбросить —
+        // это не предмет, а способность героя.
+        el.classList.add('skill', 'ready');
+        el.title = `Огненный шар (${KEYS[i]})`;
+        el.append(Object.assign(document.createElement('div'), { className: 'fire' }));
+        this.cdEl = Object.assign(document.createElement('div'), { className: 'cd' });
+        el.append(this.cdEl);
+        el.onclick = () => this.onSkill();
+        el.oncontextmenu = (e) => e.preventDefault();
+      } else {
+        this.wire(el, i);
+      }
       this.root.append(el);
     }
   }
@@ -178,6 +213,17 @@ export class HotbarUi {
     el.classList.add('hit');
   }
 
+  /** Перезарядка умения: frac 1 — только откастовал, 0 — готов (зовётся каждый кадр). */
+  setSkillCooldown(frac: number): void {
+    const el = this.slots[HotbarUi.SKILL_SLOT];
+    if (!el) return;
+    const f = Math.max(0, Math.min(1, frac));
+    this.cdEl.style.background = f > 0
+      ? `conic-gradient(rgba(6, 4, 2, .72) ${f * 360}deg, transparent 0)`
+      : 'transparent';
+    el.classList.toggle('ready', f <= 0);
+  }
+
   render(): void {
     // Панель на виду всё время, поэтому перерисовку сравниваем со снимком:
     // иначе она перестраивала бы DOM каждый кадр игры.
@@ -188,6 +234,7 @@ export class HotbarUi {
     this.key = key;
 
     for (const [i, el] of this.slots.entries()) {
+      if (i === HotbarUi.SKILL_SLOT) continue; // слот умения не предметный — его не перерисовываем
       const id = this.bar[i];
       el.querySelector('i')?.remove();
       el.querySelector('.cnt')?.remove();

@@ -43,3 +43,12 @@ export function distSq(ax: number, ay: number, bx: number, by: number): number {
 export function rollDamage(min: number, max: number, rng: () => number = Math.random): number {
   return Math.round(min + rng() * (max - min));
 }
+
+/**
+ * Урон умения «Огненный шар» (слот 1). Растёт с уровнем героя, как и удар. Здесь,
+ * а не в fireball.ts, чтобы формулу можно было проверить без Phaser (тот файл
+ * тянет движок и параметр-свойства конструктора, которые тесты не грузят).
+ */
+export function fireballDamage(level: number): number {
+  return 16 + Math.max(0, Math.floor(level) - 1) * 3;
+}

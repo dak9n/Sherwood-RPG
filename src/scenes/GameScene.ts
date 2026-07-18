@@ -3,6 +3,8 @@ import { MapScene } from './MapScene';
 import { Player, CHEST_OFFSET, type Strike, type Shot } from '../game/player';
 import { Monster } from '../game/monster';
 import { Arrow, ARROW_RANGE } from '../game/arrow';
+import { Fireball, FIREBALL_RANGE, FIREBALL_MP_COST, FIREBALL_COOLDOWN } from '../game/fireball';
+import { fireballDamage } from '../game/combat';
 import { findTallObjects } from '../game/tall-objects';
 import { pickSpawns } from '../game/spawn';
 import { buildFlow } from '../game/flow';
@@ -32,6 +34,9 @@ import { ChatUi } from '../game/chat-ui';
 
 /** Целый зум: при дробном пиксели карты не легли бы на пиксели экрана. */
 const ZOOM = 3;
+
+/** Первый слот хотбара — умение «Огненный шар» (клавиша 1), а не предмет. */
+const SKILL_SLOT = 0;
 
 /**
  * Чем помечаем стену в невидимом слое физики. Годится любой существующий номер
@@ -63,6 +68,10 @@ export class GameScene extends MapScene {
   private loot: Loot[] = [];
   /** Стрелы в полёте. Сцена их двигает и проверяет попадания — как взмах меча. */
   private arrows: Arrow[] = [];
+  /** Огненные шары в полёте (умение, слот 1 хотбара). Ведёт сцена, как стрелы. */
+  private fireballs: Fireball[] = [];
+  /** Докуда умение «Огненный шар» на перезарядке (время сцены). 0 — готово. */
+  private fireballReadyAt = 0;
   /** Золото игрока. Падает с монстров, тратится в магазине. Часть сейва. */
   private gold = 0;
   /**
@@ -251,12 +260,17 @@ export class GameScene extends MapScene {
     this.hotbar.setData(this.quick, this.bag, this.equipped);
     this.hotbar.setPlusFor((id) => this.weaponPlusFor(id));
     this.hotbar.onTrigger = (slot) => this.useQuick(slot);
+    // Первый слот — умение «Огненный шар», а не предмет: каст, а не применение.
+    this.hotbar.onSkill = () => this.castFireball();
     this.hotbar.onBind = (slot, id) => {
+      // В слот умения предмет не кладём — он занят огненным шаром.
+      if (slot === SKILL_SLOT) return;
       bind(this.quick, slot, id);
       this.hotbar.render();
       this.scheduleSave();
     };
     this.hotbar.onSwap = (from, to) => {
+      if (from === SKILL_SLOT || to === SKILL_SLOT) return; // умение не перетаскивается
       swap(this.quick, from, to);
       this.hotbar.render();
       this.scheduleSave();
@@ -352,6 +366,7 @@ export class GameScene extends MapScene {
       this.shop.destroy();
       this.forge.destroy();
       for (const a of this.arrows) a.destroy();
+      for (const f of this.fireballs) f.destroy();
       this.hotbar.destroy();
       this.minimap.destroy();
       this.menu.destroy();
@@ -605,6 +620,97 @@ export class GameScene extends MapScene {
     }
   }
 
+  /**
+   * Каст «Огненного шара» — умение слота 1 (клавиша «1» или клик по слоту). В
+   * отличие от бесконечного лука, стоит ману и перезаряжается. Летит в курсор.
+   */
+  private castFireball(): void {
+    if (this.player.isDead) return;
+
+    const now = this.time.now;
+    if (now < this.fireballReadyAt) {
+      this.hotbar.flash(SKILL_SLOT); // нажатие заметно, но идёт перезарядка — каста нет
+      return;
+    }
+    if (this.player.mp < FIREBALL_MP_COST) {
+      this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#5ba3e0', 'не хватает маны');
+      return;
+    }
+
+    this.player.mp -= FIREBALL_MP_COST;
+    this.fireballReadyAt = now + FIREBALL_COOLDOWN;
+
+    // Прицел на курсор — от груди, как у лука: от ног снаряд стелился бы по земле.
+    const p = this.input.activePointer;
+    const ox = this.player.sprite.x;
+    const oy = this.player.sprite.y - CHEST_OFFSET;
+    const angle = Math.atan2(p.worldY - oy, p.worldX - ox);
+    this.player.faceToward(p.worldX, p.worldY);
+
+    // Урон растёт с уровнем; крит — из дерева навыков (как у меча и стрелы).
+    const sb = skillBonuses(this.skillRanks);
+    const crit = sb.critChance > 0 && Math.random() < sb.critChance;
+    let dmg = fireballDamage(this.player.level);
+    if (crit) dmg = Math.round(dmg * (BASE_CRIT_MUL + sb.critMul));
+
+    this.fireballs.push(new Fireball(this, ox, oy, angle, dmg, crit));
+    this.hotbar.flash(SKILL_SLOT);
+  }
+
+  /** Двигаем огненные шары и проверяем попадания — как стрелы, но на попадании взрыв. */
+  private updateFireballs(delta: number): void {
+    const tw = this.doc.map.tileWidth;
+    const th = this.doc.map.tileHeight;
+
+    for (let i = this.fireballs.length - 1; i >= 0; i--) {
+      const f = this.fireballs[i];
+      f.update(delta);
+      const ax = f.sprite.x;
+      const ay = f.sprite.y;
+
+      const hit = this.monsters.find(
+        (m) => !m.isDead && Math.abs(m.sprite.x - ax) < 12 && ay > m.sprite.y - 24 && ay < m.sprite.y + 5,
+      );
+      if (hit) {
+        this.hitMonster(hit, f.damage, false, f.crit);
+        this.fireBurst(ax, ay);
+        this.cameras.main.shake(90, 0.004);
+        f.destroy();
+        this.fireballs.splice(i, 1);
+        continue;
+      }
+
+      const tx = Math.floor(ax / tw);
+      const ty = Math.floor((ay + CHEST_OFFSET) / th); // проекция на землю, как у стрелы
+      const outside = tx < 0 || ty < 0 || tx >= this.doc.width || ty >= this.doc.height;
+      const intoWall = f.traveled > 6 && !outside && !this.doc.canWalk(tx, ty);
+      if (f.traveled > FIREBALL_RANGE || outside || intoWall) {
+        if (intoWall) this.fireBurst(ax, ay); // о стену — вспышка; на излёте просто гаснет
+        f.destroy();
+        this.fireballs.splice(i, 1);
+      }
+    }
+  }
+
+  /** Вспышка-взрыв в точке попадания огненного шара: яркое кольцо и ядро, гаснут. */
+  private fireBurst(x: number, y: number): void {
+    const ring = this.add.graphics({ x, y });
+    ring.fillStyle(0xffb02e, 0.9).fillCircle(0, 0, 5);
+    ring.setBlendMode(Phaser.BlendModes.ADD).setDepth(330);
+    this.tweens.add({
+      targets: ring, scaleX: 3, scaleY: 3, alpha: 0, duration: 220, ease: 'Cubic.Out',
+      onComplete: () => ring.destroy(),
+    });
+
+    const core = this.add.graphics({ x, y });
+    core.fillStyle(0xfff2a8, 1).fillCircle(0, 0, 3);
+    core.setBlendMode(Phaser.BlendModes.ADD).setDepth(330.01);
+    this.tweens.add({
+      targets: core, scaleX: 2, scaleY: 2, alpha: 0, duration: 160, ease: 'Quad.Out',
+      onComplete: () => core.destroy(),
+    });
+  }
+
   /** Что выпало из паука. Раскладываем вокруг тела, чтобы стопка не легла в одну точку. */
   private dropLoot(m: Monster): void {
     const drops = rollDrop(m.stats.drop);
@@ -768,6 +874,7 @@ export class GameScene extends MapScene {
     // считались от уже финального оружия.
     ensureStarterWeapon(this.equipped, this.bag);
     for (let i = 0; i < this.quick.length; i++) this.quick[i] = prog.quick[i] ?? null;
+    this.quick[SKILL_SLOT] = null; // первый слот занят умением: предмету там не место (в т.ч. из старых сейвов)
     this.spent = prog.spent;
     this.gold = prog.gold;
     // Заточка и навыки — ДО applyGear: тот считает урон, здоровье, крит уже с ними.
@@ -782,10 +889,13 @@ export class GameScene extends MapScene {
     this.refreshBags();
   }
 
-  /** Клавиши 1-9 и 0 — ячейки панели быстрого доступа. */
+  /** Клавиши 1-9 и 0 — планка быстрого доступа. «1» — умение, дальше — предметы. */
   private bindQuickKeys(): void {
-    const keys = ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE'];
-    keys.forEach((k, i) => this.input.keyboard?.on(`keydown-${k}`, () => this.useQuick(i)));
+    // Первый слот (клавиша «1») — огненный шар, а не предмет.
+    this.input.keyboard?.on('keydown-ONE', () => this.castFireball());
+    // Клавиши 2..9 — предметные слоты 1..8 (слот 0 занят умением).
+    const keys = ['TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE'];
+    keys.forEach((k, i) => this.input.keyboard?.on(`keydown-${k}`, () => this.useQuick(i + 1)));
     // Ноль — десятая ячейка, как подписано на планке.
     this.input.keyboard?.on('keydown-ZERO', () => this.useQuick(9));
   }
@@ -1197,6 +1307,9 @@ export class GameScene extends MapScene {
     }
 
     this.updateArrows(delta);
+    this.updateFireballs(delta);
+    // Перезарядка умения на планке: 1 — только откастовал, 0 — готов.
+    this.hotbar.setSkillCooldown(this.fireballReadyAt > now ? (this.fireballReadyAt - now) / FIREBALL_COOLDOWN : 0);
     this.updateLoot(now);
 
     if (this.player.isDead && !this.deathAt) {
