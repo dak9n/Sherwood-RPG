@@ -15,6 +15,7 @@ import {
   withGroupRenamed,
   withGroupDisbanded,
   withGroupLabelAt,
+  suggestGroupName,
 } from './layers.ts';
 import type { GameMap } from './types.ts';
 
@@ -256,4 +257,13 @@ test('вытащить слой ПРЯМО НАД свою группу можн
 test('groupNameError: пустое имя — ошибка, непустое — нет', () => {
   assert.ok(groupNameError('  '));
   assert.equal(groupNameError('Дом'), null);
+});
+
+test('suggestGroupName: свободный номер, занятые пропускает', () => {
+  const m = makeMap();
+  assert.equal(suggestGroupName(m), 'Группа 1');
+  m.layers[0] = { ...m.layers[0], group: 'Группа 1' };
+  assert.equal(suggestGroupName(m), 'Группа 2');
+  m.layers[1] = { ...m.layers[1], group: 'Группа 2' };
+  assert.equal(suggestGroupName(m), 'Группа 3');
 });

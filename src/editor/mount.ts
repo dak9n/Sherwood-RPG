@@ -3,7 +3,7 @@ import { MapDoc } from '../map/doc';
 import { resizeMap } from '../map/resize';
 import {
   withLayerAdded, withLayerRemoved, withLayerMoved, suggestLayerName,
-  withLayerGrouped, withGroupLabelAt,
+  withLayerGrouped, withGroupLabelAt, suggestGroupName,
 } from '../map/layers';
 import { EditorState } from './state';
 import type { CellEdit } from './edit';
@@ -89,6 +89,7 @@ export function mountEditor(game: Phaser.Game): void {
   });
   buildPalette(shell.palette, state);
   shell.addLayer.onclick = addLayer;
+  shell.addGroup.onclick = addGroup;
 
   // Кнопки
   const btn = (label: string, title: string, onClick: () => void): HTMLButtonElement => {
@@ -406,6 +407,16 @@ export function mountEditor(game: Phaser.Game): void {
     scene.rebuild(doc);
     state.relayer(doc, scene.view, r.index); // слой остаётся активным на новом месте
     passOverlay.relayer(doc, scene.view);
+  }
+
+  /**
+   * «📁+» в заголовке панели: новая группа с активным слоем внутри — как в
+   * Photoshop, где кнопка папки заворачивает выделенное. Пустых групп не бывает:
+   * группа существует, пока на неё ссылается слой, и пустая исчезла бы сама.
+   * Слой уже на месте, поэтому это лёгкая правка — только метка, без пересборки.
+   */
+  function addGroup(): void {
+    state.setLayerGroupLabel(state.activeLayer, suggestGroupName(state.doc.map));
   }
 
   function disbandGroup(name: string): void {

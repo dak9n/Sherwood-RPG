@@ -40,6 +40,8 @@ const CSS = `
   #editor h2.action { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   #editor h2 .head-btn { text-transform: none; letter-spacing: 0; padding: 1px 8px; font-size: 13px; line-height: 16px; }
   #editor h2 .head-btn:hover { color: #fff; }
+  /* Кнопки заголовка держатся вместе у правого края (space-between растащил бы их). */
+  #editor h2 .head-btns { display: flex; gap: 4px; }
   #editor button {
     font: inherit; color: inherit; background: #2f383e; border: 1px solid #0d1114;
     border-radius: 3px; padding: 3px 8px; cursor: pointer;
@@ -157,6 +159,8 @@ export interface Shell {
   tools: HTMLDivElement;
   layers: HTMLDivElement;
   addLayer: HTMLButtonElement;
+  /** «📁+» в заголовке панели: новая группа с активным слоем внутри. */
+  addGroup: HTMLButtonElement;
   palette: HTMLDivElement;
   setStatus(left: string, right: string, cls?: string): void;
 }
@@ -201,7 +205,7 @@ export function buildShell(): Shell {
   root.innerHTML = `
     <div id="ed-grip-w" title="Потяните, чтобы сделать панель шире или уже"></div>
     <div id="ed-tools"></div>
-    <h2 class="action">Слои <button id="ed-add-layer" class="head-btn" title="Новый слой поверх активного">＋</button></h2>
+    <h2 class="action">Слои <span class="head-btns"><button id="ed-add-group" class="head-btn" title="Новая группа: положить в неё активный слой">📁+</button><button id="ed-add-layer" class="head-btn" title="Новый слой поверх активного">＋</button></span></h2>
     <div id="ed-layers"></div>
     <div id="ed-grip-h" title="Потяните, чтобы поделить высоту между слоями и тайлами"></div>
     <h2>Тайлы</h2>
@@ -219,6 +223,7 @@ export function buildShell(): Shell {
     tools: root.querySelector<HTMLDivElement>('#ed-tools')!,
     layers: root.querySelector<HTMLDivElement>('#ed-layers')!,
     addLayer: root.querySelector<HTMLButtonElement>('#ed-add-layer')!,
+    addGroup: root.querySelector<HTMLButtonElement>('#ed-add-group')!,
     palette: root.querySelector<HTMLDivElement>('#ed-palette')!,
     setStatus(l, r, cls = '') {
       left.textContent = l;

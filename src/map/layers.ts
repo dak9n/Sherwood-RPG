@@ -129,6 +129,18 @@ export function groupNameError(name: string): string | null {
 }
 
 /**
+ * Свободное имя для новой группы: «Группа N». Как suggestLayerName — кнопка
+ * «📁+» даёт рабочее имя сразу, а переименовать можно потом двойным кликом.
+ */
+export function suggestGroupName(map: GameMap): string {
+  const taken = new Set(groupNames(map));
+  for (let n = 1; ; n++) {
+    const name = `Группа ${n}`;
+    if (!taken.has(name)) return name;
+  }
+}
+
+/**
  * Кладёт слой в группу (group) или убирает из группы (null). Чистая.
  *
  * Если в группе уже есть слои, слой ПЕРЕЕЗЖАЕТ в массиве вплотную к ним — поверх
