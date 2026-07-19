@@ -139,7 +139,7 @@ export class HotbarUi {
         // Слот умения: огонёк + затемнение перезарядки. Ни перетащить, ни сбросить —
         // это не предмет, а способность героя.
         el.classList.add('skill', 'ready');
-        el.title = `Огненный шар (${KEYS[i]})`;
+        el.title = `Fireball (${KEYS[i]})`;
         el.append(Object.assign(document.createElement('div'), { className: 'fire' }));
         this.cdEl = Object.assign(document.createElement('div'), { className: 'cd' });
         el.append(this.cdEl);
@@ -275,9 +275,9 @@ export class HotbarUi {
       }
       const nm = `${def.name}${plus > 0 ? ` +${plus}` : ''}`;
 
-      if (wearing) el.title = `${nm} — надето, снять (${KEYS[i]})`;
-      else if (n) el.title = `${nm} — ${def.slot ? 'надеть' : 'применить'} (${KEYS[i]})`;
-      else el.title = `${nm} — нет в сумке`;
+      if (wearing) el.title = `${nm} — equipped, unequip (${KEYS[i]})`;
+      else if (n) el.title = `${nm} — ${def.slot ? 'equip' : 'use'} (${KEYS[i]})`;
+      else el.title = `${nm} — not in bag`;
     }
   }
 

@@ -125,7 +125,7 @@ export class MarketStore {
           id: this.nextId('m'),
           kind: 'item',
           item: lot.item,
-          note: `Лот истёк: ${ITEMS[lot.item.id]?.name ?? lot.item.id}`,
+          note: `Listing expired: ${ITEMS[lot.item.id]?.name ?? lot.item.id}`,
           ts: now,
         });
         changed = true;
@@ -139,12 +139,12 @@ export class MarketStore {
     this.expireDue(now); // иначе истёкшие свои лоты зря считаются против лимита
 
     const item = cleanTradeItem(rawItem);
-    if (!item) return { ok: false, error: 'Такой предмет выставить нельзя' };
+    if (!item) return { ok: false, error: 'This item cannot be listed' };
     const price = cleanPrice(rawPrice);
-    if (price === null) return { ok: false, error: 'Неверная цена' };
+    if (price === null) return { ok: false, error: 'Invalid price' };
 
     const mine = [...this.lots.values()].filter((l) => l.sellerKey === sellerKey).length;
-    if (mine >= MAX_LOTS_PER_SELLER) return { ok: false, error: `Нельзя больше ${MAX_LOTS_PER_SELLER} лотов` };
+    if (mine >= MAX_LOTS_PER_SELLER) return { ok: false, error: `No more than ${MAX_LOTS_PER_SELLER} listings` };
 
     const lot: Lot = {
       id: this.nextId('lot'),
@@ -215,10 +215,10 @@ export class MarketStore {
    */
   buy(buyerKey: string, buyerName: string, lotId: unknown, now: number): Result<{ price: number; item: TradeItem }> {
     this.expireDue(now);
-    if (typeof lotId !== 'string') return { ok: false, error: 'Лот не найден' };
+    if (typeof lotId !== 'string') return { ok: false, error: 'Listing not found' };
     const lot = this.lots.get(lotId);
-    if (!lot) return { ok: false, error: 'Лот уже куплен или снят' };
-    if (lot.sellerKey === buyerKey) return { ok: false, error: 'Нельзя купить свой лот' };
+    if (!lot) return { ok: false, error: 'Listing already bought or removed' };
+    if (lot.sellerKey === buyerKey) return { ok: false, error: 'Cannot buy your own listing' };
 
     this.lots.delete(lot.id);
 
@@ -229,14 +229,14 @@ export class MarketStore {
       id: this.nextId('m'),
       kind: 'gold',
       amount: payout,
-      note: `Продано: ${name} (комиссия ${fee})`,
+      note: `Sold: ${name} (fee ${fee})`,
       ts: now,
     });
     this.pushMail(buyerKey, {
       id: this.nextId('m'),
       kind: 'item',
       item: lot.item,
-      note: `Куплено: ${name}`,
+      note: `Bought: ${name}`,
       ts: now,
     });
 
@@ -258,17 +258,17 @@ export class MarketStore {
 
   /** Снять свой лот. Предмет вернётся владельцу по почте (заберёт при collectMail). */
   cancel(sellerKey: string, lotId: unknown, now: number): { ok: true } | { ok: false; error: string } {
-    if (typeof lotId !== 'string') return { ok: false, error: 'Лот не найден' };
+    if (typeof lotId !== 'string') return { ok: false, error: 'Listing not found' };
     const lot = this.lots.get(lotId);
-    if (!lot) return { ok: false, error: 'Лот не найден' };
-    if (lot.sellerKey !== sellerKey) return { ok: false, error: 'Это не ваш лот' };
+    if (!lot) return { ok: false, error: 'Listing not found' };
+    if (lot.sellerKey !== sellerKey) return { ok: false, error: 'This is not your listing' };
 
     this.lots.delete(lot.id);
     this.pushMail(sellerKey, {
       id: this.nextId('m'),
       kind: 'item',
       item: lot.item,
-      note: `Снято с продажи: ${ITEMS[lot.item.id]?.name ?? lot.item.id}`,
+      note: `Removed from sale: ${ITEMS[lot.item.id]?.name ?? lot.item.id}`,
       ts: now,
     });
     this.save();

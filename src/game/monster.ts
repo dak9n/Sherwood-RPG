@@ -129,7 +129,7 @@ export class Monster {
     // Метка с именем и уровнем — видна всегда, пока монстр жив (как в MMORPG).
     // Мелкая: камера увеличивает втрое, крупный текст закрыл бы полкарты.
     this.nameTag = scene.add
-      .text(homeX, homeY - NAME_DY * this.scale, `${stats.name} ур.${stats.level}`, {
+      .text(homeX, homeY - NAME_DY * this.scale, `${stats.name} Lv.${stats.level}`, {
         fontFamily: 'monospace',
         fontSize: '4px',
         color: threatColor(0),

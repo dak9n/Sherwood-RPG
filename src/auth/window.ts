@@ -126,17 +126,17 @@ export function showAuthWindow(): Promise<string> {
     root.id = 'auth';
     root.innerHTML = `
       <div class="win">
-        <div class="title">Лес</div>
+        <div class="title">Forest</div>
         <div class="portrait"><i></i></div>
-        <p class="sub">Войдите или создайте героя, чтобы начать.</p>
+        <p class="sub">Log in or create a hero to begin.</p>
         <div class="tabs">
-          <div class="tab" data-mode="login">Вход</div>
-          <div class="tab" data-mode="register">Регистрация</div>
+          <div class="tab" data-mode="login">Log in</div>
+          <div class="tab" data-mode="register">Register</div>
         </div>
         <div class="page">
-          <label>Имя</label>
+          <label>Name</label>
           <input class="name" autocomplete="username" maxlength="20" />
-          <label>Пароль</label>
+          <label>Password</label>
           <input class="pw" type="password" autocomplete="current-password" maxlength="200" />
           <button class="go"></button>
         </div>
@@ -159,11 +159,11 @@ export function showAuthWindow(): Promise<string> {
 
     const applyMode = (): void => {
       for (const t of tabs) t.setAttribute('aria-selected', String(t.dataset.mode === mode));
-      goEl.textContent = mode === 'login' ? 'Войти' : 'Создать героя';
+      goEl.textContent = mode === 'login' ? 'Log in' : 'Create Hero';
       pwEl.autocomplete = mode === 'login' ? 'current-password' : 'new-password';
       hintEl.textContent =
         mode === 'register'
-          ? 'Имя от 3 символов, пароль от 6. Пароль хранится на сервере только в зашифрованном виде.'
+          ? 'Name from 3 characters, password from 6. The password is stored on the server only in encrypted form.'
           : '';
       msgEl.textContent = '';
     };
@@ -181,14 +181,14 @@ export function showAuthWindow(): Promise<string> {
       const name = nameEl.value.trim();
       const pw = pwEl.value;
       if (!name || !pw) {
-        msgEl.textContent = 'Заполните имя и пароль';
+        msgEl.textContent = 'Enter name and password';
         return;
       }
 
       busy = true;
       goEl.disabled = true;
       msgEl.style.color = '#8a9aa4';
-      msgEl.textContent = 'Минуту…';
+      msgEl.textContent = 'One moment…';
 
       const r = mode === 'login' ? await login(name, pw) : await register(name, pw);
 
@@ -202,7 +202,7 @@ export function showAuthWindow(): Promise<string> {
       busy = false;
       goEl.disabled = false;
       msgEl.style.color = '#e2705f';
-      msgEl.textContent = r.error ?? 'Не получилось';
+      msgEl.textContent = r.error ?? 'Something went wrong';
       pwEl.select();
     };
 
@@ -237,7 +237,7 @@ export function showAccountBadge(name: string, onLogout: () => void): void {
 
   const el = document.createElement('div');
   el.id = 'acc';
-  el.innerHTML = `<span><b class="nm"></b></span><span class="out" title="Выйти из аккаунта">выйти</span>`;
+  el.innerHTML = `<span><b class="nm"></b></span><span class="out" title="Log out">log out</span>`;
   el.querySelector<HTMLElement>('.nm')!.textContent = name;
   el.querySelector<HTMLElement>('.out')!.onclick = onLogout;
   document.body.append(el);

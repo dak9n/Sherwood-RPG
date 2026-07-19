@@ -59,17 +59,17 @@ export function trySharpen(
   bag: (Stack | null)[],
   rng: () => number = Math.random,
 ): SharpenResult {
-  if (!weaponId) return { ok: false, reason: 'надень оружие' };
+  if (!weaponId) return { ok: false, reason: 'equip a weapon' };
   // hasOwn, а не ITEMS[id]: id вроде 'constructor' вернул бы унаследованный
   // член прототипа — та же дыра, что уже закрыта в санации сейва.
   if (!Object.hasOwn(ITEMS, weaponId) || ITEMS[weaponId].slot !== 'weapon') {
-    return { ok: false, reason: 'это не точится' };
+    return { ok: false, reason: 'not sharpenable' };
   }
 
   const current = sharpenBonus(currentPlus);
-  if (current >= SHARPEN_MAX) return { ok: false, reason: 'заточен до предела' };
+  if (current >= SHARPEN_MAX) return { ok: false, reason: 'sharpened to the max' };
 
-  if (countOf(bag, SCROLL_ID) < 1) return { ok: false, reason: 'нет свитков заточки' };
+  if (countOf(bag, SCROLL_ID) < 1) return { ok: false, reason: 'no Sharpening Scrolls' };
   const at = bag.findIndex((s) => s && s.id === SCROLL_ID);
   takeOne(bag, at);
 

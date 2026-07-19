@@ -66,25 +66,25 @@ export interface MarketActions {
 type Tab = 'market' | 'mine' | 'history';
 
 const SORTS: { id: NonNullable<BrowseFilter['sort']>; label: string }[] = [
-  { id: 'newest', label: 'По умолчанию' },
-  { id: 'price_asc', label: 'Цена ↑' },
-  { id: 'price_desc', label: 'Цена ↓' },
-  { id: 'unit_asc', label: 'Цена за штуку' },
-  { id: 'expires', label: 'Скоро истекут' },
+  { id: 'newest', label: 'Default' },
+  { id: 'price_asc', label: 'Price ↑' },
+  { id: 'price_desc', label: 'Price ↓' },
+  { id: 'unit_asc', label: 'Price per unit' },
+  { id: 'expires', label: 'Expiring soon' },
 ];
 
 const fmtGold = (n: number): string => Math.floor(n).toLocaleString('ru-RU');
 
 /** «23ч 45м» / «5м» — сколько лоту осталось. */
 function fmtLeft(ms: number): string {
-  if (ms <= 0) return 'истёк';
+  if (ms <= 0) return 'expired';
   const m = Math.floor(ms / 60000);
   const d = Math.floor(m / 1440);
   const h = Math.floor((m % 1440) / 60);
   const min = m % 60;
-  if (d > 0) return `${d}д ${h}ч`;
-  if (h > 0) return `${h}ч ${min}м`;
-  return `${min}м`;
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${min}m`;
+  return `${min}m`;
 }
 
 const CSS = `
@@ -244,55 +244,55 @@ export class MarketUi {
     this.root.innerHTML = `
       <div class="win">
         <div class="gold"><i class="coin"></i><span class="goldv">0</span></div>
-        <div class="title">Торговый рынок</div>
-        <div class="close" title="Закрыть (T)"></div>
+        <div class="title">Trading Market</div>
+        <div class="close" title="Close (T)"></div>
         <div class="tabs">
-          <div class="tab" data-tab="market">Рынок</div>
-          <div class="tab" data-tab="mine">Мои лоты</div>
-          <div class="tab" data-tab="history">История</div>
+          <div class="tab" data-tab="market">Market</div>
+          <div class="tab" data-tab="mine">My Listings</div>
+          <div class="tab" data-tab="history">History</div>
         </div>
         <div class="body">
           <div class="colL panel">
-            <div class="phead">Категории</div>
+            <div class="phead">Categories</div>
             <div class="cats"></div>
-            <label class="f">Редкость</label>
+            <label class="f">Rarity</label>
             <select class="rarity">
-              <option value="any">Любая</option>
-              <option value="common">Обычное</option>
-              <option value="uncommon">Необычное</option>
-              <option value="rare">Редкое</option>
-              <option value="epic">Эпическое</option>
+              <option value="any">Any</option>
+              <option value="common">Common</option>
+              <option value="uncommon">Uncommon</option>
+              <option value="rare">Rare</option>
+              <option value="epic">Epic</option>
             </select>
-            <label class="chk"><input type="checkbox" class="afford"> Только по карману</label>
-            <button class="reset">Сбросить</button>
+            <label class="chk"><input type="checkbox" class="afford"> Affordable only</label>
+            <button class="reset">Reset</button>
           </div>
           <div class="colC">
             <div class="searchrow">
-              <input class="txt search" placeholder="Поиск по названию…">
+              <input class="txt search" placeholder="Search by name…">
               <select class="sort"></select>
-              <button class="btn sm refresh" title="Обновить">↻</button>
+              <button class="btn sm refresh" title="Refresh">↻</button>
             </div>
             <div class="lots panel"></div>
             <div class="pager"></div>
           </div>
           <div class="colR">
             <div class="panel" style="flex:1; overflow-y:auto">
-              <div class="phead">Ваш инвентарь</div>
+              <div class="phead">Your Inventory</div>
               <div class="bag"></div>
             </div>
-            <button class="btn create">Создать лот</button>
+            <button class="btn create">Create Listing</button>
           </div>
         </div>
         <div class="notice"></div>
         <div class="footer">
-          <span>Покупайте и продавайте с другими игроками</span>
-          <span>Комиссия рынка: ${Math.round(MARKET_COMMISSION * 100)}% (при продаже)</span>
-          <span>Выручка приходит по почте</span>
+          <span>Buy and sell with other players</span>
+          <span>Market fee: ${Math.round(MARKET_COMMISSION * 100)}% (on sale)</span>
+          <span>Proceeds arrive by mail</span>
         </div>
       </div>
       <div class="dlg">
         <div class="card">
-          <h3>Выставить лот</h3>
+          <h3>Create Listing</h3>
           <div class="dlgbody"></div>
         </div>
       </div>
@@ -464,18 +464,18 @@ export class MarketUi {
     pager.innerHTML = '';
 
     if (v.unavailable) {
-      box.innerHTML = '<div class="empty">Рынок доступен только при подключении к серверу.<br>Запусти игру через дев-сервер (npm run dev).</div>';
+      box.innerHTML = '<div class="empty">Market is available only when connected to the server.<br>Run the game via the dev server (npm run dev).</div>';
       return;
     }
-    if (v.loading && !v.browse) { box.innerHTML = '<div class="empty">Загрузка…</div>'; return; }
+    if (v.loading && !v.browse) { box.innerHTML = '<div class="empty">Loading…</div>'; return; }
 
     // «Только по карману» теперь серверный фильтр (страницы и счётчик честные) — клиентом не режем.
     const lots = v.browse?.lots ?? [];
-    if (!lots.length) { box.innerHTML = '<div class="empty">Ничего не найдено.</div>'; return; }
+    if (!lots.length) { box.innerHTML = '<div class="empty">Nothing found.</div>'; return; }
 
     const now = Date.now();
     const table = document.createElement('table');
-    table.innerHTML = '<thead><tr><th>Предмет</th><th>Цена</th><th>Продавец</th><th>Истекает</th><th></th></tr></thead>';
+    table.innerHTML = '<thead><tr><th>Item</th><th>Price</th><th>Seller</th><th>Expires</th><th></th></tr></thead>';
     const tb = document.createElement('tbody');
     for (const lot of lots) {
       const tr = document.createElement('tr');
@@ -484,9 +484,9 @@ export class MarketUi {
       const tdSeller = document.createElement('td'); tdSeller.textContent = lot.sellerName;
       const tdLeft = document.createElement('td'); tdLeft.className = 'sub'; tdLeft.textContent = fmtLeft(lot.expiresAt - now);
       const tdBtn = document.createElement('td');
-      const buy = Object.assign(document.createElement('button'), { className: 'btn sm', textContent: 'Купить' });
+      const buy = Object.assign(document.createElement('button'), { className: 'btn sm', textContent: 'Buy' });
       buy.disabled = !!v.busy || lot.price > v.gold; // busy: не даём начать вторую покупку (гонка золота)
-      buy.title = lot.price > v.gold ? 'Не хватает золота' : '';
+      buy.title = lot.price > v.gold ? 'Not enough gold' : '';
       buy.addEventListener('click', () => this.actions.onBuy(lot.id));
       tdBtn.append(buy);
       tr.append(tdItem, tdPrice, tdSeller, tdLeft, tdBtn);
@@ -507,19 +507,19 @@ export class MarketUi {
     pager.append(mk('‹', Math.max(1, cur - 1), false, cur <= 1));
     for (let p = 1; p <= pages; p++) pager.append(mk(String(p), p, p === cur));
     pager.append(mk('›', Math.min(pages, cur + 1), false, cur >= pages));
-    pager.append(Object.assign(document.createElement('span'), { className: 'found', textContent: `Найдено: ${v.browse?.total ?? 0}` }));
+    pager.append(Object.assign(document.createElement('span'), { className: 'found', textContent: `Found: ${v.browse?.total ?? 0}` }));
   }
 
   private renderMine(v: MarketView): void {
     const box = this.q('.lots');
     this.q('.pager').innerHTML = '';
     box.innerHTML = '';
-    if (v.unavailable) { box.innerHTML = '<div class="empty">Рынок недоступен без сервера.</div>'; return; }
-    if (!v.mine.length) { box.innerHTML = '<div class="empty">У тебя нет выставленных лотов.<br>Нажми «Создать лот» справа.</div>'; return; }
+    if (v.unavailable) { box.innerHTML = '<div class="empty">Market is unavailable without a server.</div>'; return; }
+    if (!v.mine.length) { box.innerHTML = '<div class="empty">You have no active listings.<br>Click "Create Listing" on the right.</div>'; return; }
 
     const now = Date.now();
     const table = document.createElement('table');
-    table.innerHTML = '<thead><tr><th>Предмет</th><th>Цена</th><th>Истекает</th><th></th></tr></thead>';
+    table.innerHTML = '<thead><tr><th>Item</th><th>Price</th><th>Expires</th><th></th></tr></thead>';
     const tb = document.createElement('tbody');
     for (const lot of v.mine) {
       const tr = document.createElement('tr');
@@ -527,7 +527,7 @@ export class MarketUi {
       const b = document.createElement('td'); b.append(this.priceCell(lot.price));
       const c = document.createElement('td'); c.className = 'sub'; c.textContent = fmtLeft(lot.expiresAt - now);
       const d = document.createElement('td');
-      const cancel = Object.assign(document.createElement('button'), { className: 'btn sm danger', textContent: 'Отменить' });
+      const cancel = Object.assign(document.createElement('button'), { className: 'btn sm danger', textContent: 'Cancel' });
       cancel.disabled = !!v.busy; // не даём запустить второе снятие во время текущего (гонка почты)
       cancel.addEventListener('click', () => this.actions.onCancel(lot.id));
       d.append(cancel);
@@ -542,11 +542,11 @@ export class MarketUi {
     const box = this.q('.lots');
     this.q('.pager').innerHTML = '';
     box.innerHTML = '';
-    if (v.unavailable) { box.innerHTML = '<div class="empty">Рынок недоступен без сервера.</div>'; return; }
-    if (!v.history.length) { box.innerHTML = '<div class="empty">Сделок пока не было.</div>'; return; }
+    if (v.unavailable) { box.innerHTML = '<div class="empty">Market is unavailable without a server.</div>'; return; }
+    if (!v.history.length) { box.innerHTML = '<div class="empty">No trades yet.</div>'; return; }
 
     const table = document.createElement('table');
-    table.innerHTML = '<thead><tr><th>Предмет</th><th>Цена</th><th>Сделка</th></tr></thead>';
+    table.innerHTML = '<thead><tr><th>Item</th><th>Price</th><th>Trade</th></tr></thead>';
     const tb = document.createElement('tbody');
     for (const h of v.history) {
       const tr = document.createElement('tr');
@@ -615,20 +615,20 @@ export class MarketUi {
     const body = this.q('.dlgbody');
     const stack = this.pick ? this.state().bag[this.pick.index] : null;
     if (!this.pick || !stack) {
-      body.innerHTML = '<div class="sub" style="text-align:center;padding:10px">Выбери предмет в своём инвентаре справа.</div>' +
-        '<div class="acts"><button class="btn cancel">Закрыть</button></div>';
+      body.innerHTML = '<div class="sub" style="text-align:center;padding:10px">Pick an item from your inventory on the right.</div>' +
+        '<div class="acts"><button class="btn cancel">Close</button></div>';
       body.querySelector('.cancel')!.addEventListener('click', () => this.closeDialog());
       return;
     }
     const def = ITEMS[stack.id];
     const maxQty = stack.qty;
     body.innerHTML = `
-      <div class="row"><label>Предмет</label><b>${def?.name ?? stack.id}${stack.sharpen ? ` +${stack.sharpen}` : ''}</b></div>
-      ${maxQty > 1 ? `<div class="row"><label>Сколько (1–${maxQty})</label><input class="txt qty" type="number" min="1" max="${maxQty}" value="${this.pick.qty}"></div>` : ''}
-      <div class="row"><label>Цена за лот</label><input class="txt price" type="number" min="1" max="${MAX_PRICE}" value="${this.pick.price || ''}" placeholder="золото"></div>
+      <div class="row"><label>Item</label><b>${def?.name ?? stack.id}${stack.sharpen ? ` +${stack.sharpen}` : ''}</b></div>
+      ${maxQty > 1 ? `<div class="row"><label>Quantity (1–${maxQty})</label><input class="txt qty" type="number" min="1" max="${maxQty}" value="${this.pick.qty}"></div>` : ''}
+      <div class="row"><label>Price</label><input class="txt price" type="number" min="1" max="${MAX_PRICE}" value="${this.pick.price || ''}" placeholder="gold"></div>
       <div class="acts">
-        <button class="btn cancel danger">Отмена</button>
-        <button class="btn go">Выставить</button>
+        <button class="btn cancel danger">Cancel</button>
+        <button class="btn go">List</button>
       </div>`;
     const qtyEl = body.querySelector<HTMLInputElement>('.qty');
     const priceEl = body.querySelector<HTMLInputElement>('.price')!;
@@ -636,7 +636,7 @@ export class MarketUi {
     body.querySelector('.go')!.addEventListener('click', () => {
       const qty = qtyEl ? Math.max(1, Math.min(maxQty, Math.floor(Number(qtyEl.value) || 1))) : 1;
       const raw = Math.floor(Number(priceEl.value) || 0);
-      if (raw < 1) { this.flash('Укажи цену', false); return; }
+      if (raw < 1) { this.flash('Enter a price', false); return; }
       const price = Math.min(MAX_PRICE, raw); // тот же потолок, что рисует input — не шлём заведомо отказную цену
       this.actions.onList({ id: stack.id, qty, ...(stack.sharpen ? { sharpen: stack.sharpen } : {}) }, price);
       this.closeDialog();

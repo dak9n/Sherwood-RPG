@@ -39,15 +39,15 @@ const BRANCHES: SkillBranch[] = ['power', 'agility', 'survival'];
 function effectTotal(node: SkillNode, rank: number): string {
   const p = node.per;
   const pct = (v: number): string => `${Math.round(v * 100)}%`;
-  if (p.dmg) return `+${p.dmg * rank} к урону`;
-  if (p.rangedDmg) return `+${p.rangedDmg * rank} к урону лука`;
-  if (p.speed) return `+${p.speed * rank} к скорости`;
-  if (p.mp) return `+${p.mp * rank} к мане`;
-  if (p.hp) return `+${p.hp * rank} к здоровью`;
-  if (p.def) return `+${p.def * rank} к защите`;
-  if (p.critChance) return `+${pct(p.critChance * rank)} шанс крита`;
-  if (p.critMul) return `+${pct(p.critMul * rank)} к урону крита`;
-  if (p.lifesteal) return `${pct(p.lifesteal * rank)} вампиризма`;
+  if (p.dmg) return `+${p.dmg * rank} damage`;
+  if (p.rangedDmg) return `+${p.rangedDmg * rank} bow damage`;
+  if (p.speed) return `+${p.speed * rank} Speed`;
+  if (p.mp) return `+${p.mp * rank} Mana`;
+  if (p.hp) return `+${p.hp * rank} Health`;
+  if (p.def) return `+${p.def * rank} Defense`;
+  if (p.critChance) return `+${pct(p.critChance * rank)} crit chance`;
+  if (p.critMul) return `+${pct(p.critMul * rank)} crit damage`;
+  if (p.lifesteal) return `${pct(p.lifesteal * rank)} lifesteal`;
   return '';
 }
 
@@ -153,11 +153,11 @@ export class SkillTreeUi {
     this.root.id = 'skilltree';
     this.root.innerHTML = `
       <div class="win">
-        <div class="title">Дерево навыков</div>
-        <div class="close" title="Закрыть (L)"></div>
+        <div class="title">Skill Tree</div>
+        <div class="close" title="Close (L)"></div>
         <div class="free"></div>
         <div class="cols"></div>
-        <div class="hint">Очки навыков дают за уровень — по одному.<br>Вложенное сразу работает в бою. Сброса пока нет — выбирай с умом.</div>
+        <div class="hint">Skill points are earned per level — one at a time.<br>What you invest works in combat right away. No reset yet — choose wisely.</div>
       </div>
     `;
     document.body.append(this.root);
@@ -200,7 +200,7 @@ export class SkillTreeUi {
     if (key === this.key) return;
     this.key = key;
 
-    this.free.innerHTML = `Очки навыков: <b>${left}</b>`;
+    this.free.innerHTML = `Skill points: <b>${left}</b>`;
     this.free.classList.toggle('none', left <= 0);
 
     this.cols.innerHTML = '';
@@ -233,18 +233,18 @@ export class SkillTreeUi {
     const pips = Array.from({ length: node.maxRank }, (_, i) => `<span class="pip${i < rank ? ' on' : ''}"></span>`).join('');
     const total = rank > 0 ? ` · <span class="tot">${effectTotal(node, rank)}</span>` : '';
     const req = !open && node.requires
-      ? `<div class="req">Требует: ${nodeName(node.requires.node)} (${node.requires.rank})</div>`
+      ? `<div class="req">Requires: ${nodeName(node.requires.node)} (${node.requires.rank})</div>`
       : '';
 
     el.innerHTML =
       `<div class="nm" style="color:#2b1d12"><span>${node.name}</span><span class="rk">${rank}/${node.maxRank}</span></div>` +
       `<div class="pips">${pips}</div>` +
-      `<div class="desc">${node.desc} за ранг${total}</div>` +
+      `<div class="desc">${node.desc} per rank${total}</div>` +
       req;
 
     const btn = document.createElement('div');
     btn.className = `add${can ? '' : ' off'}`;
-    btn.textContent = maxed ? 'Макс' : open ? '+ Вложить' : 'Закрыто';
+    btn.textContent = maxed ? 'Max' : open ? '+ Invest' : 'Locked';
     if (can) btn.onclick = () => this.onAllocate(node.id);
     el.append(btn);
 

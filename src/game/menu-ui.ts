@@ -80,7 +80,7 @@ export class MenuUi {
     for (const item of items) {
       const el = document.createElement('div');
       el.className = 'mi';
-      el.title = `${item.label} — клавиша ${item.key}`;
+      el.title = `${item.label} — key ${item.key}`;
 
       const icon = document.createElement('i');
       icon.style.backgroundImage = `url(${ICONS})`;

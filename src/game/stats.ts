@@ -21,10 +21,10 @@ export const POINTS_PER_LEVEL = 3;
  * (меч даёт +3, шлем +1). Очко должно ощущаться как треть уровня, не больше.
  */
 export const STATS: { id: Stat; label: string; per: number; hint: string }[] = [
-  { id: 'dmg', label: 'Атака', per: 1, hint: '+1 к урону за очко' },
-  { id: 'hp', label: 'Здоровье', per: 10, hint: '+10 к запасу здоровья за очко' },
-  { id: 'mp', label: 'Мана', per: 5, hint: '+5 к запасу маны за очко' },
-  { id: 'def', label: 'Защита', per: 1, hint: '+1 к защите за очко' },
+  { id: 'dmg', label: 'Attack', per: 1, hint: '+1 Attack per point' },
+  { id: 'hp', label: 'Health', per: 10, hint: '+10 Health per point' },
+  { id: 'mp', label: 'Mana', per: 5, hint: '+5 Mana per point' },
+  { id: 'def', label: 'Defense', per: 1, hint: '+1 Defense per point' },
 ];
 
 /** Сколько очков вложено в каждую характеристику. */

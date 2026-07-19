@@ -111,7 +111,7 @@ export class AuthStore {
 
     const display = (name as string).trim();
     const key = normalizeName(display);
-    if (this.users.has(key)) return { ok: false, error: 'Это имя уже занято' };
+    if (this.users.has(key)) return { ok: false, error: 'This name is already taken' };
 
     const rec: UserRecord = {
       name: display,
@@ -127,14 +127,14 @@ export class AuthStore {
 
   private async runLogin(name: unknown, password: unknown, now: number): Promise<AuthResult> {
     if (typeof name !== 'string' || typeof password !== 'string') {
-      return { ok: false, error: 'Введите имя и пароль' };
+      return { ok: false, error: 'Enter name and password' };
     }
     const key = normalizeName(name);
 
     // Заперто, только если промахов накопилось до предела И окошко ещё идёт.
     const rec = this.fails.get(key);
     if (rec && rec.count >= MAX_FAILS && rec.until > now) {
-      return { ok: false, error: 'Слишком много попыток. Подождите пару минут' };
+      return { ok: false, error: 'Too many attempts. Wait a couple of minutes' };
     }
 
     const user = this.users.get(key);
@@ -144,7 +144,7 @@ export class AuthStore {
 
     if (!user || !good) {
       this.noteFail(key, now);
-      return { ok: false, error: 'Неверное имя или пароль' };
+      return { ok: false, error: 'Wrong name or password' };
     }
 
     this.fails.delete(key);

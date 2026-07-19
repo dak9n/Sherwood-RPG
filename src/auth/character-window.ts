@@ -20,7 +20,7 @@ const HERO = {
 };
 
 /** Классы. Пока один; массив — чтобы добавить остальные строкой, а не переписью. */
-const CLASSES = [{ id: 'swordsman', label: 'Мечник', hint: 'Ближний бой, крепкое здоровье' }];
+const CLASSES = [{ id: 'swordsman', label: 'Swordsman', hint: 'Melee, sturdy health' }];
 
 const CSS = `
   #charwin {
@@ -106,8 +106,8 @@ export function showCharacterCreate(): Promise<{ name: string; class: string }> 
     root.id = 'charwin';
     root.innerHTML = `
       <div class="win">
-        <div class="title">Создание героя</div>
-        <p class="sub">Выбери класс и придумай имя герою.</p>
+        <div class="title">Create Hero</div>
+        <p class="sub">Choose a class and name your hero.</p>
         <div class="classes">
           ${CLASSES.map(
             (c, i) => `
@@ -117,12 +117,12 @@ export function showCharacterCreate(): Promise<{ name: string; class: string }> 
               <div class="h">${c.hint}</div>
             </div>`,
           ).join('')}
-          <div class="soon">Другие классы — скоро</div>
+          <div class="soon">More classes — soon</div>
         </div>
         <div class="page">
-          <label>Имя героя</label>
-          <input class="name" maxlength="${MAX_NAME}" autocomplete="off" placeholder="Например: Арагорн" />
-          <button class="go">В путь!</button>
+          <label>Hero name</label>
+          <input class="name" maxlength="${MAX_NAME}" autocomplete="off" placeholder="e.g. Aragorn" />
+          <button class="go">Begin!</button>
         </div>
         <div class="msg"></div>
       </div>
@@ -146,7 +146,7 @@ export function showCharacterCreate(): Promise<{ name: string; class: string }> 
     const submit = (): void => {
       const name = cleanName(nameEl.value);
       if (name.length < 2) {
-        msgEl.textContent = 'Имя от 2 символов';
+        msgEl.textContent = 'Name must be at least 2 characters';
         nameEl.focus();
         return;
       }

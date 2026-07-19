@@ -216,24 +216,24 @@ export class ShopUi {
     this.root.id = 'shop';
     this.root.innerHTML = `
       <div class="win">
-        <div class="title">Магазин</div>
-        <div class="close" title="Закрыть (O)"></div>
+        <div class="title">Shop</div>
+        <div class="close" title="Close (O)"></div>
         <div class="body">
           <div class="col left">
-            <div class="phead"><span>Товары магазина</span></div>
+            <div class="phead"><span>Shop items</span></div>
             <div class="page"><div class="grid shopgrid"></div></div>
           </div>
           <div class="col right">
-            <div class="phead"><span>Ваш инвентарь</span><span class="gold"><i></i><span class="g">0</span></span></div>
+            <div class="phead"><span>Your Inventory</span><span class="gold"><i></i><span class="g">0</span></span></div>
             <div class="page"><div class="grid invgrid"></div></div>
             <div class="basket">
               <div class="bhead">
-                <span>Выбрано для продажи (<span class="bn">0</span>)</span>
-                <span class="clear" title="Убрать всё из корзины">Очистить</span>
+                <span>Selected to sell (<span class="bn">0</span>)</span>
+                <span class="clear" title="Remove all from cart">Clear</span>
               </div>
               <div class="page"><div class="bcells"></div></div>
               <div class="foot">
-                <button class="sellbtn">Продать выбранное</button>
+                <button class="sellbtn">Sell selected</button>
                 <span class="total"><i></i><span class="tv">0</span></span>
               </div>
             </div>
@@ -294,7 +294,7 @@ export class ShopUi {
   }
 
   private defaultHint(): void {
-    this.hintEl.textContent = 'Клик по товару слева — купить. Клик по вещи в инвентаре — отобрать на продажу.';
+    this.hintEl.textContent = 'Click an item on the left to buy. Click an item in your inventory to select it for sale.';
     this.hintEl.style.color = '#9a835f';
   }
 
@@ -385,8 +385,8 @@ export class ShopUi {
       slot.className = `slot has r-${rarityOf(stack.id)}${this.basket.has(index) ? ' picked' : ''}`;
       slot.title = def
         ? sellable
-          ? `${nm} — в продажу (${price} за шт.)`
-          : `${nm} — не продаётся`
+          ? `${nm} — for sale (${price} each)`
+          : `${nm} — not for sale`
         : '';
       if (def) slot.append(this.iconEl(def.icon));
       if (stack.qty > 1) {
@@ -429,7 +429,7 @@ export class ShopUi {
       const def = ITEMS[stack.id];
       const plus = def.slot === 'weapon' ? stack.sharpen ?? 0 : 0;
       slot.className = `slot has r-${rarityOf(stack.id)}`;
-      slot.title = `${def.name}${plus > 0 ? ` +${plus}` : ''} — убрать из продажи`;
+      slot.title = `${def.name}${plus > 0 ? ` +${plus}` : ''} — remove from sale`;
       slot.append(this.iconEl(def.icon));
       if (stack.qty > 1) {
         slot.append(Object.assign(document.createElement('span'), { className: 'qty', textContent: String(stack.qty) }));
@@ -471,16 +471,16 @@ export class ShopUi {
   private tip(id: string, price: number, afford: boolean): string {
     const def = ITEMS[id];
     const parts: string[] = [];
-    if (def.ranged) parts.push('стреляет стрелами');
-    if (def.use?.hp) parts.push(`+${def.use.hp} здоровья`);
-    if (def.use?.mp) parts.push(`+${def.use.mp} маны`);
-    if (def.bonus?.dmg) parts.push(`+${def.bonus.dmg} к атаке`);
-    if (def.bonus?.def) parts.push(`+${def.bonus.def} к защите`);
-    if (def.bonus?.speed) parts.push(`${def.bonus.speed > 0 ? '+' : ''}${def.bonus.speed} к скорости`);
-    if (def.bonus?.hp) parts.push(`+${def.bonus.hp} к здоровью`);
-    if (def.bonus?.mp) parts.push(`+${def.bonus.mp} к мане`);
+    if (def.ranged) parts.push('shoots arrows');
+    if (def.use?.hp) parts.push(`+${def.use.hp} Health`);
+    if (def.use?.mp) parts.push(`+${def.use.mp} Mana`);
+    if (def.bonus?.dmg) parts.push(`+${def.bonus.dmg} Attack`);
+    if (def.bonus?.def) parts.push(`+${def.bonus.def} Defense`);
+    if (def.bonus?.speed) parts.push(`${def.bonus.speed > 0 ? '+' : ''}${def.bonus.speed} Speed`);
+    if (def.bonus?.hp) parts.push(`+${def.bonus.hp} Health`);
+    if (def.bonus?.mp) parts.push(`+${def.bonus.mp} Mana`);
     const body = parts.length ? ` (${parts.join(', ')})` : '';
-    return `${def.name}${body} — ${afford ? `купить за ${price}` : `не хватает золота: нужно ${price}`}`;
+    return `${def.name}${body} — ${afford ? `buy for ${price}` : `not enough gold: need ${price}`}`;
   }
 
   destroy(): void {

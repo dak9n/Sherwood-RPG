@@ -10,7 +10,7 @@
 import { getToken } from '../auth/client.ts';
 import type { Lot, TradeItem, BrowseFilter, BrowseResult, MailEntry, TradeRecord } from './market-types.ts';
 
-const UNAVAILABLE = 'Рынок недоступен — нет связи с сервером';
+const UNAVAILABLE = 'Market unavailable — no connection to server';
 
 export interface ApiReply {
   ok: boolean;
@@ -22,7 +22,7 @@ export interface ApiReply {
 
 async function api(path: string, init: RequestInit & { json?: unknown } = {}): Promise<ApiReply> {
   const token = getToken();
-  if (!token) return { ok: false, error: 'Нужен вход', data: {} };
+  if (!token) return { ok: false, error: 'Log in required', data: {} };
 
   const headers: Record<string, string> = { authorization: `Bearer ${token}` };
   const opts: RequestInit = { method: init.method ?? 'GET', headers };
@@ -44,7 +44,7 @@ async function api(path: string, init: RequestInit & { json?: unknown } = {}): P
     // Не json — почти наверняка отдали index.html: ручки нет.
     return { ok: false, unavailable: true, error: UNAVAILABLE, data: {} };
   }
-  const err = typeof data.error === 'string' ? data.error : res.ok ? undefined : `Ошибка (${res.status})`;
+  const err = typeof data.error === 'string' ? data.error : res.ok ? undefined : `Error (${res.status})`;
   return { ok: res.ok && data.ok !== false, unavailable: false, error: err, data };
 }
 

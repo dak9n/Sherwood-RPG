@@ -88,32 +88,32 @@ const MUSH_BROWN_WORLD: Icon = { sheet: 'Objects', x: 440, y: 406, w: 16, h: 19 
 
 export const ITEMS: Record<string, ItemDef> = {
   mush_red: {
-    id: 'mush_red', name: 'Красный гриб', tab: 'food',
+    id: 'mush_red', name: 'Red Mushroom', tab: 'food',
     icon: MUSH_RED, world: MUSH_RED_WORLD, stack: 99, use: { hp: 30 },
   },
   mush_brown: {
-    id: 'mush_brown', name: 'Бурый гриб', tab: 'food',
+    id: 'mush_brown', name: 'Brown Mushroom', tab: 'food',
     icon: MUSH_BROWN, world: MUSH_BROWN_WORLD, stack: 99, use: { mp: 25 },
   },
-  apple: { id: 'apple', name: 'Яблоко', tab: 'food', icon: ico(5, 5), stack: 20, use: { hp: 12 } },
+  apple: { id: 'apple', name: 'Apple', tab: 'food', icon: ico(5, 5), stack: 20, use: { hp: 12 } },
   potion_hp: {
-    id: 'potion_hp', name: 'Зелье здоровья', tab: 'food',
+    id: 'potion_hp', name: 'Health Potion', tab: 'food',
     icon: ico(5, 17), stack: 10, use: { hp: 60 }, rarity: 'uncommon',
   },
   potion_mp: {
-    id: 'potion_mp', name: 'Зелье маны', tab: 'food',
+    id: 'potion_mp', name: 'Mana Potion', tab: 'food',
     icon: ico(4, 17), stack: 10, use: { mp: 40 }, rarity: 'uncommon',
   },
 
   // Слиток, а не руда: руды в наборе нет вовсе, а называть слиток рудой — врать
   // на ровном месте.
-  ore_copper: { id: 'ore_copper', name: 'Медный слиток', tab: 'resource', icon: ico(4, 16), stack: 99 },
-  crystal: { id: 'crystal', name: 'Кристалл', tab: 'resource', icon: ico(5, 10), stack: 99, rarity: 'uncommon' },
+  ore_copper: { id: 'ore_copper', name: 'Copper Ingot', tab: 'resource', icon: ico(4, 16), stack: 99 },
+  crystal: { id: 'crystal', name: 'Crystal', tab: 'resource', icon: ico(5, 10), stack: 99, rarity: 'uncommon' },
 
   // Свиток заточки: съедается кузницей (K) за попытку поднять оружие на +1.
   // Лист 'scroll' — наш дорисованный: свитка в наборе не нашлось ни в одном листе.
   scroll_sharpen: {
-    id: 'scroll_sharpen', name: 'Свиток заточки', tab: 'resource',
+    id: 'scroll_sharpen', name: 'Sharpening Scroll', tab: 'resource',
     icon: { sheet: 'scroll', x: 0, y: 0, w: 16, h: 16 }, stack: 20, rarity: 'uncommon',
   },
 
@@ -122,47 +122,47 @@ export const ITEMS: Record<string, ItemDef> = {
   // толку. Бонус НУЛЕВОЙ намеренно: урон обычного взмаха уже заложен в HERO.dmg,
   // и этот меч не добавляет силы, а лишь делает её видимой — оружием в руке.
   sword_basic: {
-    id: 'sword_basic', name: 'Меч новобранца', tab: 'weapon',
+    id: 'sword_basic', name: 'Recruit Sword', tab: 'weapon',
     icon: ico(1, 0), stack: 1, slot: 'weapon',
   },
   // Лук — оружие дальнего боя. Надетым превращает взмах в выстрел стрелой в
   // сторону курсора. Урон чуть выше базового меча, но бить приходится издалека
   // и целиться. Стрелы бесконечны (так решил заказчик).
   bow: {
-    id: 'bow', name: 'Лук', tab: 'weapon',
+    id: 'bow', name: 'Bow', tab: 'weapon',
     icon: ico(3, 7), stack: 1, slot: 'weapon', ranged: true, bonus: { dmg: 2 }, rarity: 'uncommon',
   },
   sword: {
-    id: 'sword', name: 'Стальной меч', tab: 'weapon',
+    id: 'sword', name: 'Steel Sword', tab: 'weapon',
     icon: ico(0, 8), stack: 1, slot: 'weapon', bonus: { dmg: 3 }, rarity: 'uncommon',
   },
   sword_blue: {
-    id: 'sword_blue', name: 'Синий меч', tab: 'weapon',
+    id: 'sword_blue', name: 'Azure Sword', tab: 'weapon',
     icon: ico(3, 8), stack: 1, slot: 'weapon', bonus: { dmg: 6 }, rarity: 'epic',
   },
   shield: {
-    id: 'shield', name: 'Щит', tab: 'armor',
+    id: 'shield', name: 'Shield', tab: 'armor',
     icon: ico(1, 8), stack: 1, slot: 'shield', bonus: { def: 1 }, rarity: 'uncommon',
   },
   helm: {
-    id: 'helm', name: 'Шлем', tab: 'armor',
+    id: 'helm', name: 'Helmet', tab: 'armor',
     icon: ico(4, 6), stack: 1, slot: 'helm', bonus: { def: 1, hp: 10 }, rarity: 'rare',
   },
   armor: {
-    id: 'armor', name: 'Латы', tab: 'armor',
+    id: 'armor', name: 'Plate Armor', tab: 'armor',
     // Броня тяжёлая: защищает, но замедляет — иначе надевать нечего думать.
     icon: ico(5, 6), stack: 1, slot: 'body', bonus: { def: 2, speed: -4 }, rarity: 'rare',
   },
   boots: {
-    id: 'boots', name: 'Сапоги', tab: 'armor',
+    id: 'boots', name: 'Boots', tab: 'armor',
     icon: ico(2, 8), stack: 1, slot: 'boots', bonus: { speed: 8 }, rarity: 'uncommon',
   },
   ring: {
-    id: 'ring', name: 'Кольцо', tab: 'armor',
+    id: 'ring', name: 'Ring', tab: 'armor',
     icon: ico(5, 8), stack: 1, slot: 'ring', bonus: { dmg: 2 }, rarity: 'rare',
   },
   amulet: {
-    id: 'amulet', name: 'Амулет', tab: 'armor',
+    id: 'amulet', name: 'Amulet', tab: 'armor',
     icon: ico(0, 9), stack: 1, slot: 'amulet', bonus: { mp: 15 }, rarity: 'epic',
   },
 };
@@ -171,10 +171,10 @@ export const ITEMS: Record<string, ItemDef> = {
 export const RARITY_ORDER: Rarity[] = ['common', 'uncommon', 'rare', 'epic'];
 
 export const RARITY_NAME: Record<Rarity, string> = {
-  common: 'Обычное',
-  uncommon: 'Необычное',
-  rare: 'Редкое',
-  epic: 'Эпическое',
+  common: 'Common',
+  uncommon: 'Uncommon',
+  rare: 'Rare',
+  epic: 'Epic',
 };
 
 export const rarityOf = (id: string): Rarity => ITEMS[id]?.rarity ?? 'common';
@@ -316,14 +316,14 @@ export type MarketCategory = 'weapon' | 'armor' | 'accessory' | 'consumable' | '
 
 /** Столбец категорий в окне рынка — как на образце заказчика. 'all' — без фильтра. */
 export const MARKET_CATEGORIES: { id: MarketCategory | 'all'; label: string }[] = [
-  { id: 'all', label: 'Все' },
-  { id: 'weapon', label: 'Оружие' },
-  { id: 'armor', label: 'Броня' },
-  { id: 'accessory', label: 'Аксессуары' },
-  { id: 'consumable', label: 'Расходники' },
-  { id: 'scroll', label: 'Свитки' },
-  { id: 'resource', label: 'Ресурсы' },
-  { id: 'misc', label: 'Разное' },
+  { id: 'all', label: 'All' },
+  { id: 'weapon', label: 'Weapons' },
+  { id: 'armor', label: 'Armor' },
+  { id: 'accessory', label: 'Accessories' },
+  { id: 'consumable', label: 'Consumables' },
+  { id: 'scroll', label: 'Scrolls' },
+  { id: 'resource', label: 'Resources' },
+  { id: 'misc', label: 'Misc' },
 ];
 
 /**

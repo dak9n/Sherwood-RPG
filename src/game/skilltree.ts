@@ -54,9 +54,9 @@ export const SKILL_PER_LEVEL = 1;
 export const BASE_CRIT_MUL = 1.5;
 
 export const BRANCH_NAME: Record<SkillBranch, string> = {
-  power: 'Сила',
-  agility: 'Ловкость',
-  survival: 'Выживание',
+  power: 'Power',
+  agility: 'Agility',
+  survival: 'Survival',
 };
 
 /**
@@ -65,36 +65,36 @@ export const BRANCH_NAME: Record<SkillBranch, string> = {
  */
 export const SKILL_TREE: SkillNode[] = [
   // --- Сила: урон и крит ---
-  { id: 'blade', branch: 'power', name: 'Острое лезвие', maxRank: 5, per: { dmg: 2 }, desc: '+2 к урону' },
+  { id: 'blade', branch: 'power', name: 'Sharp Blade', maxRank: 5, per: { dmg: 2 }, desc: '+2 damage' },
   {
-    id: 'crit', branch: 'power', name: 'Точный удар', maxRank: 4, per: { critChance: 0.05 },
-    desc: '+5% шанс крита', requires: { node: 'blade', rank: 1 },
+    id: 'crit', branch: 'power', name: 'Precise Strike', maxRank: 4, per: { critChance: 0.05 },
+    desc: '+5% crit chance', requires: { node: 'blade', rank: 1 },
   },
   {
-    id: 'execute', branch: 'power', name: 'Добивание', maxRank: 3, per: { critMul: 0.3 },
-    desc: '+30% к урону крита', requires: { node: 'crit', rank: 2 },
+    id: 'execute', branch: 'power', name: 'Execute', maxRank: 3, per: { critMul: 0.3 },
+    desc: '+30% crit damage', requires: { node: 'crit', rank: 2 },
   },
 
   // --- Ловкость: скорость, лук, мана ---
-  { id: 'swift', branch: 'agility', name: 'Скороход', maxRank: 5, per: { speed: 5 }, desc: '+5 к скорости' },
+  { id: 'swift', branch: 'agility', name: 'Swiftfoot', maxRank: 5, per: { speed: 5 }, desc: '+5 Speed' },
   {
-    id: 'aim', branch: 'agility', name: 'Меткость', maxRank: 4, per: { rangedDmg: 3 },
-    desc: '+3 к урону из лука', requires: { node: 'swift', rank: 1 },
+    id: 'aim', branch: 'agility', name: 'Marksmanship', maxRank: 4, per: { rangedDmg: 3 },
+    desc: '+3 bow damage', requires: { node: 'swift', rank: 1 },
   },
   {
-    id: 'focus', branch: 'agility', name: 'Сосредоточение', maxRank: 4, per: { mp: 15 },
-    desc: '+15 к запасу маны', requires: { node: 'swift', rank: 1 },
+    id: 'focus', branch: 'agility', name: 'Focus', maxRank: 4, per: { mp: 15 },
+    desc: '+15 Mana', requires: { node: 'swift', rank: 1 },
   },
 
   // --- Выживание: здоровье, защита, вампиризм ---
-  { id: 'vigor', branch: 'survival', name: 'Крепость', maxRank: 5, per: { hp: 18 }, desc: '+18 к здоровью' },
+  { id: 'vigor', branch: 'survival', name: 'Vigor', maxRank: 5, per: { hp: 18 }, desc: '+18 Health' },
   {
-    id: 'armor', branch: 'survival', name: 'Закалка', maxRank: 5, per: { def: 1 },
-    desc: '+1 к защите', requires: { node: 'vigor', rank: 1 },
+    id: 'armor', branch: 'survival', name: 'Toughness', maxRank: 5, per: { def: 1 },
+    desc: '+1 Defense', requires: { node: 'vigor', rank: 1 },
   },
   {
-    id: 'vampire', branch: 'survival', name: 'Вампиризм', maxRank: 5, per: { lifesteal: 0.04 },
-    desc: '+4% урона возвращается здоровьем', requires: { node: 'vigor', rank: 2 },
+    id: 'vampire', branch: 'survival', name: 'Lifesteal', maxRank: 5, per: { lifesteal: 0.04 },
+    desc: '+4% damage returned as Health', requires: { node: 'vigor', rank: 2 },
   },
 ];
 

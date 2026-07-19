@@ -11,13 +11,13 @@ export type Equipped = Partial<Record<EquipSlot, string>>;
 
 /** Слоты в том порядке, в каком они стоят в панели персонажа. */
 export const SLOTS: { id: EquipSlot; label: string }[] = [
-  { id: 'helm', label: 'Шлем' },
-  { id: 'amulet', label: 'Амулет' },
-  { id: 'body', label: 'Броня' },
-  { id: 'ring', label: 'Кольцо' },
-  { id: 'weapon', label: 'Оружие' },
-  { id: 'shield', label: 'Щит' },
-  { id: 'boots', label: 'Сапоги' },
+  { id: 'helm', label: 'Helmet' },
+  { id: 'amulet', label: 'Amulet' },
+  { id: 'body', label: 'Body' },
+  { id: 'ring', label: 'Ring' },
+  { id: 'weapon', label: 'Weapon' },
+  { id: 'shield', label: 'Shield' },
+  { id: 'boots', label: 'Boots' },
 ];
 
 /**
@@ -99,10 +99,10 @@ export interface EquipResult {
  */
 export function equipFromBag(bag: (Stack | null)[], index: number, eq: Equipped): EquipResult {
   const stack = bag[index];
-  if (!stack) return { ok: false, reason: 'пусто' };
+  if (!stack) return { ok: false, reason: 'empty' };
 
   const def = ITEMS[stack.id];
-  if (!def?.slot) return { ok: false, reason: 'это не надевается' };
+  if (!def?.slot) return { ok: false, reason: 'not equippable' };
 
   const removed = eq[def.slot];
   eq[def.slot] = stack.id;
@@ -124,9 +124,9 @@ export function unequip(
   putInBag: (id: string) => boolean,
 ): EquipResult {
   const id = eq[slot];
-  if (!id) return { ok: false, reason: 'слот пуст' };
+  if (!id) return { ok: false, reason: 'slot empty' };
 
-  if (!putInBag(id)) return { ok: false, reason: 'сумка полна' };
+  if (!putInBag(id)) return { ok: false, reason: 'bag full' };
 
   delete eq[slot];
   return { ok: true, removed: id };

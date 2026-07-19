@@ -176,7 +176,7 @@ export class GameScene extends MapScene {
     this.player = new Player(
       this, x, y,
       (strike) => this.playerStrike(strike),
-      () => this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#5ba3e0', 'не хватает маны'),
+      () => this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#5ba3e0', 'not enough mana'),
       (shot) => this.spawnArrow(shot),
     );
 
@@ -336,37 +336,37 @@ export class GameScene extends MapScene {
     // Кнопок ровно столько, сколько окон. Появится третье — станет три строки.
     this.menu = new MenuUi([
       {
-        label: 'Персонаж', key: 'I', icon: { sheet: 'icons', x: 1 * 16, y: 18 * 16, w: 16, h: 16 },
+        label: 'Character', key: 'I', icon: { sheet: 'icons', x: 1 * 16, y: 18 * 16, w: 16, h: 16 },
         isOpen: () => this.inventory.isOpen,
         toggle: () => this.inventory.toggle(),
       },
       {
-        label: 'Умения', key: 'U', icon: { sheet: 'icons', x: 2 * 16, y: 4 * 16, w: 16, h: 16 },
+        label: 'Attributes', key: 'U', icon: { sheet: 'icons', x: 2 * 16, y: 4 * 16, w: 16, h: 16 },
         isOpen: () => this.skills.isOpen,
         toggle: () => this.skills.toggle(),
       },
       {
-        label: 'Навыки', key: 'L', icon: { sheet: 'icons', x: 1 * 16, y: 1 * 16, w: 16, h: 16 },
+        label: 'Skills', key: 'L', icon: { sheet: 'icons', x: 1 * 16, y: 1 * 16, w: 16, h: 16 },
         isOpen: () => this.skillTree.isOpen,
         toggle: () => this.skillTree.toggle(),
       },
       {
-        label: 'Магазин', key: 'O', icon: { sheet: 'icons', x: 2 * 16, y: 0 * 16, w: 16, h: 16 },
+        label: 'Shop', key: 'O', icon: { sheet: 'icons', x: 2 * 16, y: 0 * 16, w: 16, h: 16 },
         isOpen: () => this.shop.isOpen,
         toggle: () => this.toggleShop(),
       },
       {
-        label: 'Кузница', key: 'K', icon: { sheet: 'icons', x: 0 * 16, y: 6 * 16, w: 16, h: 16 },
+        label: 'Forge', key: 'K', icon: { sheet: 'icons', x: 0 * 16, y: 6 * 16, w: 16, h: 16 },
         isOpen: () => this.forge.isOpen,
         toggle: () => this.toggleForge(),
       },
       {
-        label: 'Рынок', key: 'T', icon: { sheet: 'icons', x: 0, y: 16 * 16, w: 16, h: 16 },
+        label: 'Market', key: 'T', icon: { sheet: 'icons', x: 0, y: 16 * 16, w: 16, h: 16 },
         isOpen: () => this.market.isOpen,
         toggle: () => this.toggleMarket(),
       },
       {
-        label: 'Карта', key: 'M', icon: { sheet: 'icons', x: 4 * 16, y: 3 * 16, w: 16, h: 16 },
+        label: 'Map', key: 'M', icon: { sheet: 'icons', x: 4 * 16, y: 3 * 16, w: 16, h: 16 },
         isOpen: () => this.minimap.isFullOpen,
         toggle: () => this.minimap.toggleFull(),
       },
@@ -390,9 +390,9 @@ export class GameScene extends MapScene {
     // Ник героя: main.ts кладёт его до старта (из сейва или создания персонажа).
     const pendingName = takePendingChar();
     if (pendingName) this.charName = pendingName;
-    if (!this.charName) this.charName = 'Герой';
+    if (!this.charName) this.charName = 'Hero';
     this.buildNameTag();
-    this.chat.system(`Добро пожаловать в лес, ${this.charName}!`);
+    this.chat.system(`Welcome to the forest, ${this.charName}!`);
 
     // Сохраняемся, когда вкладку прячут или закрывают — не только по таймеру.
     // keepalive у запроса (см. pushProgress) даёт ему дожить после закрытия.
@@ -603,8 +603,8 @@ export class GameScene extends MapScene {
       this.dropLoot(m);
       const gold = this.awardGold(m);
       // Одна строка в чат на убийство: опыт и золото вместе.
-      const goldPart = gold > 0 ? `, +${gold} золота` : '';
-      this.chat.system(`Повержен ${m.stats.name} (ур.${m.stats.level}) — +${m.stats.xp} опыта${goldPart}.`);
+      const goldPart = gold > 0 ? `, +${gold} gold` : '';
+      this.chat.system(`Defeated ${m.stats.name} (Lv.${m.stats.level}) — +${m.stats.xp} XP${goldPart}.`);
     }
   }
 
@@ -622,7 +622,7 @@ export class GameScene extends MapScene {
     const amount = rollGold(m.stats.gold);
     if (amount <= 0) return 0;
     this.gold += amount;
-    this.damageNumber(m.sprite.x, m.sprite.y - 46, 0, '#ffd35c', `+${amount} зол.`);
+    this.damageNumber(m.sprite.x, m.sprite.y - 46, 0, '#ffd35c', `+${amount} g`);
     this.scheduleSave();
     return amount;
   }
@@ -693,7 +693,7 @@ export class GameScene extends MapScene {
       return;
     }
     if (this.player.mp < FIREBALL_MP_COST) {
-      this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#5ba3e0', 'не хватает маны');
+      this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#5ba3e0', 'not enough mana');
       return;
     }
 
@@ -878,7 +878,7 @@ export class GameScene extends MapScene {
         // стирался вместе с предметом: сумка забирала часть, а с земли исчезало
         // всё. Освободится место — доберём на следующем кадре.
         l.qty = left;
-        this.damageNumber(px, py - 44, 0, '#d8c07a', `${name} ×${taken}, ещё ${left} — сумка полна`);
+        this.damageNumber(px, py - 44, 0, '#d8c07a', `${name} ×${taken}, ${left} more — bag full`);
         continue;
       }
 
@@ -889,7 +889,7 @@ export class GameScene extends MapScene {
       // В чат — только заметную добычу (необычное и выше), иначе лента утонет
       // в грибах: обычные подборы и так видно всплывающей цифрой.
       if (rarityOf(l.id) !== 'common') {
-        this.chat.system(`Добыча: ${name}${taken > 1 ? ` ×${taken}` : ''}.`);
+        this.chat.system(`Loot: ${name}${taken > 1 ? ` ×${taken}` : ''}.`);
       }
     }
   }
@@ -906,7 +906,7 @@ export class GameScene extends MapScene {
     const needHp = def.use.hp && this.player.hp < this.player.hpMax;
     const needMp = def.use.mp && this.player.mp < this.player.mpMax;
     if (!needHp && !needMp) {
-      this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#b0a08a', 'не нужно');
+      this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#b0a08a', 'not needed');
       return;
     }
 
@@ -1044,7 +1044,7 @@ export class GameScene extends MapScene {
     if (index < 0) {
       // Молчать нельзя: игрок жмёт клавишу и должен понять, почему ничего нет.
       // Без глагола намеренно — иначе «меч кончился» и «зелье кончилось».
-      this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#b0a08a', `${ITEMS[id].name} — нет в сумке`);
+      this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#b0a08a', `${ITEMS[id].name} — not in bag`);
       return;
     }
 
@@ -1084,7 +1084,7 @@ export class GameScene extends MapScene {
       addToBag(this.bag, id, 1, isWeapon ? this.weaponSharpen : undefined) === 0);
     if (!res.ok) {
       // Сумка полна: вещь осталась надетой, и игрок должен понять почему.
-      this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#b0a08a', 'сумка полна');
+      this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#b0a08a', 'bag full');
       return;
     }
 
@@ -1157,7 +1157,7 @@ export class GameScene extends MapScene {
 
     if (key === 'equipped') {
       if (this.equipped.weapon !== id) {
-        this.forge.flash('это оружие уже не надето', false);
+        this.forge.flash('that weapon is no longer equipped', false);
         return;
       }
       currentPlus = this.weaponSharpen;
@@ -1165,12 +1165,12 @@ export class GameScene extends MapScene {
       bagIndex = Number(key.slice(4));
       const stack = this.bag[bagIndex];
       if (!stack || stack.id !== id) {
-        this.forge.flash('этого оружия у тебя нет', false);
+        this.forge.flash('you no longer have that weapon', false);
         return;
       }
       currentPlus = stack.sharpen ?? 0;
     } else {
-      this.forge.flash('этого оружия у тебя нет', false);
+      this.forge.flash('you no longer have that weapon', false);
       return;
     }
 
@@ -1189,11 +1189,11 @@ export class GameScene extends MapScene {
       }
       // Урон надетого пересчитываем всегда (для сумки безвредно).
       this.applyGear();
-      this.forge.flash(`Успех! ${ITEMS[id].name} теперь +${res.level}`);
-      this.chat.system(`Заточка удалась: ${ITEMS[id].name} теперь +${res.level}!`);
+      this.forge.flash(`Success! ${ITEMS[id].name} is now +${res.level}`);
+      this.chat.system(`Sharpening succeeded: ${ITEMS[id].name} is now +${res.level}!`);
     } else {
-      this.forge.flash(`Неудача на +${res.target} — свиток сгорел, заточка +${res.level} цела`, false);
-      this.chat.system(`Заточка на +${res.target} не удалась — свиток сгорел, заточка +${res.level} цела.`);
+      this.forge.flash(`Failed at +${res.target} — scroll burned, +${res.level} sharpen intact`, false);
+      this.chat.system(`Sharpening to +${res.target} failed — scroll burned, +${res.level} sharpen intact.`);
     }
 
     this.refreshBags(); // свиток съеден: сумка, панель и автосейв
@@ -1267,7 +1267,7 @@ export class GameScene extends MapScene {
     if (this.mkBusy) return;
     const lot = this.mkBrowse?.lots.find((l) => l.id === lotId);
     if (!lot) return;
-    if (this.gold < lot.price) return this.marketFlash('Не хватает золота', false);
+    if (this.gold < lot.price) return this.marketFlash('Not enough gold', false);
 
     this.mkBusy = true;
     this.gold -= lot.price; // резерв: следующая покупка сразу увидит уменьшённое золото
@@ -1276,10 +1276,10 @@ export class GameScene extends MapScene {
       const r = await marketBuy(lotId);
       if (r.ok) {
         await this.collectMarketMail(); // купленный предмет ждёт на почте — заберём (с учётом места)
-        this.mkNotice = { text: `Куплено: ${ITEMS[lot.item.id]?.name ?? lot.item.id}`, ok: true };
+        this.mkNotice = { text: `Bought: ${ITEMS[lot.item.id]?.name ?? lot.item.id}`, ok: true };
       } else {
         this.gold += lot.price; // не купили — вернуть резерв
-        this.mkNotice = { text: r.error ?? 'Не удалось купить', ok: false };
+        this.mkNotice = { text: r.error ?? 'Purchase failed', ok: false };
       }
       await this.marketQuery(this.mkFilter); // лот ушёл — обновляем витрину
     } finally {
@@ -1295,7 +1295,7 @@ export class GameScene extends MapScene {
     const idx = this.bag.findIndex(
       (s) => s && s.id === item.id && (s.sharpen ?? 0) === (item.sharpen ?? 0) && s.qty >= item.qty,
     );
-    if (idx < 0) return this.marketFlash('Этого предмета нет в сумке', false);
+    if (idx < 0) return this.marketFlash('That item is not in your bag', false);
 
     const sharpen = this.bag[idx]!.sharpen;
     this.mkBusy = true;
@@ -1305,12 +1305,12 @@ export class GameScene extends MapScene {
     try {
       const r = await marketList(item, price);
       if (r.ok) {
-        this.mkNotice = { text: `Выставлено: ${ITEMS[item.id]?.name ?? item.id}`, ok: true };
+        this.mkNotice = { text: `Listed: ${ITEMS[item.id]?.name ?? item.id}`, ok: true };
         const mine = await marketMine();
         this.mkMine = mine.lots;
       } else {
         addToBag(this.bag, item.id, item.qty, sharpen); // сервер не принял — вернём предмет
-        this.mkNotice = { text: r.error ?? 'Не удалось выставить', ok: false };
+        this.mkNotice = { text: r.error ?? 'Listing failed', ok: false };
       }
     } finally {
       this.mkBusy = false;
@@ -1330,12 +1330,12 @@ export class GameScene extends MapScene {
         await this.collectMarketMail();
         const mine = await marketMine();
         this.mkMine = mine.lots;
-        this.mkNotice = { text: 'Лот снят, предмет на почте получен', ok: true };
+        this.mkNotice = { text: 'Listing cancelled, item collected from mail', ok: true };
       } else {
         // Лота уже нет (например, его купили) — обновим «Мои лоты», чтобы призрак исчез.
         const mine = await marketMine();
         this.mkMine = mine.lots;
-        this.mkNotice = { text: r.error ?? 'Не удалось снять лот', ok: false };
+        this.mkNotice = { text: r.error ?? 'Failed to cancel listing', ok: false };
       }
     } finally {
       this.mkBusy = false;
@@ -1368,7 +1368,7 @@ export class GameScene extends MapScene {
       if (e.kind === 'gold') {
         this.gold += e.amount;
         accepted.push(e.id);
-        parts.push(`+${e.amount} зол.`);
+        parts.push(`+${e.amount} g`);
       } else if (roomFor(this.bag, e.item.id) >= e.item.qty) {
         addToBag(this.bag, e.item.id, e.item.qty, e.item.sharpen);
         accepted.push(e.id);
@@ -1379,7 +1379,7 @@ export class GameScene extends MapScene {
     if (accepted.length) {
       await marketMailAck(accepted);
       this.refreshBags();
-      this.mkNotice = { text: `С почты: ${parts.join(', ')}`, ok: true };
+      this.mkNotice = { text: `From mail: ${parts.join(', ')}`, ok: true };
     }
   }
 
@@ -1406,8 +1406,8 @@ export class GameScene extends MapScene {
     this.gold = res.gold;
     this.refreshBags(); // сумка + панель + автосейв
     this.shop.render(); // витрина: обновить кошелёк и доступность кнопок
-    this.shop.flash(`Куплено: ${ITEMS[id].name} (−${res.price})`);
-    this.chat.system(`Покупка: ${ITEMS[id].name} за ${res.price} золота.`);
+    this.shop.flash(`Bought: ${ITEMS[id].name} (−${res.price})`);
+    this.chat.system(`Purchase: ${ITEMS[id].name} for ${res.price} gold.`);
   }
 
   /**
@@ -1428,14 +1428,14 @@ export class GameScene extends MapScene {
     }
 
     if (!count) {
-      this.shop.flash('Продавать нечего', false);
+      this.shop.flash('Nothing to sell', false);
       return;
     }
 
     this.refreshBags();
     this.shop.render();
-    this.shop.flash(`Продано ×${count} за +${total}`);
-    this.chat.system(`Продажа: ${count} шт. за ${total} золота.`);
+    this.shop.flash(`Sold ×${count} for +${total}`);
+    this.chat.system(`Sale: ${count} items for ${total} gold.`);
   }
 
   /**
@@ -1447,7 +1447,7 @@ export class GameScene extends MapScene {
    */
   private spendPointOn(stat: Stat): void {
     if (!spendPoint(this.spent, stat, this.player.level)) {
-      this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#b0a08a', 'нет очков');
+      this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#b0a08a', 'no points');
       return;
     }
 
@@ -1486,14 +1486,14 @@ export class GameScene extends MapScene {
       this.player.growMax(10, 5);
       this.player.hp = this.player.hpMax;
       this.player.mp = this.player.mpMax;
-      this.damageNumber(this.player.sprite.x, this.player.sprite.y - 40, 0, '#8ad46a', `УРОВЕНЬ ${this.player.level}`);
+      this.damageNumber(this.player.sprite.x, this.player.sprite.y - 40, 0, '#8ad46a', `LEVEL ${this.player.level}`);
       // Про очки говорим отдельно: молча начисленное игрок не заметит и не
       // вложит, а окно персонажа само не откроется.
       this.damageNumber(
         this.player.sprite.x, this.player.sprite.y - 56, 0, '#e0c48a',
-        `+${POINTS_PER_LEVEL} очка (U)`,
+        `+${POINTS_PER_LEVEL} points (U)`,
       );
-      this.chat.system(`Новый уровень: ${this.player.level}! +${POINTS_PER_LEVEL} очка умений (U).`);
+      this.chat.system(`New level: ${this.player.level}! +${POINTS_PER_LEVEL} attribute points (U).`);
     }
   }
 
@@ -1617,7 +1617,7 @@ export class GameScene extends MapScene {
     if (this.player.isDead && !this.deathAt) {
       this.deathAt = now;
       this.hud.showDeath(true);
-      this.chat.system('Ты пал в бою. Часть опыта потеряна — скоро возрождение.');
+      this.chat.system('You fell in battle. Some XP lost — respawning soon.');
     }
     if (this.deathAt && now - this.deathAt > 2000) {
       this.deathAt = 0;

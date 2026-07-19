@@ -88,13 +88,13 @@ export class ChatUi {
     this.root.id = 'chat';
     this.root.innerHTML = `
       <div class="tabs">
-        <div class="tab" data-f="all">Всё</div>
-        <div class="tab" data-f="sys">Система</div>
-        <div class="tab" data-f="chat">Чат</div>
+        <div class="tab" data-f="all">All</div>
+        <div class="tab" data-f="sys">System</div>
+        <div class="tab" data-f="chat">Chat</div>
       </div>
       <div class="log"></div>
       <div class="inputrow">
-        <input class="prompt" maxlength="200" placeholder="Enter — написать…" />
+        <input class="prompt" maxlength="200" placeholder="Enter — write…" />
       </div>
     `;
     document.body.append(this.root);
@@ -145,12 +145,12 @@ export class ChatUi {
 
   /** Системная строка: уровень, добыча, бой, кузница. */
   system(msg: string): void {
-    this.add('sys', `<span class="tag">[Система]</span> ${escapeHtml(msg)}`);
+    this.add('sys', `<span class="tag">[System]</span> ${escapeHtml(msg)}`);
   }
 
   /** Реплика игрока в чат. */
   local(name: string, msg: string): void {
-    this.add('chat', `<span class="who">${escapeHtml(name || 'Ты')}:</span> ${escapeHtml(msg)}`);
+    this.add('chat', `<span class="who">${escapeHtml(name || 'You')}:</span> ${escapeHtml(msg)}`);
   }
 
   private add(channel: Channel, html: string): void {

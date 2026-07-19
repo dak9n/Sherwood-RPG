@@ -252,25 +252,25 @@ export class ForgeUi {
     this.root.id = 'forge';
     this.root.innerHTML = `
       <div class="win">
-        <div class="title">Кузница — улучшение оружия</div>
-        <div class="close" title="Закрыть (K)"></div>
+        <div class="title">Forge — Weapon Upgrade</div>
+        <div class="close" title="Close (K)"></div>
         <div class="body">
           <div class="colL">
-            <div class="phead">Ваше оружие</div>
+            <div class="phead">Your Weapons</div>
             <div class="page"><div class="wgrid"></div></div>
           </div>
           <div class="colC">
-            <div class="phead">Выбранный предмет</div>
+            <div class="phead">Selected Item</div>
             <div class="page"><div class="center"></div></div>
           </div>
           <div class="colR">
             <div class="dark card"></div>
             <div class="dark stats"></div>
             <div class="dark about">
-              <div class="h">О свитках заточки</div>
-              Свитки продаются в магазине (O). Попытка съедает один свиток;
-              неудача НЕ снижает заточку.
-              <div class="steps">Шансы: +1–5 · 80%, +6–10 · 40%,<br>+11–15 · 20%, +16–20 · 10%</div>
+              <div class="h">About Sharpening Scrolls</div>
+              Scrolls are sold in the shop (O). An attempt consumes one scroll;
+              failure does NOT lower the upgrade.
+              <div class="steps">Chances: +1–5 · 80%, +6–10 · 40%,<br>+11–15 · 20%, +16–20 · 10%</div>
             </div>
           </div>
         </div>
@@ -356,18 +356,18 @@ export class ForgeUi {
   private renderGrid(st: ForgeState): void {
     this.wgrid.innerHTML = '';
     if (!st.weapons.length) {
-      this.wgrid.innerHTML = '<div class="empty">Оружия нет.<br>Купи в магазине (O) или выбей с монстров.</div>';
+      this.wgrid.innerHTML = '<div class="empty">No weapons.<br>Buy in the shop (O) or drop them from monsters.</div>';
       return;
     }
     for (const w of st.weapons) {
       const def = ITEMS[w.id];
       const slot = document.createElement('div');
       slot.className = `slot r-${rarityOf(w.id)}${w.key === this.selected ? ' sel' : ''}`;
-      slot.title = `${def.name} +${w.plus}${w.equipped ? ' (надето)' : ''}`;
+      slot.title = `${def.name} +${w.plus}${w.equipped ? ' (equipped)' : ''}`;
       slot.append(this.iconEl(def.icon));
       slot.append(Object.assign(document.createElement('span'), { className: 'plus', textContent: `+${w.plus}` }));
       if (w.equipped) {
-        slot.append(Object.assign(document.createElement('span'), { className: 'on', textContent: 'надето' }));
+        slot.append(Object.assign(document.createElement('span'), { className: 'on', textContent: 'equipped' }));
       }
       slot.onclick = () => {
         this.selected = w.key;
@@ -384,7 +384,7 @@ export class ForgeUi {
     const scrollDef = ITEMS.scroll_sharpen;
 
     if (!sel) {
-      this.center.innerHTML = '<div class="empty" style="padding:30px 8px">Выбери оружие слева.</div>';
+      this.center.innerHTML = '<div class="empty" style="padding:30px 8px">Select a weapon on the left.</div>';
       return;
     }
 
@@ -408,19 +408,19 @@ export class ForgeUi {
     const lvl = document.createElement('div');
     lvl.className = 'lvlrow';
     lvl.innerHTML = atMax
-      ? `<span class="max">Заточен до предела +${SHARPEN_MAX}</span>`
+      ? `<span class="max">Sharpened to max +${SHARPEN_MAX}</span>`
       : `<span class="cur">+${sel.plus}</span><span class="arr">➜</span><span class="next">+${target}</span>`;
 
     const sub = document.createElement('div');
     sub.className = 'sub';
-    sub.textContent = 'Уровень улучшения';
+    sub.textContent = 'Upgrade level';
 
     this.center.append(anvil, big, name, sub, lvl);
 
     if (!atMax) {
       const ch = document.createElement('div');
       ch.className = `chance${chance < 0.4 ? ' low' : ''}`;
-      ch.innerHTML = `Шанс успеха: <b>${Math.round(chance * 100)}%</b>`;
+      ch.innerHTML = `Success chance: <b>${Math.round(chance * 100)}%</b>`;
       this.center.append(ch);
 
       const need = document.createElement('div');
@@ -429,7 +429,7 @@ export class ForgeUi {
       need.append(this.iconEl(scrollDef.icon));
       const nm = document.createElement('span');
       nm.className = 'nm';
-      nm.innerHTML = `${scrollDef.name} ×1 <b class="${enough ? '' : 'short'}">(есть ${scrolls})</b>`;
+      nm.innerHTML = `${scrollDef.name} ×1 <b class="${enough ? '' : 'short'}">(have ${scrolls})</b>`;
       need.append(nm);
       this.center.append(need);
     }
@@ -438,20 +438,20 @@ export class ForgeUi {
     this.goBtn.className = 'go';
     const can = !atMax && scrolls >= 1;
     this.goBtn.disabled = !can;
-    this.goBtn.textContent = atMax ? `Предел +${SHARPEN_MAX}` : scrolls < 1 ? 'Нет свитков' : 'Улучшить';
+    this.goBtn.textContent = atMax ? `Max +${SHARPEN_MAX}` : scrolls < 1 ? 'No scrolls' : 'Upgrade';
     this.goBtn.onclick = () => this.onSharpen(sel.key, sel.id);
     this.center.append(this.goBtn);
 
     this.msgEl = document.createElement('div');
     this.msgEl.className = 'msg';
-    this.msgEl.textContent = this.msgText || 'Неудача сжигает свиток, но заточку не снижает.';
+    this.msgEl.textContent = this.msgText || 'Failure burns the scroll but does not lower the upgrade.';
     this.msgEl.style.color = this.msgText ? this.msgColor : '#9a835f';
     this.center.append(this.msgEl);
   }
 
   private renderRight(sel: ForgeWeapon | null): void {
     if (!sel) {
-      this.card.innerHTML = '<span style="font-size:11px;color:#9a835f">Оружие не выбрано.</span>';
+      this.card.innerHTML = '<span style="font-size:11px;color:#9a835f">No weapon selected.</span>';
       this.statsEl.innerHTML = '';
       return;
     }
@@ -470,8 +470,8 @@ export class ForgeUi {
     cinfo.className = 'cinfo';
     cinfo.innerHTML =
       `<div class="nm">${def.name}</div>` +
-      `Тип: ${def.ranged ? 'Лук' : 'Меч'}<br>` +
-      `Редкость: <span class="rar-${rarity}">${RARITY_NAME[rarity]}</span>`;
+      `Type: ${def.ranged ? 'Bow' : 'Sword'}<br>` +
+      `Rarity: <span class="rar-${rarity}">${RARITY_NAME[rarity]}</span>`;
     this.card.append(cico, cinfo);
 
     // Характеристики: у нашего оружия одна боевая цифра — прибавка к атаке.
@@ -479,19 +479,19 @@ export class ForgeUi {
     // которых в игре нет, нельзя.
     const rows = (plus: number): string => {
       const parts = [
-        `<div class="r"><span>Прибавка к атаке</span><b>+${base + plus}</b></div>`,
-        `<div class="r"><span>Из них заточка</span><b>+${plus}</b></div>`,
+        `<div class="r"><span>Attack bonus</span><b>+${base + plus}</b></div>`,
+        `<div class="r"><span>From sharpening</span><b>+${plus}</b></div>`,
       ];
-      if (def.ranged) parts.push(`<div class="r"><span>Бой</span><b>стрелами, издалека</b></div>`);
+      if (def.ranged) parts.push(`<div class="r"><span>Combat</span><b>ranged, with arrows</b></div>`);
       return parts.join('');
     };
 
     this.statsEl.innerHTML =
-      `<div class="h">Сейчас (+${sel.plus})</div>${rows(sel.plus)}` +
+      `<div class="h">Now (+${sel.plus})</div>${rows(sel.plus)}` +
       (atMax
         ? ''
-        : `<div class="h next" style="margin-top:7px">После заточки (+${sel.plus + 1})</div>` +
-          `<div class="r"><span>Прибавка к атаке</span><b class="up">+${base + sel.plus + 1} ↑</b></div>`);
+        : `<div class="h next" style="margin-top:7px">After sharpening (+${sel.plus + 1})</div>` +
+          `<div class="r"><span>Attack bonus</span><b class="up">+${base + sel.plus + 1} ↑</b></div>`);
   }
 
   destroy(): void {

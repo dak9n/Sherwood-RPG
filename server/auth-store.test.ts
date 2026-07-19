@@ -29,7 +29,7 @@ test('второй раз то же имя не занять — и регист
   assert.equal((await store.register('geko', 'other123', T0)).ok, false, 'ровно то же');
   const dup = await store.register('  GEKO ', 'other123', T0);
   assert.equal(dup.ok, false, 'другой регистр и пробелы — тот же игрок');
-  assert.match(dup.error!, /занято/);
+  assert.match(dup.error!, /taken/);
 });
 
 test('слабое имя или пароль не регистрируются', async () => {
@@ -103,7 +103,7 @@ test('после предела промахов имя заперто даже 
   for (let i = 0; i < 8; i++) await store.login('geko', 'wrong', T0);
   const locked = await store.login('geko', 'correct-pw', T0);
   assert.equal(locked.ok, false, 'заперто');
-  assert.match(locked.error!, /попыток/);
+  assert.match(locked.error!, /attempts/);
 
   // Через 5 минут отпускает.
   const ok = await store.login('geko', 'correct-pw', T0 + 5 * 60 * 1000 + 1);
@@ -143,7 +143,7 @@ test('параллельный перебор НЕ обходит защиту (
     Array.from({ length: 200 }, (_, i) => store.login('victim', `guess-${i}`, T0)),
   );
   const впустили = попытки.filter((r) => r.ok).length;
-  const заперто = попытки.filter((r) => /попыток/.test(r.error ?? '')).length;
+  const заперто = попытки.filter((r) => /attempts/.test(r.error ?? '')).length;
 
   assert.equal(впустили, 0, 'ни один неверный пароль не должен впустить');
   assert.ok(заперто >= 190, `почти все должны упереться в замок, а заперто ${заперто}`);

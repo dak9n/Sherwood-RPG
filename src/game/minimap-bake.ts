@@ -55,7 +55,7 @@ export function bakeMap(map: GameMap, imageFor: ImageFor): Baked {
   canvas.height = (b.maxY - b.minY + 1) * TH;
 
   const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('мини-карта: браузер не дал 2d-контекст');
+  if (!ctx) throw new Error('minimap: browser did not provide a 2d context');
   // Тайлы пиксельные: сглаживание превратило бы отпечаток в мыло.
   ctx.imageSmoothingEnabled = false;
 

@@ -33,12 +33,12 @@ async function postJson(path: string, body: unknown): Promise<{ status: number; 
       body: JSON.stringify(body),
     });
   } catch {
-    return { status: 0, data: { error: 'Сервер авторизации недоступен' } };
+    return { status: 0, data: { error: 'Authorization server unavailable' } };
   }
   try {
     return { status: res.status, data: (await res.json()) as Record<string, unknown> };
   } catch {
-    return { status: res.status, data: { error: 'Сервер авторизации недоступен' } };
+    return { status: res.status, data: { error: 'Authorization server unavailable' } };
   }
 }
 
@@ -47,7 +47,7 @@ const finish = (status: number, data: Record<string, unknown>): AuthResult => {
     setToken(data.token);
     return { ok: true, name: typeof data.name === 'string' ? data.name : undefined };
   }
-  return { ok: false, error: typeof data.error === 'string' ? data.error : `Ошибка (${status})` };
+  return { ok: false, error: typeof data.error === 'string' ? data.error : `Error (${status})` };
 };
 
 export async function register(name: string, password: string): Promise<AuthResult> {

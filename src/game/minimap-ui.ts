@@ -121,7 +121,7 @@ export class MinimapUi {
 
     this.full = document.createElement('div');
     this.full.id = 'mmfull';
-    this.full.innerHTML = `<div class="win"><div class="plate"></div><div class="tip">M — закрыть</div></div>`;
+    this.full.innerHTML = `<div class="win"><div class="plate"></div><div class="tip">M — close</div></div>`;
     document.body.append(this.full);
     this.plate = this.full.querySelector('.plate')!;
   }

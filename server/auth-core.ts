@@ -22,7 +22,7 @@ const KEY_LEN = 64;
 const SALT_LEN = 16;
 
 /**
- * Пароль длиннее этого не хешируем: scrypt гоняет весь пароль, и мегабайтная
+ * Password longer than этого не хешируем: scrypt гоняет весь пароль, и мегабайтная
  * строка стала бы бесплатной атакой на процессор сервера.
  */
 export const MAX_PASSWORD = 200;
@@ -85,20 +85,20 @@ export const normalizeName = (name: string): string => name.trim().toLowerCase()
 const RESERVED = new Set(['__proto__', 'constructor', 'prototype']);
 
 export function validateUsername(name: unknown): string | null {
-  if (typeof name !== 'string') return 'Введите имя';
+  if (typeof name !== 'string') return 'Enter a name';
   const n = name.trim();
-  if (n.length < MIN_NAME) return `Имя короче ${MIN_NAME} символов`;
-  if (n.length > MAX_NAME) return `Имя длиннее ${MAX_NAME} символов`;
-  if (!/^[\p{L}\p{N} _-]+$/u.test(n)) return 'Только буквы, цифры, пробел, дефис и _';
-  if (RESERVED.has(n.toLowerCase())) return 'Это имя занято системой';
+  if (n.length < MIN_NAME) return `Name shorter than ${MIN_NAME} characters`;
+  if (n.length > MAX_NAME) return `Name longer than ${MAX_NAME} characters`;
+  if (!/^[\p{L}\p{N} _-]+$/u.test(n)) return 'Only letters, digits, space, hyphen and _';
+  if (RESERVED.has(n.toLowerCase())) return 'This name is reserved';
   return null;
 }
 
 /** Проверка пароля. Верхний предел — не каприз, а защита сервера (см. MAX_PASSWORD). */
 export function validatePassword(pw: unknown): string | null {
-  if (typeof pw !== 'string') return 'Введите пароль';
-  if (pw.length < MIN_PASSWORD) return `Пароль короче ${MIN_PASSWORD} символов`;
-  if (pw.length > MAX_PASSWORD) return `Пароль длиннее ${MAX_PASSWORD} символов`;
+  if (typeof pw !== 'string') return 'Enter a password';
+  if (pw.length < MIN_PASSWORD) return `Password shorter than ${MIN_PASSWORD} characters`;
+  if (pw.length > MAX_PASSWORD) return `Password longer than ${MAX_PASSWORD} characters`;
   return null;
 }
 

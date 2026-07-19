@@ -114,12 +114,12 @@ export class SkillsUi {
     this.root.id = 'skills';
     this.root.innerHTML = `
       <div class="win">
-        <div class="title">Умения</div>
-        <div class="close" title="Закрыть (U)"></div>
+        <div class="title">Attributes</div>
+        <div class="close" title="Close (U)"></div>
         <div class="page">
           <div class="free"></div>
           <div class="rows"></div>
-          <div class="hint">Очки дают за уровень: по 3 за каждый.<br>Вложенное сразу считается в бою.</div>
+          <div class="hint">Points are earned per level: 3 each.<br>Spent points count in battle right away.</div>
         </div>
       </div>
     `;
@@ -191,7 +191,7 @@ export class SkillsUi {
     if (key === this.key) return;
     this.key = key;
 
-    this.free.innerHTML = `Свободных очков: <b>${left}</b>`;
+    this.free.innerHTML = `Free points: <b>${left}</b>`;
     this.free.classList.toggle('none', left <= 0);
 
     for (const s of STATS) {

@@ -79,9 +79,9 @@ export type BuyResult = { ok: true; gold: number; price: number } | { ok: false;
  */
 export function buyItem(gold: number, bag: (Stack | null)[], id: string): BuyResult {
   const price = buyPrice(id);
-  if (price == null || !Object.hasOwn(ITEMS, id)) return { ok: false, reason: 'этого нет в лавке' };
-  if (gold < price) return { ok: false, reason: 'не хватает золота' };
-  if (roomFor(bag, id) < 1) return { ok: false, reason: 'сумка полна' };
+  if (price == null || !Object.hasOwn(ITEMS, id)) return { ok: false, reason: 'not in shop' };
+  if (gold < price) return { ok: false, reason: 'not enough gold' };
+  if (roomFor(bag, id) < 1) return { ok: false, reason: 'bag full' };
 
   addToBag(bag, id, 1);
   return { ok: true, gold: gold - price, price };
@@ -103,13 +103,13 @@ export type SellStackResult =
  */
 export function sellStack(gold: number, bag: (Stack | null)[], index: number, expectedId?: string): SellStackResult {
   const slot = bag[index];
-  if (!slot) return { ok: false, reason: 'пусто' };
+  if (!slot) return { ok: false, reason: 'empty' };
   if (expectedId !== undefined && slot.id !== expectedId) {
-    return { ok: false, reason: 'вещь в ячейке сменилась' };
+    return { ok: false, reason: 'item in slot changed' };
   }
 
   const price = sellPrice(slot.id);
-  if (price <= 0) return { ok: false, reason: 'это не продать' };
+  if (price <= 0) return { ok: false, reason: 'cannot sell this' };
 
   const total = price * slot.qty;
   const { id, qty } = slot;

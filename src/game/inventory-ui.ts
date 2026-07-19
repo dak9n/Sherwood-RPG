@@ -84,11 +84,11 @@ const TAB_SCALE = 2;
 const ico = (col: number, row: number): Icon => ({ sheet: 'icons', x: col * 16, y: row * 16, w: 16, h: 16 });
 
 const TABS: { id: Tab | 'all'; label: string; icon: Icon }[] = [
-  { id: 'all', label: 'Все', icon: ico(3, 7) },
-  { id: 'weapon', label: 'Оружие', icon: ico(0, 8) },
-  { id: 'armor', label: 'Броня', icon: ico(5, 6) },
-  { id: 'resource', label: 'Ресурсы', icon: ico(5, 15) },
-  { id: 'food', label: 'Еда', icon: ico(5, 5) },
+  { id: 'all', label: 'All', icon: ico(3, 7) },
+  { id: 'weapon', label: 'Weapons', icon: ico(0, 8) },
+  { id: 'armor', label: 'Armor', icon: ico(5, 6) },
+  { id: 'resource', label: 'Resources', icon: ico(5, 15) },
+  { id: 'food', label: 'Food', icon: ico(5, 5) },
 ];
 
 /**
@@ -389,12 +389,12 @@ export class InventoryUi {
     this.root.id = 'inv';
     this.root.innerHTML = `
       <div class="win">
-        <div class="title">Инвентарь</div>
-        <div class="close" title="Закрыть (I)"></div>
+        <div class="title">Inventory</div>
+        <div class="close" title="Close (I)"></div>
         <div class="body">
           <div class="hero">
             <div class="who">
-              <b>Мечник</b>
+              <b>Swordsman</b>
               <span class="lvl"></span>
               <div class="xpbar"><i></i></div>
               <div class="xpnum"></div>
@@ -410,7 +410,7 @@ export class InventoryUi {
             <div class="tabs"></div>
             <div class="page"><div class="grid"></div></div>
             <div class="foot">
-              <div class="btn sort">Разложить</div>
+              <div class="btn sort">Sort</div>
               <div class="hint"></div>
             </div>
           </div>
@@ -526,7 +526,7 @@ export class InventoryUi {
     const plus = isWeapon ? sharpen : 0;
 
     const kind = isWeapon
-      ? (def.ranged ? 'Лук' : 'Меч')
+      ? (def.ranged ? 'Bow' : 'Sword')
       : def.slot
         ? SLOTS.find((s) => s.id === def.slot)!.label
         : TABS.find((t) => t.id === def.tab)?.label ?? '';
@@ -537,22 +537,22 @@ export class InventoryUi {
     };
     const sign = (n: number): string => (n > 0 ? `+${n}` : String(n));
 
-    if (def.use?.hp) row('Восстанавливает', `+${def.use.hp} здоровья`, 'plus');
-    if (def.use?.mp) row('Восстанавливает', `+${def.use.mp} маны`, 'plus');
+    if (def.use?.hp) row('Restores', `+${def.use.hp} health`, 'plus');
+    if (def.use?.mp) row('Restores', `+${def.use.mp} mana`, 'plus');
 
     const b = def.bonus;
     if (isWeapon) {
-      row('Прибавка к атаке', `+${(b?.dmg ?? 0) + plus}`, 'plus');
-      if (plus > 0) row('Из них заточка', `+${plus}`, 'plus');
-      if (def.ranged) row('Бой', 'стрелами, издалека');
+      row('Attack bonus', `+${(b?.dmg ?? 0) + plus}`, 'plus');
+      if (plus > 0) row('Incl. sharpening', `+${plus}`, 'plus');
+      if (def.ranged) row('Combat', 'arrows, at range');
     } else if (b) {
-      if (b.dmg) row('Атака', sign(b.dmg), b.dmg > 0 ? 'plus' : 'minus');
-      if (b.def) row('Защита', sign(b.def), b.def > 0 ? 'plus' : 'minus');
-      if (b.speed) row('Скорость', sign(b.speed), b.speed > 0 ? 'plus' : 'minus');
-      if (b.hp) row('Здоровье', sign(b.hp), b.hp > 0 ? 'plus' : 'minus');
-      if (b.mp) row('Мана', sign(b.mp), b.mp > 0 ? 'plus' : 'minus');
+      if (b.dmg) row('Attack', sign(b.dmg), b.dmg > 0 ? 'plus' : 'minus');
+      if (b.def) row('Defense', sign(b.def), b.def > 0 ? 'plus' : 'minus');
+      if (b.speed) row('Speed', sign(b.speed), b.speed > 0 ? 'plus' : 'minus');
+      if (b.hp) row('Health', sign(b.hp), b.hp > 0 ? 'plus' : 'minus');
+      if (b.mp) row('Mana', sign(b.mp), b.mp > 0 ? 'plus' : 'minus');
     }
-    if (qty > 1) row('В стопке', String(qty));
+    if (qty > 1) row('In stack', String(qty));
 
     // Урон героя с этим оружием в руке. Вклад НАДЕТОГО оружия вычитаем:
     // его место займёт это.
@@ -565,7 +565,7 @@ export class InventoryUi {
       // Урон навыков дерева (h.skill.dmg) входит и в панель, и в настоящий удар —
       // подсказка обязана его учитывать, иначе занижает и «врёт».
       const add = gearOther + (b?.dmg ?? 0) + plus + h.fromPoints.dmg + h.skill.dmg;
-      dmg = `<div class="ln dmg"><span>Твой урон с ним</span><b>${h.dmgMin + add}–${h.dmgMax + add}</b></div>`;
+      dmg = `<div class="ln dmg"><span>Your damage with it</span><b>${h.dmgMin + add}–${h.dmgMax + add}</b></div>`;
     }
 
     return (
@@ -624,7 +624,7 @@ export class InventoryUi {
         // Пустое гнездо показывает погашенную иконку: иначе непонятно, что сюда
         // вообще надевается. Подпись стоит над гнездом (см. buildEquipSlots).
         el.append(this.iconEl(SLOT_GHOST[key], 'item ghost'));
-        el.title = `${label} — пусто`;
+        el.title = `${label} — empty`;
         continue;
       }
 
@@ -636,7 +636,7 @@ export class InventoryUi {
         el.append(Object.assign(document.createElement('span'), { className: 'plusb', textContent: `+${plus}` }));
       }
       el.onclick = () => this.onUnequip(key);
-      this.bindTip(el, id, 'Клик — снять', 1, plus);
+      this.bindTip(el, id, 'Click to unequip', 1, plus);
     }
   }
 
@@ -664,7 +664,7 @@ export class InventoryUi {
     if (key === this.statsKey) return;
     this.statsKey = key;
 
-    this.lvl.textContent = `Уровень ${h.level}`;
+    this.lvl.textContent = `Level ${h.level}`;
     this.xpFill.style.width = `${Math.min(100, (h.xp / h.xpNext) * 100)}%`;
     this.xpNum.textContent = `${Math.floor(h.xp)} / ${h.xpNext}`;
 
@@ -683,40 +683,40 @@ export class InventoryUi {
     // Разбор источников: вещи, очки, навыки (дерева L). Показываем непустые.
     const src = (gear: number, pts: number, skill = 0): string =>
       [
-        gear ? `от вещей ${gear >= 0 ? '+' : ''}${gear}` : '',
-        pts ? `от очков +${pts}` : '',
-        skill ? `навыки +${skill}` : '',
+        gear ? `from gear ${gear >= 0 ? '+' : ''}${gear}` : '',
+        pts ? `from points +${pts}` : '',
+        skill ? `skills +${skill}` : '',
       ].filter(Boolean).join(', ');
 
     // Атака собирается из четырёх источников; в подсказке разложено по полочкам.
     const atk = b.dmg + p.dmg + h.sharpen + sk.dmg;
     const atkSrc = [
-      b.dmg ? `от вещей ${b.dmg >= 0 ? '+' : ''}${b.dmg}` : '',
-      p.dmg ? `от очков +${p.dmg}` : '',
-      h.sharpen ? `заточка +${h.sharpen}` : '',
-      sk.dmg ? `навыки +${sk.dmg}` : '',
+      b.dmg ? `from gear ${b.dmg >= 0 ? '+' : ''}${b.dmg}` : '',
+      p.dmg ? `from points +${p.dmg}` : '',
+      h.sharpen ? `sharpening +${h.sharpen}` : '',
+      sk.dmg ? `skills +${sk.dmg}` : '',
     ].filter(Boolean).join(', ');
 
     this.stats.innerHTML = [
-      this.statRow(STAT_ICON.hp, 'Здоровье', `${Math.ceil(h.hp)} / ${h.hpMax}`, mark(b.hp + p.hp + sk.hp), src(b.hp, p.hp, sk.hp)),
-      this.statRow(STAT_ICON.dmg, 'Атака', `${h.dmgMin + atk}–${h.dmgMax + atk}`, mark(atk), atkSrc),
-      this.statRow(STAT_ICON.mp, 'Мана', `${Math.floor(h.mp)} / ${h.mpMax}`, mark(b.mp + p.mp + sk.mp), src(b.mp, p.mp, sk.mp)),
-      this.statRow(STAT_ICON.def, 'Защита', String(b.def + p.def + sk.def), '', src(b.def, p.def, sk.def)),
-      this.statRow(STAT_ICON.speed, 'Скорость', String(HERO.speed + b.speed + sk.speed), mark(b.speed + sk.speed), src(b.speed, 0, sk.speed)),
+      this.statRow(STAT_ICON.hp, 'Health', `${Math.ceil(h.hp)} / ${h.hpMax}`, mark(b.hp + p.hp + sk.hp), src(b.hp, p.hp, sk.hp)),
+      this.statRow(STAT_ICON.dmg, 'Attack', `${h.dmgMin + atk}–${h.dmgMax + atk}`, mark(atk), atkSrc),
+      this.statRow(STAT_ICON.mp, 'Mana', `${Math.floor(h.mp)} / ${h.mpMax}`, mark(b.mp + p.mp + sk.mp), src(b.mp, p.mp, sk.mp)),
+      this.statRow(STAT_ICON.def, 'Defense', String(b.def + p.def + sk.def), '', src(b.def, p.def, sk.def)),
+      this.statRow(STAT_ICON.speed, 'Speed', String(HERO.speed + b.speed + sk.speed), mark(b.speed + sk.speed), src(b.speed, 0, sk.speed)),
       // Крит показываем, только если навыки его дали: иначе пустая строка врёт.
       h.crit > 0
-        ? this.statRow(STAT_ICON.dmg, 'Шанс крита', `${Math.round(h.crit * 100)}%`, '', 'Навык «Точный удар»: удар с этим шансом бьёт сильнее.')
+        ? this.statRow(STAT_ICON.dmg, 'Crit chance', `${Math.round(h.crit * 100)}%`, '', 'Precise Strike skill: a hit at this chance strikes harder.')
         : '',
       // Про здоровье оговорка обязательна: в бою оно не растёт, и молчать об
       // этом — значит обещать лечение, которого не будет.
       this.statRow(
-        STAT_ICON.regen, 'Восстановление', `${HERO.hpRegen}/с`, '',
-        `${HERO.hpRegen} здоровья в секунду, но только если по вам не били ${HERO.regenDelay / 1000} с. Мана растёт всегда: ${HERO.mpRegen}/с.`,
+        STAT_ICON.regen, 'Regen', `${HERO.hpRegen}/s`, '',
+        `${HERO.hpRegen} health per second, but only if you haven't been hit for ${HERO.regenDelay / 1000} s. Mana always regenerates: ${HERO.mpRegen}/s.`,
       ),
       // Тратят очки в окне умений (U); здесь только напоминаем, что они есть.
       h.points > 0
-        ? `<div class="pts">Свободных очков: <b>${h.points}</b> — окно умений (U)</div>`
-        : `<div class="pts none">Очки характеристик дают за уровень: по ${POINTS_PER_LEVEL} за каждый</div>`,
+        ? `<div class="pts">Free points: <b>${h.points}</b> — Attributes window (U)</div>`
+        : `<div class="pts none">Stat points are awarded per level: ${POINTS_PER_LEVEL} each</div>`,
     ].join('');
   }
 
@@ -792,7 +792,7 @@ export class InventoryUi {
       }
 
       // Вместо голого title — карточка с характеристиками (см. tipHtml).
-      const action = def.slot ? 'Клик — надеть' : def.use ? 'Клик — применить' : '';
+      const action = def.slot ? 'Click to equip' : def.use ? 'Click to use' : '';
       this.bindTip(slot, def.id, action, entry.stack.qty, sharpen);
 
       // На панель внизу вещь попадает перетаскиванием. Тащим ВИД предмета, а не

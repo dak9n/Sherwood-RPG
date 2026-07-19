@@ -108,7 +108,7 @@ export class Hud {
         ${bar('hp')}${bar('mp')}${bar('xp')}
       </div>
       <div class="gold"><i></i><span class="num">0</span></div>
-      <div class="death">ТЫ ПОГИБ</div>
+      <div class="death">YOU DIED</div>
     `;
     document.body.append(this.root);
 

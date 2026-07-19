@@ -144,7 +144,7 @@ test('витрина: фильтр по категории, поиску, ред
 
   assert.equal(m.browse({ category: 'weapon' }, T0).total, 1);
   assert.equal(m.browse({ category: 'consumable' }, T0).total, 1);
-  assert.equal(m.browse({ search: 'меч' }, T0).total, 1);
+  assert.equal(m.browse({ search: 'sword' }, T0).total, 1);
   assert.equal(m.browse({ rarity: 'uncommon' }, T0).total, 2, 'меч и кристалл');
   assert.equal(m.browse({ excludeSeller: 'ann' }, T0).total, 1, 'без анниных — только бобов');
 });

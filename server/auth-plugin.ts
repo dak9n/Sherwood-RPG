@@ -27,7 +27,7 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on('data', (c: Buffer) => {
       size += c.length;
       if (size > MAX_BODY) {
-        fail(new Error('тело запроса слишком большое'));
+        fail(new Error('request body too large'));
         req.destroy();
         return;
       }
@@ -82,7 +82,7 @@ export function authPlugin(): Plugin {
         res: ServerResponse,
       ): Promise<Record<string, unknown> | null> => {
         if (!req.headers['content-type']?.includes('application/json')) {
-          send(res, 415, { error: 'нужен content-type: application/json' });
+          send(res, 415, { error: 'content-type: application/json required' });
           return null;
         }
         try {
@@ -91,7 +91,7 @@ export function authPlugin(): Plugin {
         } catch {
           /* ниже */
         }
-        send(res, 400, { error: 'тело не разобралось как json' });
+        send(res, 400, { error: 'body could not be parsed as json' });
         return null;
       };
 
@@ -143,7 +143,7 @@ export function authPlugin(): Plugin {
         void (async () => {
           const store = await ready;
           const key = store.keyOf(tokenOf(req), Date.now());
-          if (!key) return send(res, 401, { error: 'нужен вход' });
+          if (!key) return send(res, 401, { error: 'login required' });
 
           const body = await jsonBody(req, res);
           if (!body) return;
@@ -159,7 +159,7 @@ export function authPlugin(): Plugin {
         void (async () => {
           const store = await ready;
           const key = store.keyOf(tokenOf(req), Date.now());
-          if (!key) return send(res, 401, { error: 'нужен вход' });
+          if (!key) return send(res, 401, { error: 'login required' });
           send(res, 200, { save: progress[key] ?? null });
         })().catch((e: Error) => send(res, 400, { error: e.message }));
       });
@@ -186,7 +186,7 @@ export function authPlugin(): Plugin {
           if (req.method !== method) return next();
           void (async () => {
             const me = await who(req);
-            if (!me) return send(res, 401, { error: 'нужен вход' });
+            if (!me) return send(res, 401, { error: 'login required' });
             await handler(me, req, res);
           })().catch((e: Error) => send(res, 400, { ok: false, error: e.message }));
         });
