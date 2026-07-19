@@ -3,11 +3,27 @@ import { createDirAnims } from './anims';
 import { dirFromVelocity, DIRS_HERO, type Dir } from './dir';
 import { hitRect, rollDamage, playerDamageTaken, type Rect } from './combat';
 import { BARRIER_DURATION } from './barrier';
+import anchorData from './weapon-anchors.json';
 import { creatureDepth, DEPTH_ABOVE } from './depth';
 import { HERO } from './creatures';
 
-const SHEETS = 'assets/characters/PNG/Swordsman_lvl1/With_shadow/';
+/** Слои персонажа: тело, голова, тень, меч — каждый своим листом. */
+const PARTS = 'assets/characters/PNG/Swordsman_lvl1/Parts/';
 const PREFIX = 'Swordsman_lvl1_';
+
+/** Ключ анимации в игре -> как названа она в файлах набора. */
+const ANIM_SHEETS: Record<string, string> = {
+  idle: 'Idle',
+  walk: 'Walk',
+  attack: 'attack',
+  death: 'Death',
+};
+
+/**
+ * Из чего собираем безоружного героя, снизу вверх. Меча тут намеренно НЕТ:
+ * его место занимает надетое оружие (см. weapon-anchors.json).
+ */
+const BODY_PARTS = ['shadow', 'body', 'head'] as const;
 
 /** Кадр в листе — 64x64, персонаж внутри примерно 20x30 и стоит на нижней трети. */
 const FRAME = 64;
@@ -42,24 +58,25 @@ export interface Shot {
 export const CHEST_OFFSET = 14;
 
 /**
- * Оружие в руке: поза по направлению взгляда. Смещение — от ног героя (origin)
- * к кисти, замерено по кадрам листа Idle. Угол — Phaser angle для иконки, где
- * клинок нарисован по диагонали вверх-вправо (0 — как нарисовано, -90 — клинок
- * вверх-влево). front=false — оружие за спиной (герой смотрит вверх), рисуем ПОД
- * спрайтом. swing — знак дуги взмаха, чтобы махать в сторону удара, а не от неё.
+ * Куда и под каким углом вложить оружие — ПОКАДРОВО.
+ *
+ * Таблицу считает tools/weapon-anchors.mjs из штатного слоя меча: художник уже
+ * анимировал его по всем кадрам, значит там записано и положение рукояти, и
+ * наклон клинка. Поэтому любое оружие следует ходьбе и взмаху само, без ручной
+ * подгонки поз (раньше поза была одна на направление — оружие висело статично).
  */
-const HELD_POSE: Record<Dir, { x: number; y: number; angle: number; front: boolean; swing: 1 | -1 }> = {
-  // Клинок в иконке нарисован под 45° (вверх-вправо). Поворот -80 ставит его
-  // почти вертикально вверх-влево, -10 — круто вверх-вправо.
-  down: { x: -6, y: -9, angle: -80, front: true, swing: 1 },
-  left: { x: -5, y: -9, angle: -80, front: true, swing: -1 },
-  right: { x: 5, y: -9, angle: -10, front: true, swing: 1 },
-  up: { x: 6, y: -9, angle: -10, front: false, swing: -1 },
-};
-/** Иконки 32x32 против героя ~20px тела: в руке оружие ощутимо ужимаем. */
-const HELD_SCALE = 0.38;
-/** Длительность взмаха, мс: 8 кадров атаки при 16 к/с. Дуга оружия идёт от неё. */
-const SWING_MS = 500;
+type Anchor = { x: number; y: number; angle: number; len: number; behind?: boolean };
+const ANCHORS = anchorData as Record<string, { cols: number; rows: number; frames: (Anchor | null)[] }>;
+
+/**
+ * Клинок на иконке нарисован по диагонали вверх-вправо, то есть под -45°.
+ * Чтобы он смотрел в нужную сторону, иконку доворачиваем на эту разницу.
+ */
+const ICON_BLADE_ANGLE = -45;
+/** Длина клинка на иконке от рукояти (0.12,0.88) до острия, пикселей. */
+const ICON_BLADE_LEN = 34;
+/** Насколько оружие крупнее штатного меча. 1 — точно его длины. */
+const HELD_SCALE = 1.15;
 
 /** Угол полёта для стрельбы «от направления» (пробелом, без курсора). */
 const DIR_ANGLE: Record<Dir, number> = {
@@ -165,24 +182,55 @@ export class Player {
   private held?: Phaser.GameObjects.Image;
   private heldKey: string | null = null;
   /** Когда начался текущий взмах — для дуги оружия в руке. */
-  private attackAt = 0;
 
   private tallObjects: Map<number, number> = new Map();
   private mapWidth = 0;
   private tileW = 16;
   private tileH = 16;
 
+  /**
+   * Грузим героя ПО СЛОЯМ, а не готовым листом.
+   *
+   * В готовом листе меч уже нарисован — надетое оружие ложилось бы вторым мечом
+   * поверх штатного. Набор для того и разложен автором на части (Parts/): тело,
+   * голова, тень, меч. Берём всё, кроме меча, и склеиваем в лист безоружного
+   * героя (см. buildTextures) — тогда в руку можно вложить любое оружие.
+   */
   static preload(scene: Phaser.Scene): void {
-    const sheet = (name: string) =>
-      scene.load.spritesheet(`sw-${name.toLowerCase()}`, `${SHEETS}${PREFIX}${name}_with_shadow.png`, {
+    for (const [key, name] of Object.entries(ANIM_SHEETS)) {
+      for (const part of BODY_PARTS) {
+        scene.load.image(`sw-${key}-${part}`, `${PARTS}${PREFIX}${name}_${part}.png`);
+      }
+    }
+  }
+
+  /**
+   * Склеивает слои в лист безоружного героя под теми же ключами, что раньше
+   * приходили из файла (`sw-idle` и прочие), — остальной код о подмене не знает.
+   *
+   * Зовётся сценой ПОСЛЕ загрузки и ДО создания анимаций: те нарезают кадры из
+   * готовой текстуры. Рисуем на обычном canvas: Phaser принимает его как лист.
+   */
+  static buildTextures(scene: Phaser.Scene): void {
+    for (const key of Object.keys(ANIM_SHEETS)) {
+      const texKey = `sw-${key}`;
+      if (scene.textures.exists(texKey)) continue;
+
+      const first = scene.textures.get(`sw-${key}-body`).getSourceImage() as HTMLImageElement;
+      const canvas = document.createElement('canvas');
+      canvas.width = first.width;
+      canvas.height = first.height;
+      const ctx = canvas.getContext('2d')!;
+      // Порядок важен: тень под всеми, голова поверх тела.
+      for (const part of BODY_PARTS) {
+        const img = scene.textures.get(`sw-${key}-${part}`).getSourceImage() as HTMLImageElement;
+        ctx.drawImage(img, 0, 0);
+      }
+      scene.textures.addSpriteSheet(texKey, canvas as unknown as HTMLImageElement, {
         frameWidth: FRAME,
         frameHeight: FRAME,
       });
-
-    sheet('Idle');
-    sheet('Walk');
-    sheet('attack');
-    sheet('Death');
+    }
   }
 
   constructor(
@@ -362,26 +410,49 @@ export class Player {
     this.held.setVisible(this.state !== 'dead');
   }
 
-  /** Оружие в руке: позиция и угол за героем каждый кадр; при взмахе — дуга. */
-  private updateHeld(now: number): void {
+  /**
+   * Оружие в руке: садим его в рукоять ТЕКУЩЕГО кадра анимации.
+   *
+   * Кадр берём у самого спрайта (anims.currentFrame) — так оружие не может
+   * разъехаться с телом: какой кадр показан, для того и взяли якорь.
+   */
+  private updateHeld(_now: number): void {
     if (!this.held) return;
     if (!this.heldKey || this.state === 'dead') {
       this.held.setVisible(false);
       return;
     }
-    const pose = HELD_POSE[this.dir];
-    this.held.setVisible(true);
-    this.held.setPosition(this.sprite.x + pose.x, this.sprite.y + pose.y);
-    // За спиной (взгляд вверх) оружие рисуем под героем, иначе — поверх.
-    this.held.setDepth(this.sprite.depth + (pose.front ? 0.01 : -0.01));
 
-    if (this.state === 'attack') {
-      // Дуга взмаха: за SWING_MS проходим 140° вокруг позы покоя.
-      const t = Math.min(1, (now - this.attackAt) / SWING_MS);
-      this.held.setAngle(pose.angle + pose.swing * (-70 + 140 * t));
-    } else {
-      this.held.setAngle(pose.angle);
+    const a = this.currentAnchor();
+    if (!a) {
+      this.held.setVisible(false); // на этом кадре оружия не видно (замах из-за спины)
+      return;
     }
+
+    // Якорь задан в пикселях кадра 64x64, а точка спрайта — ноги (origin 0.5/0.75).
+    this.held.setVisible(true);
+    this.held.setPosition(
+      this.sprite.x + (a.x - FRAME / 2),
+      this.sprite.y + (a.y - FRAME * 0.75),
+    );
+    // Оружие «из-за спины» рисуем под героем, иначе поверх.
+    this.held.setDepth(this.sprite.depth + (a.behind ? -0.01 : 0.01));
+    this.held.setAngle(a.angle - ICON_BLADE_ANGLE);
+    // Длину подгоняем под штатный меч этого кадра: иначе на замахе, где клинок
+    // виден в ракурсе и короче, иконка торчала бы прежней длины.
+    this.held.setScale((a.len * HELD_SCALE) / ICON_BLADE_LEN);
+  }
+
+  /** Якорь оружия для показанного сейчас кадра. null — кадра нет в таблице. */
+  private currentAnchor(): Anchor | null {
+    const frame = this.sprite.anims.currentFrame;
+    if (!frame) return null;
+    // Ключ анимации вида `sw-walk-left` — вытаскиваем из него имя анимации.
+    const anim = this.sprite.anims.getName().split('-')[1];
+    const table = ANCHORS[anim];
+    if (!table) return null;
+    const index = Number(frame.textureFrame);
+    return table.frames[index] ?? null;
   }
 
   /**
@@ -518,7 +589,6 @@ export class Player {
     this.heavySwing = heavy;
     this.shotAngle = angle;
     this.didHit = false;
-    this.attackAt = this.scene.time.now; // старт дуги оружия в руке
     this.state = 'attack';
     (this.sprite.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
     this.play('attack');
