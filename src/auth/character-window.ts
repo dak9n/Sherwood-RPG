@@ -27,7 +27,7 @@ const CSS = `
     position: fixed; inset: 0; z-index: 100;
     display: flex; align-items: center; justify-content: center;
     background: radial-gradient(circle at 50% 35%, #2a3a2c, #12100c 72%);
-    font: 14px/1.5 'Simplified Gothic', system-ui, sans-serif; color: #f0e0c8;
+    font: 14px/1.5 'MedievalSharp', system-ui, sans-serif; color: #f0e0c8;
   }
   #charwin * { image-rendering: pixelated; }
   #charwin i { display: block; }
