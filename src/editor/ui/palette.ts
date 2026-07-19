@@ -57,7 +57,7 @@ function tilesetBlock(ts: Tileset, state: EditorState, host: HTMLElement): HTMLE
   // избавлялись, когда запоминали размеры панели.
   const grip = document.createElement('div');
   grip.className = 'ed-ts-grip';
-  grip.title = 'Потяните вниз, чтобы видеть больше тайлов, вверх — чтобы меньше';
+  grip.title = 'Drag down to see more tiles, up to see fewer';
   grip.hidden = true;
 
   dragSize(grip, { rows: true }, (e) => {

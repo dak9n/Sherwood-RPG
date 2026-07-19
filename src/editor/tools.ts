@@ -122,9 +122,9 @@ export function installTools(
     state.setBrush({ w: region.w, h: region.h, raws: region.raws });
     handlers.onPick?.(
       region.tooBig
-        ? 'всё слилось — взят один тайл, обведите Alt+рамкой'
+        ? 'everything merged — took one tile, box it with Alt+drag'
         : region.count > 1
-          ? `объект ${region.w}×${region.h}`
+          ? `object ${region.w}×${region.h}`
           : undefined,
     );
   };
@@ -135,7 +135,7 @@ export function installTools(
 
     state.setActiveLayer(layer);
     state.setBrush({ w: r.w, h: r.h, raws });
-    handlers.onPick?.(`область ${r.w}×${r.h}`);
+    handlers.onPick?.(`area ${r.w}×${r.h}`);
     return true;
   };
 

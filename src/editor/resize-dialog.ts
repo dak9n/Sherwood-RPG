@@ -39,19 +39,19 @@ export function askResize(doc: MapDoc): Promise<ResizeRequest | null> {
         .rz button.go { background: #4a7a3f; border-color: #63a354; }
       </style>
       <form method="dialog" class="rz">
-        <h3>Размер карты</h3>
-        <div class="info">Сейчас ${doc.width}×${doc.height}. Сколько тайлов добавить с каждой стороны? Отрицательное число обрежет.</div>
+        <h3>Map size</h3>
+        <div class="info">Now ${doc.width}×${doc.height}. How many tiles to add on each side? A negative number crops.</div>
         <div class="grid">
-          <div></div><div><input name="top" type="number" value="0"><div class="lbl">сверху</div></div><div></div>
-          <div><input name="left" type="number" value="0"><div class="lbl">слева</div></div>
+          <div></div><div><input name="top" type="number" value="0"><div class="lbl">top</div></div><div></div>
+          <div><input name="left" type="number" value="0"><div class="lbl">left</div></div>
           <div></div>
-          <div><input name="right" type="number" value="0"><div class="lbl">справа</div></div>
-          <div></div><div><input name="bottom" type="number" value="0"><div class="lbl">снизу</div></div><div></div>
+          <div><input name="right" type="number" value="0"><div class="lbl">right</div></div>
+          <div></div><div><input name="bottom" type="number" value="0"><div class="lbl">bottom</div></div><div></div>
         </div>
         <div class="info" id="rz-preview"></div>
         <div class="row">
-          <button value="cancel">Отмена</button>
-          <button value="ok" class="go" id="rz-ok">Изменить</button>
+          <button value="cancel">Cancel</button>
+          <button value="ok" class="go" id="rz-ok">Resize</button>
         </div>
       </form>
     `;
@@ -70,7 +70,7 @@ export function askResize(doc: MapDoc): Promise<ResizeRequest | null> {
 
       if (w <= 0 || h <= 0) {
         preview.className = 'info danger';
-        preview.textContent = `Так карта станет ${w}×${h} — этого не бывает.`;
+        preview.textContent = `That makes the map ${w}×${h} — impossible.`;
         okBtn.disabled = true;
         return;
       }
@@ -79,21 +79,21 @@ export function askResize(doc: MapDoc): Promise<ResizeRequest | null> {
       // того, как они потеряны, бессмысленно.
       const { dropped, droppedByLayer } = resizeMap(doc.map, d);
       const cells = w * h;
-      const parts = [`Станет ${w}×${h} (${w * 16}×${h * 16} px).`];
+      const parts = [`Becomes ${w}×${h} (${w * 16}×${h * 16} px).`];
       let cls = 'info';
 
       if (dropped > 0) {
         const where = Object.entries(droppedByLayer)
           .map(([n, c]) => `${n}: ${c}`)
           .join(', ');
-        parts.push(`Будет потеряно ${dropped} тайлов — ${where}.`);
+        parts.push(`${dropped} tiles will be lost — ${where}.`);
         cls = 'info danger';
       }
       if (cells > HEAVY_CELLS) {
-        parts.push(`${cells} клеток — Phaser создаст ${cells * doc.layers.length} объектов тайлов на 26 слоёв. Будет тяжело.`);
+        parts.push(`${cells} cells — Phaser will create ${cells * doc.layers.length} tile objects across 26 layers. It will be heavy.`);
         cls = 'info danger';
       } else if (cells > WARN_CELLS) {
-        parts.push(`${cells} клеток на 26 слоёв — карта станет заметно тяжелее.`);
+        parts.push(`${cells} cells across 26 layers — the map will get noticeably heavier.`);
         if (cls === 'info') cls = 'info warn';
       }
 

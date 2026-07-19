@@ -70,7 +70,7 @@ export function resizeMap(map: GameMap, deltas: Deltas): ResizeResult {
   const height = map.height + top + bottom;
 
   if (width <= 0 || height <= 0) {
-    throw new Error(`после изменения карта была бы ${width}x${height}`);
+    throw new Error(`after resizing the map would be ${width}x${height}`);
   }
 
   const droppedByLayer: Record<string, number> = {};

@@ -204,12 +204,12 @@ export function buildShell(): Shell {
   const root = document.createElement('div');
   root.id = 'editor';
   root.innerHTML = `
-    <div id="ed-grip-w" title="Потяните, чтобы сделать панель шире или уже"></div>
+    <div id="ed-grip-w" title="Drag to make the panel wider or narrower"></div>
     <div id="ed-tools"></div>
-    <h2 class="action">Слои <span class="head-btns"><button id="ed-add-group" class="head-btn" title="Новая группа: положить в неё активный слой">📁+</button><button id="ed-add-layer" class="head-btn" title="Новый слой поверх активного">＋</button></span></h2>
+    <h2 class="action">Layers <span class="head-btns"><button id="ed-add-group" class="head-btn" title="New group: put the active layer into it">📁+</button><button id="ed-add-layer" class="head-btn" title="New layer above the active one">＋</button></span></h2>
     <div id="ed-layers"></div>
-    <div id="ed-grip-h" title="Потяните, чтобы поделить высоту между слоями и тайлами"></div>
-    <h2>Тайлы</h2>
+    <div id="ed-grip-h" title="Drag to split the height between layers and tiles"></div>
+    <h2>Tiles</h2>
     <div id="ed-palette"></div>
     <div id="ed-status"><span id="ed-status-left"></span><span id="ed-status-right"></span></div>
   `;

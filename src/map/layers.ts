@@ -13,7 +13,7 @@ export function emptyLayer(map: GameMap, name: string): Layer {
 export function suggestLayerName(map: GameMap): string {
   const taken = new Set(map.layers.map((l) => l.name));
   for (let n = map.layers.length + 1; ; n++) {
-    const name = `Слой ${n}`;
+    const name = `Layer ${n}`;
     if (!taken.has(name)) return name;
   }
 }
@@ -27,8 +27,8 @@ export function suggestLayerName(map: GameMap): string {
  */
 export function layerNameError(map: GameMap, index: number, name: string): string | null {
   const trimmed = name.trim();
-  if (!trimmed) return 'имя не может быть пустым';
-  if (map.layers.some((l, i) => i !== index && l.name === trimmed)) return `слой «${trimmed}» уже есть`;
+  if (!trimmed) return 'name cannot be empty';
+  if (map.layers.some((l, i) => i !== index && l.name === trimmed)) return `layer "${trimmed}" already exists`;
   return null;
 }
 
@@ -46,7 +46,7 @@ export function withLayerAdded(map: GameMap, name: string, insertAt: number): Ga
 
 /** Удаляет слой index. Чистая. Бросает на последнем: карта без слоёв невалидна. */
 export function withLayerRemoved(map: GameMap, index: number): GameMap {
-  if (map.layers.length <= 1) throw new Error('нельзя удалить последний слой');
+  if (map.layers.length <= 1) throw new Error('cannot delete the last layer');
   const layers = map.layers.slice();
   layers.splice(index, 1);
   return { ...map, layers };
@@ -125,7 +125,7 @@ export function groupNames(map: GameMap): string[] {
 
 /** Проверка имени группы: пустое — ошибка. Тёзки слоёв не мешают: пространства имён разные. */
 export function groupNameError(name: string): string | null {
-  return name.trim() ? null : 'имя группы не может быть пустым';
+  return name.trim() ? null : 'group name cannot be empty';
 }
 
 /**
@@ -135,7 +135,7 @@ export function groupNameError(name: string): string | null {
 export function suggestGroupName(map: GameMap): string {
   const taken = new Set(groupNames(map));
   for (let n = 1; ; n++) {
-    const name = `Группа ${n}`;
+    const name = `Group ${n}`;
     if (!taken.has(name)) return name;
   }
 }

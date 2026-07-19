@@ -32,7 +32,7 @@ test('пустая карта + каталог проходит validateMap', ()
 test('createBlankMap: ровно один пустой слой «Слой 1»', () => {
   const map = createBlankMap({ width: 4, height: 3 });
   assert.equal(map.layers.length, 1);
-  assert.equal(map.layers[0].name, 'Слой 1');
+  assert.equal(map.layers[0].name, 'Layer 1');
   assert.equal(map.layers[0].visible, true);
   assert.equal(map.layers[0].data.length, 12);
   assert.ok(map.layers[0].data.every((v) => v === 0));

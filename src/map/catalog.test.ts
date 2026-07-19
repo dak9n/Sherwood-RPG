@@ -47,7 +47,7 @@ test('следующий номер продолжает нумерацию бе
 test('каталог с дырой в нумерации — ошибка', () => {
   const broken: TilesetCatalog = { version: 1, tilesets: [ts('a', 1, 10), ts('b', 50, 5)] };
   const errors = validateCatalog(broken);
-  assert.ok(errors.some((e) => e.includes('по порядку должен быть 11')));
+  assert.ok(errors.some((e) => e.includes('in order it must be 11')));
 });
 
 test('каталог с нахлёстом номеров — ошибка', () => {
@@ -58,7 +58,7 @@ test('каталог с нахлёстом номеров — ошибка', () 
 
 test('повторяющееся имя тайлсета — ошибка', () => {
   const broken: TilesetCatalog = { version: 1, tilesets: [ts('a', 1, 10), ts('a', 11, 5)] };
-  assert.ok(validateCatalog(broken).some((e) => e.includes('повторяется')));
+  assert.ok(validateCatalog(broken).some((e) => e.includes('is duplicated')));
 });
 
 test('здоровый каталог проходит проверку', () => {

@@ -15,57 +15,57 @@ interface Group {
 
 const GROUPS: Group[] = [
   {
-    title: 'Рисование',
+    title: 'Painting',
     items: [
-      { keys: 'ЛКМ', what: 'Рисовать активной кистью' },
-      { keys: 'ПКМ', what: 'Стирать' },
-      { keys: 'E', what: 'Переключить ластик' },
+      { keys: 'LMB', what: 'Paint with the active brush' },
+      { keys: 'RMB', what: 'Erase' },
+      { keys: 'E', what: 'Toggle the eraser' },
     ],
   },
   {
-    title: 'Взять как кисть',
+    title: 'Pick as brush',
     items: [
-      { keys: 'Shift + ЛКМ', what: 'Взять один тайл под курсором (пипетка)' },
-      { keys: 'Alt + ЛКМ', what: 'Взять объект под курсором целиком' },
-      { keys: 'Alt + протяжка', what: 'Обвести область рамкой (или кнопка «Выделить»)' },
-      { keys: 'протяжка в палитре', what: 'Взять прямоугольник тайлов из тайлсета' },
-      { keys: 'Esc', what: 'Сбросить выделение' },
+      { keys: 'Shift + LMB', what: 'Pick one tile under the cursor (eyedropper)' },
+      { keys: 'Alt + LMB', what: 'Pick the whole object under the cursor' },
+      { keys: 'Alt + drag', what: 'Frame an area (or the "Select" button)' },
+      { keys: 'drag in the palette', what: 'Pick a rectangle of tiles from the tileset' },
+      { keys: 'Esc', what: 'Clear the selection' },
     ],
   },
   {
-    title: 'Навигация',
+    title: 'Navigation',
     items: [
-      { keys: 'W A S D', what: 'Двигать камеру' },
-      { keys: 'Средняя кнопка / Space + ЛКМ', what: 'Тащить карту' },
-      { keys: 'Колесо', what: 'Приблизить / отдалить' },
-      { keys: 'G', what: 'Сетка вкл/выкл' },
-      { keys: 'Затемнить', what: 'Приглушить все слои, кроме активного' },
+      { keys: 'W A S D', what: 'Move the camera' },
+      { keys: 'MMB / Space + LMB', what: 'Drag the map' },
+      { keys: 'Wheel', what: 'Zoom in / out' },
+      { keys: 'G', what: 'Grid on/off' },
+      { keys: 'Dim', what: 'Dim every layer except the active one' },
     ],
   },
   {
-    title: 'История',
+    title: 'History',
     items: [
-      { keys: 'Ctrl + Z', what: 'Отменить' },
-      { keys: 'Ctrl + Shift + Z', what: 'Вернуть' },
+      { keys: 'Ctrl + Z', what: 'Undo' },
+      { keys: 'Ctrl + Shift + Z', what: 'Redo' },
     ],
   },
   {
-    title: 'Слои',
+    title: 'Layers',
     items: [
-      { keys: '＋', what: 'Новый слой над активным' },
-      { keys: 'Двойной клик / ✎', what: 'Переименовать слой' },
-      { keys: '🗑', what: 'Удалить слой' },
-      { keys: 'Перетащить строку', what: 'Сменить порядок слоёв (выше/ниже)' },
-      { keys: '👁', what: 'Скрыть слой на экране (в файл не пишется)' },
+      { keys: '＋', what: 'New layer above the active one' },
+      { keys: 'Double click / ✎', what: 'Rename the layer' },
+      { keys: '🗑', what: 'Delete the layer' },
+      { keys: 'Drag a row', what: 'Change layer order (up/down)' },
+      { keys: '👁', what: 'Hide the layer on screen (not written to the file)' },
     ],
   },
   {
-    title: 'Карта',
+    title: 'Map',
     items: [
-      { keys: 'Ctrl + S', what: 'Сохранить карту в файл' },
-      { keys: 'Сохранить как', what: 'Сохранить в новый файл под другим именем' },
-      { keys: 'Карты', what: 'К списку карт: открыть другую или создать новую' },
-      { keys: 'Размер', what: 'Изменить размер карты' },
+      { keys: 'Ctrl + S', what: 'Save the map to a file' },
+      { keys: 'Save as', what: 'Save to a new file under a different name' },
+      { keys: 'Maps', what: 'Back to the map list: open another or create a new one' },
+      { keys: 'Resize', what: 'Change the map size' },
     ],
   },
 ];
@@ -118,7 +118,7 @@ export function showHelp(): void {
 
   dlg.innerHTML = `
     <div class="hlp">
-      <h3>Горячие клавиши <button class="x">Закрыть</button></h3>
+      <h3>Hotkeys <button class="x">Close</button></h3>
       <div class="body">${groupsHtml}</div>
     </div>`;
   dlg.prepend(style);

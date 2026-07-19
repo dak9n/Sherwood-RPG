@@ -67,7 +67,7 @@ export function startScreen(maps: string[]): Promise<StartChoice> {
 
     const wrap = document.createElement('div');
     wrap.className = 'in';
-    wrap.innerHTML = `<h3>Карта</h3><p class="lead">Открой существующую или создай новую.</p>`;
+    wrap.innerHTML = `<h3>Map</h3><p class="lead">Open an existing one or create a new one.</p>`;
 
     const list = document.createElement('div');
     list.className = 'list';
@@ -78,7 +78,7 @@ export function startScreen(maps: string[]): Promise<StartChoice> {
       if (current.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'empty';
-        empty.textContent = 'Пока нет ни одной карты.';
+        empty.textContent = 'No maps yet.';
         list.append(empty);
         return;
       }
@@ -97,11 +97,11 @@ export function startScreen(maps: string[]): Promise<StartChoice> {
           const del = document.createElement('button');
           del.className = 'map-del';
           del.textContent = '🗑';
-          del.title = `Удалить карту «${name}»`;
+          del.title = `Delete map "${name}"`;
           del.onclick = async () => {
-            if (!confirm(`Удалить карту «${name}»?\nФайл уйдёт в .map-backups — восстановить можно.`)) return;
+            if (!confirm(`Delete map "${name}"?\nThe file goes to .map-backups — it can be restored.`)) return;
             const res = await deleteMap(name);
-            if (!res.ok) return void alert(`Не удалось удалить: ${res.error ?? ''}`);
+            if (!res.ok) return void alert(`Could not delete: ${res.error ?? ''}`);
             const at = current.indexOf(name);
             if (at !== -1) current.splice(at, 1);
             renderList();
@@ -118,7 +118,7 @@ export function startScreen(maps: string[]): Promise<StartChoice> {
     row.className = 'row';
     const newBtn = document.createElement('button');
     newBtn.className = 'b go';
-    newBtn.textContent = 'Новая карта';
+    newBtn.textContent = 'New map';
     newBtn.onclick = async () => {
       const made = await askNewMap(current); // current учитывает удаления
       if (made) done({ kind: 'new', ...made });
@@ -141,18 +141,18 @@ export function askNewMap(existing: string[]): Promise<{ name: string; width: nu
     form.method = 'dialog';
     form.className = 'in';
     form.innerHTML = `
-      <h3>Новая карта</h3>
-      <label>Имя</label>
-      <input name="name" autocomplete="off" placeholder="например, town" />
+      <h3>New map</h3>
+      <label>Name</label>
+      <input name="name" autocomplete="off" placeholder="for example, town" />
       <div class="err" id="err"></div>
       <div class="sizes">
-        <div><label>Ширина, тайлов</label><input name="w" type="number" value="40" min="1" /></div>
-        <div><label>Высота, тайлов</label><input name="h" type="number" value="30" min="1" /></div>
+        <div><label>Width, tiles</label><input name="w" type="number" value="40" min="1" /></div>
+        <div><label>Height, tiles</label><input name="h" type="number" value="30" min="1" /></div>
       </div>
       <div class="info" id="prev"></div>
       <div class="row">
-        <button class="b" type="button" id="cancel">Отмена</button>
-        <button class="b go" id="ok" disabled>Создать</button>
+        <button class="b" type="button" id="cancel">Cancel</button>
+        <button class="b go" id="ok" disabled>Create</button>
       </div>`;
     dlg.append(form);
 
@@ -174,11 +174,11 @@ export function askNewMap(existing: string[]): Promise<{ name: string; width: nu
       const h = intOf(hI);
       let sizeOk = true;
       if (w <= 0 || h <= 0) {
-        prev.textContent = 'размер должен быть больше нуля';
+        prev.textContent = 'size must be greater than zero';
         prev.className = 'info danger';
         sizeOk = false;
       } else if (w * h > MAX_CELLS) {
-        prev.textContent = `${w}×${h} — это ${w * h} клеток, слишком много`;
+        prev.textContent = `${w}×${h} — that is ${w * h} cells, too many`;
         prev.className = 'info danger';
         sizeOk = false;
       } else {
@@ -219,11 +219,11 @@ export function askMapName(existing: string[], title: string, okLabel: string): 
     form.className = 'in';
     form.innerHTML = `
       <h3></h3>
-      <label>Имя карты</label>
+      <label>Map name</label>
       <input name="name" autocomplete="off" />
       <div class="err" id="err"></div>
       <div class="row">
-        <button class="b" type="button" id="cancel">Отмена</button>
+        <button class="b" type="button" id="cancel">Cancel</button>
         <button class="b go" id="ok" disabled></button>
       </div>`;
     // textContent, а не в innerHTML: title/okLabel — свои строки, но привычка безопаснее.

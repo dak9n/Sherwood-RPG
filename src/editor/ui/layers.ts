@@ -209,7 +209,7 @@ export function buildLayers(host: HTMLElement, state: EditorState, ops: LayerLis
       group,
       (next) =>
         groupNameError(next) ??
-        (groupNames(state.doc.map).includes(next) ? `группа «${next}» уже есть` : null),
+        (groupNames(state.doc.map).includes(next) ? `group "${next}" already exists` : null),
       (next) => ops.onRenameGroup(group, next),
     );
   }
@@ -229,7 +229,7 @@ export function buildLayers(host: HTMLElement, state: EditorState, ops: LayerLis
     const eye = document.createElement('span');
     eye.className = 'eye';
     eye.textContent = off ? '·' : '👁';
-    eye.title = 'Скрыть всю группу только на экране (в файл не пишется)';
+    eye.title = 'Hide the whole group on screen only (not written to the file)';
     eye.onclick = (e) => {
       e.stopPropagation();
       state.toggleGroupHidden(group);
@@ -239,7 +239,7 @@ export function buildLayers(host: HTMLElement, state: EditorState, ops: LayerLis
     const nm = document.createElement('span');
     nm.className = 'nm';
     nm.textContent = group;
-    nm.title = 'Клик — свернуть/развернуть, двойной — переименовать группу';
+    nm.title = 'Click to collapse/expand, double click to rename the group';
     nm.ondblclick = (e) => {
       e.stopPropagation();
       startRenameGroup(group, nm);
@@ -252,7 +252,7 @@ export function buildLayers(host: HTMLElement, state: EditorState, ops: LayerLis
     const edit = document.createElement('span');
     edit.className = 'edit';
     edit.textContent = '✎';
-    edit.title = 'Переименовать группу';
+    edit.title = 'Rename the group';
     edit.onclick = (e) => {
       e.stopPropagation();
       startRenameGroup(group, nm);
@@ -261,7 +261,7 @@ export function buildLayers(host: HTMLElement, state: EditorState, ops: LayerLis
     const del = document.createElement('span');
     del.className = 'del';
     del.textContent = '🗑';
-    del.title = 'Распустить группу (слои останутся)';
+    del.title = 'Disband the group (layers stay)';
     del.onclick = (e) => {
       e.stopPropagation();
       ops.onDisbandGroup(group);
@@ -387,7 +387,7 @@ export function buildLayers(host: HTMLElement, state: EditorState, ops: LayerLis
       // Спрашиваем состояние, а не Phaser: слои Phaser пересоздаются при
       // добавлении слоя и ресайзе, и приходят видимыми — скрытие живёт в state.
       eye.textContent = state.isHidden(i) ? '·' : '👁';
-      eye.title = 'Скрыть слой только на экране (в файл не пишется)';
+      eye.title = 'Hide the layer on screen only (not written to the file)';
       eye.onclick = (e) => {
         e.stopPropagation();
         const visible = state.toggleHidden(i);
@@ -398,7 +398,7 @@ export function buildLayers(host: HTMLElement, state: EditorState, ops: LayerLis
       const name = document.createElement('span');
       name.className = 'nm';
       name.textContent = layer.name;
-      name.title = 'Двойной клик — переименовать';
+      name.title = 'Double click to rename';
       name.ondblclick = (e) => {
         e.stopPropagation();
         startRename(i, name);
@@ -411,7 +411,7 @@ export function buildLayers(host: HTMLElement, state: EditorState, ops: LayerLis
       const edit = document.createElement('span');
       edit.className = 'edit';
       edit.textContent = '✎';
-      edit.title = 'Переименовать слой';
+      edit.title = 'Rename the layer';
       edit.onclick = (e) => {
         e.stopPropagation();
         startRename(i, name);
@@ -423,8 +423,8 @@ export function buildLayers(host: HTMLElement, state: EditorState, ops: LayerLis
       grp.className = 'grp';
       grp.textContent = '📁';
       grp.title = group
-        ? `Группа «${group}» — вписать другую или очистить, чтобы вынуть`
-        : 'Положить слой в группу: вписать имя';
+        ? `Group "${group}" — type another one, or clear it to take the layer out`
+        : 'Put the layer into a group: type a name';
       grp.onclick = (e) => {
         e.stopPropagation();
         startAssignGroup(i, name); // правим прямо в строке, вместо подписи слоя
@@ -436,7 +436,7 @@ export function buildLayers(host: HTMLElement, state: EditorState, ops: LayerLis
         const del = document.createElement('span');
         del.className = 'del';
         del.textContent = '🗑';
-        del.title = 'Удалить слой';
+        del.title = 'Delete the layer';
         del.onclick = (e) => {
           e.stopPropagation();
           ops.onDelete(i);

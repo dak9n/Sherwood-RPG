@@ -31,7 +31,7 @@ export async function deleteMap(name: string): Promise<{ ok: boolean; error?: st
     });
     if (res.status === 200) return { ok: true };
     const body = await res.json().catch(() => ({}));
-    return { ok: false, error: body.error ?? `сервер ответил ${res.status}` };
+    return { ok: false, error: body.error ?? `server replied ${res.status}` };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
@@ -42,7 +42,7 @@ async function readResult(res: Response): Promise<SaveResult> {
   if (res.status === 200) return { ok: true, revision: body.revision, backup: body.backup ?? null };
   if (res.status === 409) return { ok: false, kind: 'conflict', revision: body.revision };
   if (res.status === 422) return { ok: false, kind: 'invalid', errors: body.errors ?? [] };
-  return { ok: false, kind: 'error', message: body.error ?? `сервер ответил ${res.status}` };
+  return { ok: false, kind: 'error', message: body.error ?? `server replied ${res.status}` };
 }
 
 async function post(name: string, baseRevision: string, force: boolean, map: unknown): Promise<SaveResult> {

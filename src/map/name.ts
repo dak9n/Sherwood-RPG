@@ -20,8 +20,8 @@ export function isSafeMapName(name: string): boolean {
 /** Ошибка имени для диалога, или null если годится. existing — уже занятые имена карт. */
 export function mapNameError(existing: string[], name: string): string | null {
   const trimmed = name.trim();
-  if (!trimmed) return 'имя не может быть пустым';
-  if (!isSafeMapName(trimmed)) return 'только буквы, цифры, дефис и подчёркивание — без пробелов и точек';
-  if (existing.some((n) => n.toLowerCase() === trimmed.toLowerCase())) return `карта «${trimmed}» уже есть`;
+  if (!trimmed) return 'name cannot be empty';
+  if (!isSafeMapName(trimmed)) return 'only letters, digits, hyphen and underscore — no spaces or dots';
+  if (existing.some((n) => n.toLowerCase() === trimmed.toLowerCase())) return `map "${trimmed}" already exists`;
   return null;
 }

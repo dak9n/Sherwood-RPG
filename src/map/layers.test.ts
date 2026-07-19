@@ -76,7 +76,7 @@ test('удаление убирает нужный слой и не трогае
 test('последний слой удалить нельзя', () => {
   const one = makeMap();
   one.layers = [one.layers[0]];
-  assert.throws(() => withLayerRemoved(one, 0), /последний слой/);
+  assert.throws(() => withLayerRemoved(one, 0), /last layer/);
 });
 
 test('имя нового слоя не совпадает с существующими', () => {
@@ -87,8 +87,8 @@ test('имя нового слоя не совпадает с существую
 
 test('suggestLayerName обходит занятого кандидата', () => {
   const map = makeMap();
-  map.layers[1].name = 'Слой 3'; // при length=2 кандидат — «Слой 3», занимаем его
-  assert.equal(suggestLayerName(map), 'Слой 4');
+  map.layers[1].name = 'Layer 3'; // при length=2 кандидат — «Слой 3», занимаем его
+  assert.equal(suggestLayerName(map), 'Layer 4');
 });
 
 test('пустое имя и одни пробелы — ошибка', () => {
@@ -261,9 +261,9 @@ test('groupNameError: пустое имя — ошибка, непустое —
 
 test('suggestGroupName: свободный номер, занятые пропускает', () => {
   const m = makeMap();
-  assert.equal(suggestGroupName(m), 'Группа 1');
-  m.layers[0] = { ...m.layers[0], group: 'Группа 1' };
-  assert.equal(suggestGroupName(m), 'Группа 2');
-  m.layers[1] = { ...m.layers[1], group: 'Группа 2' };
-  assert.equal(suggestGroupName(m), 'Группа 3');
+  assert.equal(suggestGroupName(m), 'Group 1');
+  m.layers[0] = { ...m.layers[0], group: 'Group 1' };
+  assert.equal(suggestGroupName(m), 'Group 2');
+  m.layers[1] = { ...m.layers[1], group: 'Group 2' };
+  assert.equal(suggestGroupName(m), 'Group 3');
 });

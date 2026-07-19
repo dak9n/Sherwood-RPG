@@ -18,7 +18,7 @@ export interface BlankMapOptions {
  * случай другого набора.
  */
 export function createBlankMap(opts: BlankMapOptions): GameMap {
-  const { width, height, tileWidth = 16, tileHeight = 16, layerName = 'Слой 1' } = opts;
+  const { width, height, tileWidth = 16, tileHeight = 16, layerName = 'Layer 1' } = opts;
   const cells = width * height;
   const layer: Layer = { name: layerName, visible: true, data: new Array<number>(cells).fill(0) };
   return {

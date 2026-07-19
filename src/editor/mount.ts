@@ -101,38 +101,38 @@ export function mountEditor(game: Phaser.Game): void {
     return b;
   };
 
-  const brushBtn = btn('Кисть', 'Рисовать (ЛКМ)', () => setTool('brush'));
-  const eraserBtn = btn('Ластик', 'Стирать (ПКМ или этот режим)', () => setTool('eraser'));
-  const selectBtn = btn('Выделить', 'Обвести объект рамкой и взять его как кисть (то же самое — Alt+протяжка)', () =>
+  const brushBtn = btn('Brush', 'Paint (LMB)', () => setTool('brush'));
+  const eraserBtn = btn('Eraser', 'Erase (RMB or this mode)', () => setTool('eraser'));
+  const selectBtn = btn('Select', 'Drag a box around an object and take it as a brush (same as Alt+drag)', () =>
     setTool('select'),
   );
   const wallBtn = btn(
-    'Стены',
-    'Рисовать непроходимость: ЛКМ — стена, ПКМ — проход. Обведите речку, обрыв или дом — игрок туда не зайдёт',
+    'Walls',
+    'Paint collision: LMB — wall, RMB — walkable. Box in a river, cliff or house — the player will not enter',
     () => setTool('wall'),
   );
   const draftBtn = btn(
-    'Черновик',
-    'Заполнить проходимость автоматически по картинке (вода, край, стволы) — чтобы не размечать всю карту с нуля',
+    'Auto-fill',
+    'Fill collision automatically from the picture (water, edges, trunks) — so you do not mark the whole map from scratch',
     () => seedDraft(),
   );
-  const gridBtn = btn('Сетка', 'Показать сетку (при увеличении от 2x)', () => {
+  const gridBtn = btn('Grid', 'Show the grid (at 2x zoom and above)', () => {
     gridOn = !gridOn;
     overlay.setGrid(gridOn);
     gridBtn.setAttribute('aria-pressed', String(gridOn));
   });
-  const dimBtn = btn('Затемнить', 'Вкл/выкл затемнение всех слоёв, кроме активного — видно, что именно правишь', () => {
+  const dimBtn = btn('Dim', 'Toggle dimming of every layer except the active one — you see what you are editing', () => {
     dimInactive = !dimInactive;
     dimBtn.setAttribute('aria-pressed', String(dimInactive));
     applyDim();
   });
-  const undoBtn = btn('↶', 'Отменить (Ctrl+Z)', () => state.undo());
-  const redoBtn = btn('↷', 'Вернуть (Ctrl+Shift+Z)', () => state.redo());
-  btn('Размер', 'Изменить размер карты', () => doResize());
-  const saveBtn = btn('Сохранить', 'Записать карту в файл (Ctrl+S)', () => doSave());
-  btn('Сохранить как', 'Сохранить текущую карту в новый файл под другим именем', () => void doSaveAs());
-  btn('Карты', 'К списку карт: открыть другую карту или создать новую', () => backToPicker());
-  btn('?', 'Горячие клавиши редактора', () => showHelp());
+  const undoBtn = btn('↶', 'Undo (Ctrl+Z)', () => state.undo());
+  const redoBtn = btn('↷', 'Redo (Ctrl+Shift+Z)', () => state.redo());
+  btn('Resize', 'Change the map size', () => doResize());
+  const saveBtn = btn('Save', 'Write the map to a file (Ctrl+S)', () => doSave());
+  btn('Save as', 'Save the current map to a new file under a different name', () => void doSaveAs());
+  btn('Maps', 'To the map list: open another map or create a new one', () => backToPicker());
+  btn('?', 'Editor hotkeys', () => showHelp());
 
   let gridOn = true;
   gridBtn.setAttribute('aria-pressed', 'true');
@@ -195,12 +195,12 @@ export function mountEditor(game: Phaser.Game): void {
     const brush = pickNote
       ? ` · ${pickNote}`
       : state.brush.w > 1 || state.brush.h > 1
-        ? ` · кисть ${state.brush.w}×${state.brush.h}`
+        ? ` · brush ${state.brush.w}×${state.brush.h}`
         : '';
 
     shell.setStatus(
-      `${state.mapName} · ${layer} · ${where} · ${raw || 'пусто'}${brush}`,
-      saveNote || (state.dirty ? 'не сохранено' : 'сохранено'),
+      `${state.mapName} · ${layer} · ${where} · ${raw || 'empty'}${brush}`,
+      saveNote || (state.dirty ? 'unsaved' : 'saved'),
       saveClass || (state.dirty ? 'save-dirty' : 'save-ok'),
     );
     undoBtn.disabled = !state.canUndo;
@@ -229,7 +229,7 @@ export function mountEditor(game: Phaser.Game): void {
   // Сохранение
   async function doSave(force = false): Promise<void> {
     saveBtn.disabled = true;
-    saveNote = 'сохраняю…';
+    saveNote = 'saving…';
     saveClass = '';
     refreshStatus();
 
@@ -251,44 +251,44 @@ export function mountEditor(game: Phaser.Game): void {
     if (res.kind === 'conflict') {
       if (state.baseRevision === 'none') {
         // Думали, что СОЗДАЁМ файл, а карта с таким именем уже есть — чужое не затираем.
-        alert(`Карта «${state.mapName}» уже существует. Открой её из списка или сохрани под другим именем.`);
-        saveNote = 'имя занято — не сохранено';
+        alert(`Map "${state.mapName}" already exists. Open it from the list or save under a different name.`);
+        saveNote = 'name taken — unsaved';
         saveClass = 'save-err';
         refreshStatus();
         return;
       }
       // Файл на диске изменился с момента загрузки — предложить перезапись.
       const keep = confirm(
-        'Файл карты на диске изменился с тех пор, как редактор её загрузил.\n' +
-          'Это мог сделать git, конвертер или второй редактор.\n\n' +
-          'OK — записать мою версию поверх (старая уйдёт в .map-backups).\n' +
-          'Отмена — ничего не делать, ваши правки останутся в редакторе.',
+        'The map file on disk has changed since the editor loaded it.\n' +
+          'It could have been git, a converter or a second editor.\n\n' +
+          'OK — write my version over it (the old one goes to .map-backups).\n' +
+          'Cancel — do nothing, your edits stay in the editor.',
       );
       if (keep) {
         state.baseRevision = res.revision;
         await doSave(true);
         return;
       }
-      saveNote = 'конфликт — не сохранено';
+      saveNote = 'conflict — unsaved';
       saveClass = 'save-err';
       refreshStatus();
       return;
     }
 
-    saveNote = res.kind === 'invalid' ? `карта не прошла проверку (${res.errors.length})` : 'ошибка сохранения';
+    saveNote = res.kind === 'invalid' ? `map failed validation (${res.errors.length})` : 'save error';
     saveClass = 'save-err';
     refreshStatus();
-    console.error('Сохранение не удалось:', res);
+    console.error('Save failed:', res);
   }
 
   // Сохранить как: текущая карта уходит в НОВЫЙ файл под другим именем.
   async function doSaveAs(): Promise<void> {
     const maps = await fetchMaps();
-    const newName = await askMapName(maps, 'Сохранить как', 'Сохранить');
+    const newName = await askMapName(maps, 'Save as', 'Save');
     if (!newName) return;
 
     saveBtn.disabled = true;
-    saveNote = 'сохраняю…';
+    saveNote = 'saving…';
     saveClass = '';
     refreshStatus();
 
@@ -306,15 +306,15 @@ export function mountEditor(game: Phaser.Game): void {
       return;
     }
     // askMapName уже проверил имя по списку, так что 409 тут — редкая гонка.
-    if (res.kind === 'conflict') alert(`Карта «${newName}» уже есть — выбери другое имя.`);
-    saveNote = res.kind === 'invalid' ? `карта не прошла проверку (${res.errors.length})` : 'не сохранено';
+    if (res.kind === 'conflict') alert(`Map "${newName}" already exists — pick another name.`);
+    saveNote = res.kind === 'invalid' ? `map failed validation (${res.errors.length})` : 'unsaved';
     saveClass = 'save-err';
     refreshStatus();
   }
 
   // К списку карт: уходим на стартовый экран (?edit без map).
   function backToPicker(): void {
-    if (state.dirty && !confirm('В карте есть несохранённые правки. Отбросить их и вернуться к списку карт?')) return;
+    if (state.dirty && !confirm('The map has unsaved edits. Discard them and go back to the map list?')) return;
     state.dirty = false; // осознанно отбрасываем — гасим предупреждение beforeunload
     location.search = '?edit';
   }
@@ -328,7 +328,7 @@ export function mountEditor(game: Phaser.Game): void {
       const where = Object.entries(req.droppedByLayer)
         .map(([n, c]) => `  ${n}: ${c}`)
         .join('\n');
-      if (!confirm(`Будет безвозвратно потеряно ${req.dropped} тайлов:\n${where}\n\nПродолжить?`)) return;
+      if (!confirm(`${req.dropped} tiles will be lost for good:\n${where}\n\nContinue?`)) return;
     }
 
     const { map } = resizeMap(state.doc.map, req.deltas);
@@ -365,8 +365,8 @@ export function mountEditor(game: Phaser.Game): void {
     // Undo. Слой с тайлами предупреждает жёстче — их уже не вернуть.
     const question =
       filled > 0
-        ? `Слой «${name}»: ${filled} тайлов будут потеряны безвозвратно.\nUndo это не вернёт. Удалить слой?`
-        : `Удалить слой «${name}»?`;
+        ? `Layer "${name}": ${filled} tiles will be lost for good.\nUndo will not bring them back. Delete the layer?`
+        : `Delete layer "${name}"?`;
     if (!confirm(question)) return;
 
     const doc = new MapDoc(withLayerRemoved(state.doc.map, index));
@@ -471,5 +471,5 @@ export function mountEditor(game: Phaser.Game): void {
   // Чтобы ковырять редактор из консоли браузера: editor.state, editor.save()
   (globalThis as Record<string, unknown>).editor = { state, save: doSave, resize: doResize };
 
-  console.log('Редактор включён. ЛКМ — рисовать, ПКМ — стирать, Shift+ЛКМ — пипетка, Space+ЛКМ или СКМ — двигать карту.');
+  console.log('Editor on. LMB — paint, RMB — erase, Shift+LMB — eyedropper, Space+LMB or MMB — pan the map.');
 }

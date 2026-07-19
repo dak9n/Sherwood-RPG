@@ -48,10 +48,10 @@ export function validateCatalog(catalog: unknown): string[] {
   const errors: string[] = [];
   const c = catalog as TilesetCatalog;
 
-  if (!c || typeof c !== 'object') return ['каталог не объект'];
-  if (c.version !== 1) errors.push(`version каталога должен быть 1, а не ${JSON.stringify(c.version)}`);
+  if (!c || typeof c !== 'object') return ['catalog is not an object'];
+  if (c.version !== 1) errors.push(`catalog version must be 1, not ${JSON.stringify(c.version)}`);
   if (!Array.isArray(c.tilesets) || c.tilesets.length === 0) {
-    errors.push('в каталоге нет тайлсетов');
+    errors.push('catalog has no tilesets');
     return errors;
   }
 
@@ -59,16 +59,16 @@ export function validateCatalog(catalog: unknown): string[] {
   let expected = 1;
 
   for (const ts of c.tilesets) {
-    if (names.has(ts.name)) errors.push(`тайлсет ${ts.name} повторяется`);
+    if (names.has(ts.name)) errors.push(`tileset ${ts.name} is duplicated`);
     names.add(ts.name);
 
-    if (!(ts.tileCount > 0)) errors.push(`${ts.name}: нет тайлов`);
-    if (ts.columns <= 0) errors.push(`${ts.name}: сетка без колонок`);
+    if (!(ts.tileCount > 0)) errors.push(`${ts.name}: no tiles`);
+    if (ts.columns <= 0) errors.push(`${ts.name}: grid without columns`);
 
     // Главный инвариант: номера идут подряд, без дыр и нахлёстов. Иначе номер
     // тайла на карте начнёт указывать в чужой тайлсет.
     if (ts.firstId !== expected) {
-      errors.push(`${ts.name}: номер ${ts.firstId}, а по порядку должен быть ${expected}`);
+      errors.push(`${ts.name}: id ${ts.firstId}, but in order it must be ${expected}`);
     }
     expected = ts.firstId + ts.tileCount;
   }
