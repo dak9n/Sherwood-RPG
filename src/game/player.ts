@@ -82,21 +82,6 @@ const ICON_BLADE_LEN = 34;
 /** Насколько оружие крупнее штатного меча. 1 — точно его длины. */
 const HELD_SCALE = 1.15;
 
-/**
- * Взмах рисуем САМИ, а не по слою меча.
- *
- * На кадрах удара художник рисует не клинок, а смазанный след. Поза жёсткого меча
- * из мазка не выводится: концы «мазка» скачут, и меч то разворачивался на 180°
- * (сальто), то оказывался далеко от кисти (будто выброшен). Поэтому на удар берём
- * простую управляемую дугу вокруг руки — она гарантированно непрерывна.
- *
- * Клинок проходит SWING_ARC градусов, симметрично вокруг стороны удара.
- */
-const SWING_MS = 500;
-const SWING_ARC = 150;
-/** Насколько рука выносится вперёд в середине замаха, пикселей. */
-const SWING_REACH = 3;
-
 /** Угол полёта для стрельбы «от направления» (пробелом, без курсора). */
 const DIR_ANGLE: Record<Dir, number> = {
   right: 0,
@@ -190,8 +175,6 @@ export class Player {
   private ranged = false;
   /** Куда полетит стрела текущего замаха. Считаем при старте, чтобы курсор не «уехал». */
   private shotAngle = 0;
-  /** Когда начался взмах — по нему считается дуга оружия (см. swingPose). */
-  private attackAt = 0;
   /** Шанс крита (навыки, дерево L), доля 0..1. Множитель — critMul. Ставит сцена. */
   private critChance = 0;
   private critMul = 1.5;
@@ -202,8 +185,6 @@ export class Player {
   /** Оружие в руке: спрайт надетого меча/лука (набор weapon-icons). Ставит сцена. */
   private held?: Phaser.GameObjects.Image;
   private heldKey: string | null = null;
-  /** Когда начался текущий взмах — для дуги оружия в руке. */
-
   private tallObjects: Map<number, number> = new Map();
   private mapWidth = 0;
   private tileW = 16;
@@ -438,15 +419,16 @@ export class Player {
    * Кадр берём у самого спрайта (anims.currentFrame) — так оружие не может
    * разъехаться с телом: какой кадр показан, для того и взяли якорь.
    */
-  private updateHeld(_now: number): void {
+  private updateHeld(): void {
     if (!this.held) return;
     if (!this.heldKey || this.state === 'dead') {
       this.held.setVisible(false);
       return;
     }
 
-    // Удар рисуем своей дугой: по слою-мазку позу меча не восстановить (см. SWING_ARC).
-    const a = this.state === 'attack' ? this.swingPose(_now) : this.currentAnchor();
+    // Берём позу ПО ТЕКУЩЕМУ КАДРУ, в том числе на ударе. Раньше взмах шёл по
+    // таймеру и отставал от тела: тело живёт кадрами, а меч жил часами.
+    const a = this.currentAnchor();
     if (!a) {
       this.held.setVisible(false); // на этом кадре оружия не видно (замах из-за спины)
       return;
@@ -465,41 +447,6 @@ export class Player {
     // на замахе художник рисует смазанный след — длина там взлетает втрое, и меч
     // на долю секунды раздувался. Меч жёсткий: длина одна, меняются лишь место и
     // наклон. Масштаб ставится один раз в setHeldWeapon.
-  }
-
-  /**
-   * Поза оружия во время удара — считаем сами, дугой вокруг кисти.
-   *
-   * Рука берётся из СПОКОЙНОГО кадра того же направления: там меч нарисован
-   * нормально, и рукоять честно стоит в кисти. Клинок за время взмаха проходит
-   * SWING_ARC градусов через сторону удара — движение непрерывное, поэтому ни
-   * сальто, ни отрыва от руки быть не может.
-   */
-  private swingPose(now: number): Anchor | null {
-    const hand = this.handAnchor();
-    if (!hand) return null;
-
-    const t = Math.max(0, Math.min(1, (now - this.attackAt) / SWING_MS));
-    const strike = (this.shotAngle * 180) / Math.PI;
-    const angle = strike - SWING_ARC / 2 + SWING_ARC * t;
-
-    // Небольшой вынос руки вперёд к середине замаха — чтобы удар не был «из тела».
-    const reach = Math.sin(Math.PI * t) * SWING_REACH;
-    return {
-      x: hand.x + Math.cos(this.shotAngle) * reach,
-      y: hand.y + Math.sin(this.shotAngle) * reach,
-      angle,
-      len: hand.len,
-      behind: this.dir === 'up', // бьёт от нас — оружие уходит за спину
-    };
-  }
-
-  /** Где кисть для текущего направления: рукоять из первого кадра покоя. */
-  private handAnchor(): Anchor | null {
-    const table = ANCHORS.anims.idle;
-    if (!table) return null;
-    const row = DIRS_HERO.indexOf(this.dir);
-    return table.frames[row * table.cols] ?? null;
   }
 
   /** Якорь оружия для показанного сейчас кадра. null — кадра нет в таблице. */
@@ -572,7 +519,7 @@ export class Player {
     const now = this.scene.time.now;
     this.regen(delta, now);
     this.blinkWhileInvulnerable(now);
-    this.updateHeld(now); // оружие в руке идёт за героем (и прячется у мёртвого)
+    this.updateHeld(); // оружие в руке идёт за героем (и прячется у мёртвого)
 
     if (this.state === 'dead') return;
 
@@ -647,7 +594,6 @@ export class Player {
 
     this.heavySwing = heavy;
     this.shotAngle = angle;
-    this.attackAt = this.scene.time.now; // начало дуги оружия в руке
     this.didHit = false;
     this.state = 'attack';
     (this.sprite.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);

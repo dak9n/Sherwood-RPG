@@ -110,45 +110,59 @@ function anchorOf(img, fx, fy, bodyCenter) {
   }
   if (pts.length < 6) return null; // пары пикселей мало: считать наклон не по чему
 
-  const n = pts.length;
-  const mx = pts.reduce((s, p) => s + p[0], 0) / n;
-  const my = pts.reduce((s, p) => s + p[1], 0) / n;
-
-  // Главная ось облака точек — направление клинка (PCA на 2x2 ковариации).
-  let sxx = 0, syy = 0, sxy = 0;
-  for (const [x, y] of pts) {
-    const dx = x - mx, dy = y - my;
-    sxx += dx * dx; syy += dy * dy; sxy += dx * dy;
-  }
-  sxx /= n; syy /= n; sxy /= n;
-  const theta = 0.5 * Math.atan2(2 * sxy, sxx - syy);
-  const ux = Math.cos(theta), uy = Math.sin(theta);
-
-  // Проекции на ось дают два конца клинка. Рукоять — тот, что ближе к телу
-  // (рука на теле), остриё — дальний. Без тела ориентира нет, поэтому запасной
-  // вариант — ближе к центру кадра, где герой и стоит.
-  let tMin = Infinity, tMax = -Infinity;
-  for (const [x, y] of pts) {
-    const t = (x - mx) * ux + (y - my) * uy;
-    if (t < tMin) tMin = t;
-    if (t > tMax) tMax = t;
-  }
-  const endA = [mx + ux * tMin, my + uy * tMin];
-  const endB = [mx + ux * tMax, my + uy * tMax];
+  // РУКОЯТЬ — ближайший к телу пиксель клинка: именно там его и держат. Это
+  // надёжнее «конца главной оси»: на кадрах удара меч нарисован смазанным следом,
+  // и концы оси скакали — меч то разворачивался на 180°, то улетал от руки.
+  // Ближайшая к телу точка остаётся у кисти даже на мазке.
   const ref = bodyCenter ?? [FRAME / 2, FRAME / 2];
-  const dA = Math.hypot(endA[0] - ref[0], endA[1] - ref[1]);
-  const dB = Math.hypot(endB[0] - ref[0], endB[1] - ref[1]);
-  const grip = dA <= dB ? endA : endB;
-  const tip = grip === endA ? endB : endA;
+  let grip = pts[0], best = Infinity;
+  for (const p of pts) {
+    const d = Math.hypot(p[0] - ref[0], p[1] - ref[1]);
+    if (d < best) { best = d; grip = p; }
+  }
 
-  // Угол от рукояти к острию — под него поворачиваем иконку оружия.
+  // ОСТРИЁ — самый дальний от рукояти пиксель. Направление задано парой
+  // рукоять→остриё, поэтому неоднозначности на 180° больше нет в принципе.
+  let tip = grip, far = -1;
+  for (const p of pts) {
+    const d = Math.hypot(p[0] - grip[0], p[1] - grip[1]);
+    if (d > far) { far = d; tip = p; }
+  }
+
   const angle = (Math.atan2(tip[1] - grip[1], tip[0] - grip[0]) * 180) / Math.PI;
   return {
     x: Math.round(grip[0] * 10) / 10,
     y: Math.round(grip[1] * 10) / 10,
     angle: Math.round(angle * 10) / 10,
-    len: Math.round(Math.hypot(tip[0] - grip[0], tip[1] - grip[1]) * 10) / 10,
+    len: Math.round(far * 10) / 10,
   };
+}
+
+/** Разница углов, приведённая к [-180, 180]. */
+const angleDiff = (a, b) => ((((a - b) % 360) + 540) % 360) - 180;
+
+/**
+ * Гасит перевороты клинка внутри ряда (ряд = одно направление взгляда).
+ *
+ * Остриё ищется как самый дальний от рукояти пиксель, и на кадрах со смазанным
+ * следом оно перескакивает на другой конец мазка — клинок мгновенно
+ * разворачивается, и это читается как сальто. Настоящий меч за 1/16 секунды на
+ * 180° не переворачивается: если разница с предыдущим кадром больше порога,
+ * значит перескок — добавляем 180° обратно. Рукоять при этом не трогаем: она
+ * взята как ближайшая к телу точка и честно идёт за рукой.
+ */
+const FLIP_LIMIT = 120;
+function smoothAngles(frames) {
+  let prev = null;
+  return frames.map((f) => {
+    if (!f) return null;
+    let angle = f.angle;
+    if (prev !== null && Math.abs(angleDiff(angle, prev)) > FLIP_LIMIT) {
+      angle = ((angle + 180 + 540) % 360) - 180;
+    }
+    prev = angle;
+    return { ...f, angle: Math.round(angle * 10) / 10 };
+  });
 }
 
 /** Центр непрозрачных пикселей кадра — им пользуемся как «где тело». */
@@ -178,18 +192,22 @@ for (const anim of ANIMS) {
   const cols = imgF.width / FRAME;
   const rows = imgF.height / FRAME;
 
+  // Ряд — одно направление взгляда. Перевороты гасим по ряду целиком: только
+  // рядом с соседними кадрами и видно, что клинок «перескочил».
   const frames = [];
   let found = 0;
   for (let r = 0; r < rows; r++) {
+    const row = [];
     for (let c = 0; c < cols; c++) {
       const body = imgBody ? centroidOf(imgBody, c * FRAME, r * FRAME) : null;
       // Сначала меч спереди; пусто — пробуем «из-за спины» (герой смотрит вверх).
       const f = anchorOf(imgF, c * FRAME, r * FRAME, body);
       const b = imgB && !f ? anchorOf(imgB, c * FRAME, r * FRAME, body) : null;
       const a = f ?? b;
-      frames.push(a ? { ...a, behind: !f && !!b } : null);
+      row.push(a ? { ...a, behind: !f && !!b } : null);
       if (a) found++;
     }
+    frames.push(...smoothAngles(row));
   }
   out[anim.key] = { cols, rows, frames };
   console.log(`  ${anim.key}: ${cols}x${rows} = ${frames.length} кадров, с оружием ${found}`);
