@@ -1,7 +1,7 @@
 {
-  "name": "mynewgame",
+  "name": "sherwood-rpg",
   "version": "1.0.0",
-  "description": "Тайловая 2D-игра: карта леса на Phaser",
+  "description": "Sherwood RPG — a top-down forest action RPG on Phaser",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && vite build",

@@ -1,146 +1,146 @@
-# mynewgame
+# Sherwood RPG
 
-Тайловая 2D-игра про лес. TypeScript + [Phaser 3](https://phaser.io/), сборка через Vite. Со своим редактором карты — Tiled не нужен.
+A tile-based 2D game set in a forest. TypeScript + [Phaser 3](https://phaser.io/), built with Vite. Comes with its own map editor — no Tiled required.
 
-## Запуск
+## Running
 
 ```sh
 npm install
 npm run dev
 ```
 
-- http://localhost:5173 — игра
-- http://localhost:5173/?edit — игра с редактором
+- http://localhost:5173 — the game
+- http://localhost:5173/?edit — the game with the editor
 
-| Команда | Что делает |
+| Command | What it does |
 |---|---|
-| `npm run dev` | Дев-сервер |
-| `npm run build` | Проверка типов + сборка в `dist/` |
-| `npm test` | Тесты документа карты и изменения размера |
-| `npm run convert-map` | Разовая миграция из Tiled (см. ниже) |
+| `npm run dev` | Dev server |
+| `npm run build` | Type-check + build into `dist/` |
+| `npm test` | Tests for the map document and resizing |
+| `npm run convert-map` | One-off migration from Tiled (see below) |
 
-## Редактор
+## Editor
 
-Открывается по `?edit` и только на дев-сервере: в собранной игре его нет вообще.
+Opens with `?edit` and only on the dev server: it isn't part of the built game at all.
 
-| Действие | Как |
+| Action | How |
 |---|---|
-| Рисовать | ЛКМ |
-| Стирать | ПКМ |
-| **Обвести объект и взять его как кисть** | **Alt+протяжка** или кнопка «Выделить» и протяжка |
-| Взять объект целиком автоматически | Alt+клик (без протяжки) |
-| Взять ровно одну клетку | Shift+ЛКМ |
-| Сбросить выделение | Esc |
-| Двигать карту | WASD, средняя кнопка или Space+ЛКМ |
-| Увеличить/уменьшить | Колесо |
-| Отменить / вернуть | Ctrl+Z / Ctrl+Shift+Z |
-| Сохранить | Ctrl+S |
-| Сетка | клавиша G |
-| Ластик | клавиша E |
-| Новый слой | кнопка «＋» у заголовка «Слои» |
-| Переименовать слой | ✎ в строке слоя или двойной клик по имени |
-| Удалить слой | 🗑 в строке слоя (появляется по наведению) |
-| Переставить слой (z-order) | перетащить строку слоя вверх/вниз |
-| Затемнить неактивные слои | кнопка «Затемнить» |
+| Draw | Left mouse button |
+| Erase | Right mouse button |
+| **Outline an object and pick it up as a brush** | **Alt+drag** or the "Select" button plus a drag |
+| Pick up a whole object automatically | Alt+click (no drag) |
+| Pick up exactly one cell | Shift+Left mouse button |
+| Clear the selection | Esc |
+| Pan the map | WASD, middle mouse button, or Space+Left mouse button |
+| Zoom in/out | Mouse wheel |
+| Undo / redo | Ctrl+Z / Ctrl+Shift+Z |
+| Save | Ctrl+S |
+| Grid | G key |
+| Eraser | E key |
+| New layer | The "＋" button next to the "Layers" heading |
+| Rename a layer | ✎ in the layer row, or double-click the name |
+| Delete a layer | 🗑 in the layer row (appears on hover) |
+| Reorder a layer (z-order) | Drag the layer row up/down |
+| Dim inactive layers | The "Dim" button |
 
-Эта же шпаргалка открывается прямо в редакторе кнопкой «?». Добавляешь новый хоткей — впиши его в [src/editor/ui/help.ts](src/editor/ui/help.ts).
+This same cheat sheet opens right inside the editor via the "?" button. When you add a new hotkey, write it into [src/editor/ui/help.ts](src/editor/ui/help.ts).
 
-**Кисть — штамп.** Взять кусок карты как кисть можно тремя способами, и они отличаются:
+**The brush is a stamp.** There are three ways to pick up a piece of the map as a brush, and they differ:
 
-- **Alt+протяжка по карте** (или кнопка «Выделить») — обводишь дерево рамкой и получаешь ровно его. Не понравилось — обводишь заново, Esc сбрасывает. Это основной способ.
-- **Alt+клик** — редактор сам обходит связные тайлы и берёт объект целиком. Быстро, но на плотной карте кроны соседних деревьев соприкасаются, и тогда возьмётся вся группа. Если объект слился с фоном (трава, вода), берётся одна клетка — обводите рамкой.
-- **Протяжка в палитре** — обвести тайлы прямо в тайлсете.
+- **Alt+drag across the map** (or the "Select" button) — you frame a tree with a box and get exactly that. Don't like it? Frame it again; Esc clears it. This is the main method.
+- **Alt+click** — the editor walks the connected tiles itself and grabs the whole object. Fast, but on a dense map the crowns of neighboring trees touch, and then the whole group gets picked up. If the object blends into the background (grass, water), a single cell is taken — use the box instead.
+- **Drag in the palette** — outline tiles right in the tileset.
 
-Пустые клетки внутри рамки остаются пустыми: кисть не затрёт ими то, на что её кладут.
+Empty cells inside the box stay empty: the brush won't paint over whatever you place it on with them.
 
-**Размер карты** меняется кнопкой «Размер». Спрашивается, сколько тайлов добавить с каждой стороны (отрицательное число обрежет). Если при обрезке что-то потеряется, редактор скажет сколько и на каких слоях — до того, как это случится.
+**The map size** is changed with the "Size" button. It asks how many tiles to add on each side (a negative number crops). If cropping would lose anything, the editor tells you how much and on which layers — before it happens.
 
-**«Глаз» у слоя гасит его только на экране** и в файл не пишется. Поле `visible` — часть формата, игра его читает: если бы «глаз» писался в файл, то, погасив слой чтобы заглянуть под него, вы бы отправили другу карту без объектов.
+**A layer's "eye" hides it only on screen** and isn't written to the file. The `visible` field is part of the format and the game reads it: if the "eye" were written to the file, then hiding a layer to peek underneath it would send your friend a map with the objects missing.
 
-**Слои** добавляются кнопкой «＋» (новый слой встаёт над активным), удаляются корзиной в строке, переименовываются двойным кликом по имени. Имена уникальны и непустые — иначе карта не пройдёт проверку. Добавление и удаление, как и смена размера, пересобирают карту и очищают историю Undo; переименование — нет. Последний слой удалить нельзя, а удаление любого слоя спрашивает подтверждение — для слоя с тайлами ещё и с числом тех, что потеряются.
+**Layers** are added with the "＋" button (the new layer goes above the active one), deleted with the trash can in the row, and renamed by double-clicking the name. Names are unique and non-empty — otherwise the map won't pass validation. Adding and deleting, like resizing, rebuild the map and clear the Undo history; renaming does not. You can't delete the last layer, and deleting any layer asks for confirmation — for a layer with tiles it also shows the count of those that will be lost.
 
-**Несколько карт.** При входе в редактор (`?edit`) открывается стартовый экран: выбрать карту из списка или создать новую. Каждая карта — свой файл `public/assets/maps/<имя>.json`. `forest.json` — карта игры (её всегда грузит игра), остальные карты игру не трогают. Кнопка «Сохранить как» пишет текущую карту в новый файл, «Карты» возвращает к списку. Новая карта берёт тайлсеты из `forest`, чтобы сразу было чем рисовать. Имя карты становится именем файла, поэтому только буквы/цифры/дефис/подчёркивание — сервер это проверяет ещё раз, чтобы имя не увело запись за пределы папки карт.
+**Multiple maps.** Entering the editor (`?edit`) opens a start screen: pick a map from the list or create a new one. Each map is its own file, `public/assets/maps/<name>.json`. `forest.json` is the game's map (the game always loads it); the other maps don't affect the game. The "Save As" button writes the current map to a new file, and "Maps" returns you to the list. A new map takes its tilesets from `forest` so you have something to draw with right away. The map's name becomes the file name, so only letters/digits/hyphen/underscore are allowed — the server checks this once more so the name can't lead the write outside the maps folder.
 
-### Что защищает нарисованное
+### What protects what you've drawn
 
-Порядок такой, от первого рубежа к последнему:
+The order runs from the first line of defense to the last:
 
-1. **Undo** в памяти (200 штрихов).
-2. **Вопрос при закрытии вкладки**, если есть несохранённое. Это не формальность: правка любого файла в `src/` перезагружает страницу, а вы будете дорабатывать редактор с открытой картой.
-3. **Проверка карты** перед отправкой и ещё раз на сервере. Битая карта не доедет до файла.
-4. **Бэкап** в `.map-backups/` перед каждой записью, хранятся последние 20.
-5. **Атомарная запись**: сначала временный файл, потом переименование. Прерванное сохранение не оставит обрубок вместо карты.
-6. **Защита от затирания**: если файл на диске изменился с момента загрузки (git, друг, конвертер), сохранение остановится и спросит, что делать. Оно не предложит «перезагрузить и потерять всё» — можно записать свою версию поверх, чужая уйдёт в бэкап.
-7. **git** — формат кладёт каждый слой на свою строку, поэтому диффы читаемы, а правки в разные слои сливаются сами.
+1. **Undo** in memory (200 strokes).
+2. **A prompt when closing the tab** if there's anything unsaved. This isn't a formality: editing any file in `src/` reloads the page, and you'll be improving the editor with a map open.
+3. **Map validation** before sending and once more on the server. A broken map won't make it into the file.
+4. **A backup** in `.map-backups/` before every write; the last 20 are kept.
+5. **Atomic writes**: first a temporary file, then a rename. An interrupted save won't leave a stub in place of the map.
+6. **Overwrite protection**: if the file on disk has changed since it was loaded (git, a friend, the converter), the save stops and asks what to do. It won't offer "reload and lose everything" — you can write your version over the top, and theirs goes to a backup.
+7. **git** — the format puts each layer on its own line, so diffs are readable and edits to different layers merge on their own.
 
-## Карта
+## Map
 
-**Карта игры — `public/assets/maps/forest.json`.** Свой формат, описан в [src/map/types.ts](src/map/types.ts). Редактор умеет открывать и создавать другие карты рядом (см. «Несколько карт» выше), игра же всегда грузит `forest`.
+**The game's map is `public/assets/maps/forest.json`.** It's a custom format, described in [src/map/types.ts](src/map/types.ts). The editor can open and create other maps alongside it (see "Multiple maps" above), but the game always loads `forest`.
 
-48×32 тайла по 16 пикселей, 26 слоёв, 10 тайлсетов, 624 анимированных тайла (вода и кувшинки).
+48×32 tiles of 16 pixels each, 26 layers, 10 tilesets, 624 animated tiles (water and water lilies).
 
-- слои — плоские массивы `width * height`: `0` — пусто, иначе глобальный номер тайла;
-- глобальный номер = `firstId` тайлсета + номер тайла внутри него;
-- в трёх старших битах — флаги поворота и отражения (кодировка Tiled), см. [src/map/gid.ts](src/map/gid.ts);
-- тайлсеты лежат в общем каталоге `public/assets/tilesets.json` — один список на все карты, с анимациями. В файле карты их нет: они подставляются при загрузке.
+- layers are flat `width * height` arrays: `0` means empty, otherwise a global tile number;
+- global number = the tileset's `firstId` + the tile's number within it;
+- the top three bits hold rotation and mirror flags (Tiled's encoding), see [src/map/gid.ts](src/map/gid.ts);
+- tilesets live in a shared catalog, `public/assets/tilesets.json` — one list for all maps, with animations. They aren't in the map file: they're substituted in at load time.
 
-### Тайлсеты — общие для всех карт
+### Tilesets — shared across all maps
 
-Список тайлсетов лежит в `public/assets/tilesets.json`, один на все карты. Добавить новый:
+The list of tilesets lives in `public/assets/tilesets.json`, one for all maps. To add a new one:
 
 ```sh
-node tools/add-tileset.mjs путь/к/картинке.png
+node tools/add-tileset.mjs path/to/image.png
 ```
 
-Картинка копируется в `public/assets/tilesets/`, сетка считается по её размеру, тайлсет дописывается в каталог — и появляется в палитре **сразу во всех картах**.
+The image is copied into `public/assets/tilesets/`, the grid is computed from its size, the tileset is appended to the catalog — and it shows up in the palette **across all maps at once**.
 
-**Руками в json это делать нельзя.** Номер первого тайла должен продолжать нумерацию без дыр и пересечений: иначе номера уже нарисованных тайлов начнут указывать в чужой тайлсет, и карта поедет. Скрипт следит за этим, а `validateCatalog` проверяет инвариант.
+**You must not do this by hand in the json.** The first tile's number has to continue the numbering with no gaps or overlaps: otherwise the numbers of tiles you've already drawn will start pointing into the wrong tileset, and the map will go haywire. The script keeps track of this, and `validateCatalog` checks the invariant.
 
-Раньше каждая карта носила свой список внутри. С одной картой это работало, с несколькими — нет: тайлсет приходилось добавлять в каждую руками (на этом уже обожглись — дороги появились только в `forest`), а при добавлении в разном порядке номера разъехались бы, и один номер значил бы разное в разных картах.
+Previously each map carried its own list inside it. That worked with one map, but not with several: a tileset had to be added to each one by hand (we already got burned by this — roads only appeared in `forest`), and adding them in different orders would have thrown the numbers off, so one number would mean different things in different maps.
 
-Карты версии 2 со своим списком внутри продолжают работать: у них список важнее каталога, иначе их номера тайлов поехали бы.
+Version-2 maps with their own list inside still work: for them the list takes precedence over the catalog, otherwise their tile numbers would go off the rails.
 
-### Как это устроено внутри
+### How it works under the hood
 
-**Документ — источник правды, Phaser — односторонняя проекция.** Из тайлов Phaser карта не читается никогда, и это не вкусовщина: анимация каждый кадр переписывает `Tile.index` в 624 ячейках, и авторский номер стоит там лишь около 17% времени. Сохранение, собранное обходом тайлов, запекло бы в файл случайные кадры воды — и заметили бы это недели спустя, по испорченной карте в git.
+**The document is the source of truth; Phaser is a one-way projection.** The map is never read back from Phaser tiles, and that's not a matter of taste: every frame the animation rewrites `Tile.index` in 624 cells, and the authored number is only there about 17% of the time. A save assembled by walking the tiles would bake random water frames into the file — and you'd notice weeks later, from the corrupted map in git.
 
-Поэтому правки идут только через `EditorState.apply`, а на экран их кладёт `applyCell` — единственная функция, которой можно менять тайлы.
+That's why edits go only through `EditorState.apply`, and `applyCell` puts them on screen — the only function allowed to change tiles.
 
-## Откуда взялась карта
+## Where the map came from
 
-Изначально карта рисовалась в Tiled и лежит в `Tiled_files/`. Скрипт [tools/convert-map.mjs](tools/convert-map.mjs) один раз перевёл её в наш формат: развернул чанки, встроил внешний тайлсет `.tsx`, обрезал по нарисованному.
+The map was originally drawn in Tiled and lives in `Tiled_files/`. The [tools/convert-map.mjs](tools/convert-map.mjs) script converted it into our format once: it unpacked the chunks, embedded the external `.tsx` tileset, and cropped to what was drawn.
 
-**Запускать его больше не нужно.** Он пересчитывает размер карты по границам чанков Tiled и вернёт её к 48×32, выкинув всё, что вы дорисовали. Скрипт отказывается работать, если `forest.json` уже есть; флаг `--force` эту защиту снимает — не используйте его.
+**You don't need to run it anymore.** It recomputes the map size from Tiled's chunk boundaries and would revert it to 48×32, throwing away everything you've added since. The script refuses to run if `forest.json` already exists; the `--force` flag removes that protection — don't use it.
 
-`Tiled_files/` и `PSD/` остаются архивом исходников. Игра их не читает.
+`Tiled_files/` and `PSD/` remain a source archive. The game doesn't read them.
 
-## Структура
+## Structure
 
-Игра и редактор — **две отдельные сцены**, которые никогда не запускаются вместе: `?edit` включает `EditorScene`, без него работает `GameScene`. Общего у них ровно две вещи: `MapScene` (загрузить и нарисовать карту) и формат карты в `src/map/`.
+The game and the editor are **two separate scenes** that never run together: `?edit` turns on `EditorScene`, and without it `GameScene` runs. They share exactly two things: `MapScene` (load and draw the map) and the map format in `src/map/`.
 
-| Путь | Что это | Чьё |
+| Path | What it is | Whose |
 |---|---|---|
-| `src/game/` | Игрок, геймплей | **игра** |
-| `src/scenes/GameScene.ts` | Сцена игры | **игра** |
-| `src/editor/` | Редактор целиком (в прод-сборку не попадает) | **редактор** |
-| `src/scenes/EditorScene.ts` | Сцена редактора | **редактор** |
-| `tools/save-map-plugin.ts` | Приём карты от редактора, запись на диск (dev) | **редактор** |
-| `src/scenes/MapScene.ts` | Загрузка карты, тайлмап, анимация, камера мышью | **общее** |
-| `src/map/` | Формат, документ, проекция в Phaser, ресайз, проверка | **общее** |
-| `src/main.ts` | Точка входа: выбирает сцену | **общее** |
-| `public/assets/maps/` | Карта | **общее** |
-| `public/assets/characters/` | Спрайты персонажей | арт |
-| `tools/convert-map.mjs`, `tools/build-hero.py` | Разовые скрипты подготовки ассетов | — |
-| `Tiled_files/`, `PSD/` | Архив исходников | — |
+| `src/game/` | Player, gameplay | **game** |
+| `src/scenes/GameScene.ts` | The game scene | **game** |
+| `src/editor/` | The entire editor (not included in the prod build) | **editor** |
+| `src/scenes/EditorScene.ts` | The editor scene | **editor** |
+| `tools/save-map-plugin.ts` | Receives the map from the editor, writes to disk (dev) | **editor** |
+| `src/scenes/MapScene.ts` | Map loading, tilemap, animation, mouse camera | **shared** |
+| `src/map/` | Format, document, projection into Phaser, resize, validation | **shared** |
+| `src/main.ts` | Entry point: picks the scene | **shared** |
+| `public/assets/maps/` | The map | **shared** |
+| `public/assets/characters/` | Character sprites | art |
+| `tools/convert-map.mjs`, `tools/build-hero.py` | One-off asset-prep scripts | — |
+| `Tiled_files/`, `PSD/` | Source archive | — |
 
-## Совместная разработка
+## Collaborative development
 
-**Работайте в своих папках — тогда git не столкнёт вас лбами.** Кто делает геймплей, живёт в `src/game/` и `GameScene`. Кто делает редактор — в `src/editor/` и `EditorScene`. Эти файлы не пересекаются, и их можно править одновременно.
+**Work in your own folders — then git won't knock your heads together.** Whoever does gameplay lives in `src/game/` and `GameScene`. Whoever does the editor lives in `src/editor/` and `EditorScene`. These files don't overlap and can be edited at the same time.
 
-**Правка в `общее` задевает обоих.** `MapScene`, `src/map/` и `main.ts` читают и игра, и редактор: тут стоит сказать друг другу, а не молча коммитить. Раньше игра и редактор жили в одной сцене — и первое же столкновение вышло именно там: оба повесили на WASD разное (панораму камеры и ходьбу персонажа), git слить это не смог, потому что конфликт был не текстовый, а смысловой.
+**An edit to `shared` touches both of you.** `MapScene`, `src/map/`, and `main.ts` are read by both the game and the editor: here it's worth telling each other rather than committing silently. The game and the editor used to live in one scene — and the very first collision happened right there: both bound something different to WASD (camera panning and character movement), and git couldn't merge it, because the conflict wasn't textual but semantic.
 
-**Карта — общая, и слить её правки git не сможет.** Формат кладёт каждый слой на отдельную строку, поэтому правки в *разные* слои сливаются сами, а git показывает, какой слой изменился. Но если вы оба правите **один слой** — договаривайтесь, кто его держит.
+**The map is shared, and git won't be able to merge its edits.** The format puts each layer on its own line, so edits to *different* layers merge on their own, and git shows which layer changed. But if you're both editing **the same layer** — agree on who holds it.
 
-Если друг сохранил карту раньше вас, ваше сохранение упрётся в проверку и предложит выбор — чужая версия в любом случае уедет в `.map-backups/`.
+If a friend saved the map before you, your save will hit the validation check and offer a choice — either way, their version goes to `.map-backups/`.
 
-PSD и Aseprite не сливаются вообще: git оставит чей-то один файл целиком.
+PSD and Aseprite files don't merge at all: git will keep one person's file whole.
