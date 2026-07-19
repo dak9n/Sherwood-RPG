@@ -10,6 +10,13 @@ import { cleanName } from './game/save';
 /** Игра и редактор — две разные сцены, вместе они не запускаются никогда. */
 const editMode = import.meta.env.DEV && new URLSearchParams(location.search).has('edit');
 
+/**
+ * ?anim — редактор поз оружия. Ни игру, ни Phaser не поднимает: там нужен один
+ * кадр под увеличением и мышь, а не игровой цикл. Динамический импорт — чтобы
+ * редактор не попал в собранную игру.
+ */
+const animMode = import.meta.env.DEV && new URLSearchParams(location.search).has('anim');
+
 function bootGame(): void {
   const game = new Phaser.Game({
     type: Phaser.AUTO,
@@ -47,6 +54,13 @@ function bootGame(): void {
 }
 
 async function main(): Promise<void> {
+  // Редактор анимации — дев-инструмент, игру не поднимает вовсе.
+  if (animMode) {
+    const { mountAnimEditor } = await import('./anim/mount');
+    await mountAnimEditor();
+    return;
+  }
+
   // Редактор — дев-инструмент для правки карт, за окном входа не прячем.
   if (editMode) {
     bootGame();
