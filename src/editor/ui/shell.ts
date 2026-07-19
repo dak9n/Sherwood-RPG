@@ -63,6 +63,31 @@ const CSS = `
   .ed-layer .eye { width: 18px; text-align: center; opacity: .75; }
   .ed-layer .eye:hover { opacity: 1; }
   .ed-layer.hidden .nm { opacity: .4; text-decoration: line-through; }
+  /* Слой в группе: отступ как у вложенности папок; спрятанная группа гасит слои. */
+  .ed-layer.in-grp { padding-left: 24px; }
+  .ed-layer.grp-off .nm { opacity: .35; }
+  .ed-layer .grp { width: 16px; text-align: center; opacity: 0; cursor: pointer; }
+  .ed-layer:hover .grp { opacity: .5; }
+  .ed-layer .grp:hover { opacity: 1; }
+
+  /* Заголовок группы — папка, как в Photoshop: темнее строк, жирнее, со стрелкой. */
+  .ed-group {
+    display: flex; align-items: center; gap: 6px; padding: 3px 8px 3px 4px; cursor: pointer;
+    background: #20272c; border-top: 1px solid #0d1114; border-bottom: 1px solid #0d1114;
+    font-weight: 600;
+  }
+  .ed-group:hover { background: #2a3237; }
+  .ed-group .tri { width: 14px; text-align: center; opacity: .7; }
+  .ed-group .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ed-group .ct { color: #6b7c85; font-variant-numeric: tabular-nums; }
+  .ed-group .eye { width: 18px; text-align: center; opacity: .75; }
+  .ed-group .eye:hover { opacity: 1; }
+  .ed-group.off .nm { opacity: .4; }
+  .ed-group .edit, .ed-group .del { width: 16px; text-align: center; opacity: 0; cursor: pointer; }
+  .ed-group:hover .edit, .ed-group:hover .del { opacity: .5; }
+  .ed-group .edit:hover, .ed-group .del:hover { opacity: 1; }
+  /* Подсветка, когда строку слоя тащат над заголовком: бросишь — слой ляжет в папку. */
+  .ed-group.drop-into { background: #33505e; box-shadow: inset 0 0 0 1px #57c767; }
   /* Карандаш и корзина проявляются по наведению на строку: постоянные иконки на 26 слоёв — визуальный шум. */
   .ed-layer .edit, .ed-layer .del { width: 16px; text-align: center; opacity: 0; cursor: pointer; }
   .ed-layer:hover .edit, .ed-layer:hover .del { opacity: .5; }

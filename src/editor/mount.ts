@@ -1,7 +1,10 @@
 import Phaser from 'phaser';
 import { MapDoc } from '../map/doc';
 import { resizeMap } from '../map/resize';
-import { withLayerAdded, withLayerRemoved, withLayerMoved, suggestLayerName } from '../map/layers';
+import {
+  withLayerAdded, withLayerRemoved, withLayerMoved, suggestLayerName,
+  withLayerGrouped, snapGroupToNeighbors,
+} from '../map/layers';
 import { EditorState } from './state';
 import type { CellEdit } from './edit';
 import { installTools, type Tool } from './tools';
@@ -80,6 +83,9 @@ export function mountEditor(game: Phaser.Game): void {
     onDelete: deleteLayer,
     onRename: (i, name) => state.renameLayer(i, name),
     onReorder: reorderLayer,
+    onAssignGroup: assignGroup,
+    onRenameGroup: (from, to) => state.renameGroup(from, to),
+    onDisbandGroup: disbandGroup,
   });
   buildPalette(shell.palette, state);
   shell.addLayer.onclick = addLayer;
@@ -370,10 +376,40 @@ export function mountEditor(game: Phaser.Game): void {
 
   function reorderLayer(from: number, to: number): void {
     if (from === to) return; // бросили на то же место — ничего не делаем
-    const doc = new MapDoc(withLayerMoved(state.doc.map, from, to));
+    // После перестановки поправляем группу слоя по соседям: бросил между членами
+    // папки — вошёл в неё, утащил прочь — вышел (см. snapGroupToNeighbors).
+    const doc = new MapDoc(snapGroupToNeighbors(withLayerMoved(state.doc.map, from, to), to));
     scene.rebuild(doc);
     state.relayer(doc, scene.view, to); // перемещённый слой остаётся активным
     passOverlay.relayer(doc, scene.view);
+  }
+
+  /**
+   * Положить слой в группу (null — вынуть). Если группа уже существует, слой
+   * переезжает в массиве вплотную к ней — это перестановка, то есть структурная
+   * правка с пересборкой, как reorderLayer. Без переезда (первая метка группы
+   * или снятие метки) хватает лёгкого пути: подпись поменялась, тайлы на местах.
+   */
+  function assignGroup(index: number, group: string | null): void {
+    if (group === null) {
+      state.setLayerGroupLabel(index, null);
+      return;
+    }
+    const r = withLayerGrouped(state.doc.map, index, group);
+    if (r.index === index) {
+      // Порядок не менялся — метку можно поставить прямо в документе.
+      state.setLayerGroupLabel(index, group);
+      return;
+    }
+    const doc = new MapDoc(r.map);
+    scene.rebuild(doc);
+    state.relayer(doc, scene.view, r.index); // слой остаётся активным на новом месте
+    passOverlay.relayer(doc, scene.view);
+  }
+
+  function disbandGroup(name: string): void {
+    if (!confirm(`Распустить группу «${name}»? Слои останутся на карте, исчезнет только папка.`)) return;
+    state.disbandGroup(name);
   }
 
   // Горячие клавиши

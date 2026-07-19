@@ -80,3 +80,126 @@ export function reorderTarget(from: number, over: number, insertBelow: boolean, 
   const vTo = vInsert > vFrom ? vInsert - 1 : vInsert;
   return n - 1 - vTo;
 }
+
+// --- Группы слоёв (как папки в Photoshop) ---
+//
+// Группа — это метка Layer.group, отдельного списка групп нет: группа существует,
+// пока на неё ссылается хоть один слой. Слои одной группы держатся в массиве
+// подряд (это гарантируют withLayerGrouped и snapGroupToNeighbors), поэтому
+// панель может нарисовать их одной пачкой под общим заголовком, не соврав про
+// z-order. Игра поле group не читает вовсе.
+
+/** Отрезок панели: подряд идущие слои одной группы (или один слой без группы). */
+export interface LayerRun {
+  /** null — слой вне групп. */
+  group: string | null;
+  /** Индексы слоёв отрезка по возрастанию (порядок массива, снизу вверх). */
+  indices: number[];
+}
+
+/**
+ * Разбивает слои на отрезки для панели: подряд идущие слои одной группы — один
+ * отрезок, слой без группы — отрезок сам по себе. Если слои группы почему-то
+ * оказались разорваны (старый файл, ручная правка), каждая непрерывная часть
+ * станет своим отрезком — панель честно покажет разрыв, а не соврёт про порядок.
+ */
+export function layerRuns(layers: Layer[]): LayerRun[] {
+  const runs: LayerRun[] = [];
+  for (let i = 0; i < layers.length; i++) {
+    const group = layers[i].group ?? null;
+    const last = runs[runs.length - 1];
+    if (group !== null && last && last.group === group) last.indices.push(i);
+    else runs.push({ group, indices: [i] });
+  }
+  return runs;
+}
+
+/** Имена групп карты в порядке первого появления (снизу вверх). */
+export function groupNames(map: GameMap): string[] {
+  const names: string[] = [];
+  for (const l of map.layers) {
+    if (l.group && !names.includes(l.group)) names.push(l.group);
+  }
+  return names;
+}
+
+/** Проверка имени группы: пустое — ошибка. Тёзки слоёв не мешают: пространства имён разные. */
+export function groupNameError(name: string): string | null {
+  return name.trim() ? null : 'имя группы не может быть пустым';
+}
+
+/**
+ * Кладёт слой в группу (group) или убирает из группы (null). Чистая.
+ *
+ * Если в группе уже есть слои, слой ПЕРЕЕЗЖАЕТ в массиве вплотную к ним — поверх
+ * верхнего члена группы, как это делает Photoshop при перетаскивании в папку:
+ * иначе группа была бы разорвана и панель не смогла бы показать её одной пачкой.
+ * Возвращает также новый индекс слоя.
+ */
+export function withLayerGrouped(map: GameMap, index: number, group: string | null): { map: GameMap; index: number } {
+  const layers = map.layers.slice();
+  const strip = ({ group: _g, ...rest }: Layer): Layer => rest;
+
+  if (group === null) {
+    layers[index] = strip(layers[index]);
+    return { map: { ...map, layers }, index };
+  }
+
+  const topMember = layers.reduce((top, l, i) => (i !== index && l.group === group ? i : top), -1);
+  if (topMember < 0) {
+    // Группа новая (или пустая): слой остаётся на месте и открывает её собой.
+    layers[index] = { ...strip(layers[index]), group };
+    return { map: { ...map, layers }, index };
+  }
+
+  const [moved] = layers.splice(index, 1);
+  // splice выше сдвинул индексы: если слой стоял ниже верхнего члена, тот съехал на 1.
+  const to = index < topMember ? topMember : topMember + 1;
+  layers.splice(to, 0, { ...strip(moved), group });
+  return { map: { ...map, layers }, index: to };
+}
+
+/** Переименовывает группу у всех её слоёв. Чистая. */
+export function withGroupRenamed(map: GameMap, from: string, to: string): GameMap {
+  const layers = map.layers.map((l) => (l.group === from ? { ...l, group: to } : l));
+  return { ...map, layers };
+}
+
+/** Распускает группу: слои остаются на местах, метка снимается. Чистая. */
+export function withGroupDisbanded(map: GameMap, name: string): GameMap {
+  const layers = map.layers.map((l) => {
+    if (l.group !== name) return l;
+    const { group: _g, ...rest } = l;
+    return rest;
+  });
+  return { ...map, layers };
+}
+
+/**
+ * Поправить группу слоя после ручной перестановки (drag&drop строк):
+ * — бросили МЕЖДУ двумя слоями одной группы — слой входит в неё (как в папку);
+ * — утащили прочь от своей группы (ни одного соседа из неё) — слой выходит;
+ * — иначе группа не меняется (например, бросили у края своей же группы).
+ * Так слои группы всегда остаются подряд. Чистая; map уже с новым порядком.
+ */
+export function snapGroupToNeighbors(map: GameMap, index: number): GameMap {
+  const layers = map.layers;
+  const prev = layers[index - 1]?.group ?? null;
+  const next = layers[index + 1]?.group ?? null;
+  const own = layers[index].group ?? null;
+
+  // Только правим метку, НЕ двигаем слой: игрок уже поставил его куда хотел,
+  // а withLayerGrouped утащил бы слой на верх группы, слома́в место броска.
+  if (prev !== null && prev === next && own !== prev) {
+    const out = layers.slice();
+    out[index] = { ...out[index], group: prev };
+    return { ...map, layers: out };
+  }
+  if (own !== null && prev !== own && next !== own) {
+    const out = layers.slice();
+    const { group: _g, ...rest } = out[index];
+    out[index] = rest;
+    return { ...map, layers: out };
+  }
+  return map;
+}

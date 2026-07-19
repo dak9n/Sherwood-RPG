@@ -74,6 +74,12 @@ export function validateMap(map: unknown): string[] {
     if (names.has(name)) errors.push(`слой ${name} повторяется`);
     names.add(name);
 
+    // Группа (папка панели слоёв) — поле опциональное, но раз есть, то непустая
+    // строка: пустое имя группы не нарисовать в панели и не переименовать.
+    if (layer.group !== undefined && (typeof layer.group !== 'string' || !layer.group)) {
+      errors.push(`слой ${name}: group должна быть непустой строкой`);
+    }
+
     if (!Array.isArray(layer.data)) {
       errors.push(`слой ${name}: data не массив`);
       continue;

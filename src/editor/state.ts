@@ -10,10 +10,13 @@ export type { CellEdit };
  * бы на F5. Поэтому localStorage, как и размеры панелей.
  */
 const HIDDEN_KEY = 'editor-hidden-layers';
+/** Скрытые «глазом» группы и свёрнутые группы — те же правила, что и у слоёв. */
+const HIDDEN_GROUPS_KEY = 'editor-hidden-groups';
+const COLLAPSED_GROUPS_KEY = 'editor-collapsed-groups';
 
-function loadHiddenNames(mapName: string): string[] {
+function loadNames(key: string, mapName: string): string[] {
   try {
-    const all = JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? '{}');
+    const all = JSON.parse(localStorage.getItem(key) ?? '{}');
     const names = all?.[mapName];
     return Array.isArray(names) ? names.filter((n): n is string => typeof n === 'string') : [];
   } catch {
@@ -21,12 +24,12 @@ function loadHiddenNames(mapName: string): string[] {
   }
 }
 
-function saveHiddenNames(mapName: string, names: string[]): void {
+function saveNames(key: string, mapName: string, names: string[]): void {
   try {
-    const all = JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? '{}') ?? {};
+    const all = JSON.parse(localStorage.getItem(key) ?? '{}') ?? {};
     if (names.length) all[mapName] = names;
     else delete all[mapName]; // не копим пустышки по картам без скрытых слоёв
-    localStorage.setItem(HIDDEN_KEY, JSON.stringify(all));
+    localStorage.setItem(key, JSON.stringify(all));
   } catch {
     // Приватный режим или переполненное хранилище — скрытие просто не запомнится.
   }
@@ -68,6 +71,15 @@ export class EditorState {
   private hidden = new Set<string>();
 
   /**
+   * Группы, скрытые «глазом» на заголовке, и группы, свёрнутые в панели.
+   * По имени группы, только на экране, в файл не пишутся — те же правила,
+   * что у скрытых слоёв. Скрытие группы НЕ трогает «глаза» её слоёв: показал
+   * группу обратно — и личные глаза слоёв остались как были (как в Photoshop).
+   */
+  private hiddenGroups = new Set<string>();
+  private collapsedGroups = new Set<string>();
+
+  /**
    * Кому сказать, что проходимость клетки изменилась, — накладке в редакторе.
    * Ставит mount. Здесь, а не внутри apply: state не знает про Phaser.
    */
@@ -83,7 +95,9 @@ export class EditorState {
     // Возвращаем скрытие прошлой сессии. Слои Phaser только что созданы и все
     // видимые, а «глаз» — запомненная настройка вида: без этого спрятанные слои
     // проявлялись бы при каждой перезагрузке вкладки.
-    for (const name of loadHiddenNames(mapName)) this.hidden.add(name);
+    for (const name of loadNames(HIDDEN_KEY, mapName)) this.hidden.add(name);
+    for (const name of loadNames(HIDDEN_GROUPS_KEY, mapName)) this.hiddenGroups.add(name);
+    for (const name of loadNames(COLLAPSED_GROUPS_KEY, mapName)) this.collapsedGroups.add(name);
     this.applyHidden();
   }
 
@@ -170,15 +184,20 @@ export class EditorState {
     this.emit();
   }
 
-  /** Скрыт ли слой «глазом». */
+  /** Скрыт ли слой ЕГО СОБСТВЕННЫМ «глазом» (скрытие группы сюда не входит). */
   isHidden(index: number): boolean {
     return this.hidden.has(this.doc.layers[index]?.name);
   }
 
-  /** Виден ли слой на экране: и по формату, и по «глазу». */
+  /** Скрыт ли слой на экране с учётом всего: своего глаза И глаза его группы. */
+  private effectivelyHidden(layer: { name: string; group?: string }): boolean {
+    return this.hidden.has(layer.name) || (!!layer.group && this.hiddenGroups.has(layer.group));
+  }
+
+  /** Виден ли слой на экране: по формату, по своему «глазу» и по «глазу» группы. */
   isVisible(index: number): boolean {
     const layer = this.doc.layers[index];
-    return !!layer && layer.visible && !this.hidden.has(layer.name);
+    return !!layer && layer.visible && !this.effectivelyHidden(layer);
   }
 
   /**
@@ -218,7 +237,7 @@ export class EditorState {
   applyHidden(): void {
     for (let i = 0; i < this.doc.layers.length; i++) {
       const layer = this.doc.layers[i];
-      this.view.layers[i]?.setVisible(layer.visible && !this.hidden.has(layer.name));
+      this.view.layers[i]?.setVisible(layer.visible && !this.effectivelyHidden(layer));
     }
   }
 
@@ -228,7 +247,84 @@ export class EditorState {
    */
   persistHidden(): void {
     const alive = new Set(this.doc.layers.map((l) => l.name));
-    saveHiddenNames(this.mapName, [...this.hidden].filter((n) => alive.has(n)));
+    saveNames(HIDDEN_KEY, this.mapName, [...this.hidden].filter((n) => alive.has(n)));
+  }
+
+  // --- Группы (папки панели слоёв) ---
+
+  /** Скрыта ли группа «глазом» на её заголовке. */
+  isGroupHidden(name: string): boolean {
+    return this.hiddenGroups.has(name);
+  }
+
+  /** Спрятать или показать всю группу на экране. В файл это не пишется. */
+  toggleGroupHidden(name: string): boolean {
+    if (this.hiddenGroups.has(name)) this.hiddenGroups.delete(name);
+    else this.hiddenGroups.add(name);
+    this.applyHidden();
+    this.persistGroups();
+    return !this.hiddenGroups.has(name);
+  }
+
+  /** Свёрнута ли группа в панели (слои спрятаны под заголовком). */
+  isGroupCollapsed(name: string): boolean {
+    return this.collapsedGroups.has(name);
+  }
+
+  /** Свернуть/развернуть группу в панели. Чисто вид панели, карты не касается. */
+  toggleGroupCollapsed(name: string): boolean {
+    if (this.collapsedGroups.has(name)) this.collapsedGroups.delete(name);
+    else this.collapsedGroups.add(name);
+    this.persistGroups();
+    return this.collapsedGroups.has(name);
+  }
+
+  /**
+   * Пометить слой группой (или снять метку — null) БЕЗ перестановки. Как
+   * переименование: не структурно, история и проекция Phaser живут дальше.
+   * Перестановку к группе (если нужна) делает mount через withLayerGrouped.
+   */
+  setLayerGroupLabel(index: number, group: string | null): void {
+    const layer = this.doc.map.layers[index];
+    if (!layer) return;
+    if (group === null) delete layer.group;
+    else layer.group = group;
+    this.dirty = true;
+    this.applyHidden(); // слой мог войти в скрытую группу — экран обязан совпасть
+    this.emit();
+  }
+
+  /** Переименовать группу у всех слоёв. Экранные пометки переезжают на новое имя. */
+  renameGroup(from: string, to: string): void {
+    for (const layer of this.doc.map.layers) {
+      if (layer.group === from) layer.group = to;
+    }
+    if (this.hiddenGroups.delete(from)) this.hiddenGroups.add(to);
+    if (this.collapsedGroups.delete(from)) this.collapsedGroups.add(to);
+    this.persistGroups();
+    this.dirty = true;
+    this.emit();
+  }
+
+  /** Распустить группу: слои на местах, метки сняты, экранные пометки забыты. */
+  disbandGroup(name: string): void {
+    for (const layer of this.doc.map.layers) {
+      if (layer.group === name) delete layer.group;
+    }
+    this.hiddenGroups.delete(name);
+    this.collapsedGroups.delete(name);
+    this.persistGroups();
+    this.applyHidden(); // группа могла быть скрытой — слои обязаны проявиться
+    this.dirty = true;
+    this.emit();
+  }
+
+  /** Запоминает скрытые и свёрнутые группы в браузере, отбрасывая исчезнувшие. */
+  private persistGroups(): void {
+    const alive = new Set<string>();
+    for (const l of this.doc.layers) if (l.group) alive.add(l.group);
+    saveNames(HIDDEN_GROUPS_KEY, this.mapName, [...this.hiddenGroups].filter((n) => alive.has(n)));
+    saveNames(COLLAPSED_GROUPS_KEY, this.mapName, [...this.collapsedGroups].filter((n) => alive.has(n)));
   }
 
   /** После смены размера активный слой сохраняем, лишь поджимая под новый список. */
