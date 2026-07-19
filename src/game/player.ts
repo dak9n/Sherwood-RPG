@@ -66,7 +66,11 @@ export const CHEST_OFFSET = 14;
  * подгонки поз (раньше поза была одна на направление — оружие висело статично).
  */
 type Anchor = { x: number; y: number; angle: number; len: number; behind?: boolean };
-const ANCHORS = anchorData as Record<string, { cols: number; rows: number; frames: (Anchor | null)[] }>;
+const ANCHORS = anchorData as {
+  /** Длина клинка у штатного меча — одна на все кадры (см. ниже про замах). */
+  bladeLen: number;
+  anims: Record<string, { cols: number; rows: number; frames: (Anchor | null)[] }>;
+};
 
 /**
  * Клинок на иконке нарисован по диагонали вверх-вправо, то есть под -45°.
@@ -403,7 +407,8 @@ export class Player {
       // кончик в (2,30) из 32, кисть чуть выше по диагонали): вокруг неё оружие
       // и поворачивается при взмахе, как в кисти.
       this.held.setOrigin(0.12, 0.88);
-      this.held.setScale(HELD_SCALE);
+      // Длина клинка постоянна: подгоняем иконку под штатный меч раз и навсегда.
+      this.held.setScale((ANCHORS.bladeLen * HELD_SCALE) / ICON_BLADE_LEN);
     } else {
       this.held.setTexture(texKey);
     }
@@ -438,9 +443,10 @@ export class Player {
     // Оружие «из-за спины» рисуем под героем, иначе поверх.
     this.held.setDepth(this.sprite.depth + (a.behind ? -0.01 : 0.01));
     this.held.setAngle(a.angle - ICON_BLADE_ANGLE);
-    // Длину подгоняем под штатный меч этого кадра: иначе на замахе, где клинок
-    // виден в ракурсе и короче, иконка торчала бы прежней длины.
-    this.held.setScale((a.len * HELD_SCALE) / ICON_BLADE_LEN);
+    // Размер НЕ трогаем покадрово. Раньше он брался из длины клинка на кадре, но
+    // на замахе художник рисует смазанный след — длина там взлетает втрое, и меч
+    // на долю секунды раздувался. Меч жёсткий: длина одна, меняются лишь место и
+    // наклон. Масштаб ставится один раз в setHeldWeapon.
   }
 
   /** Якорь оружия для показанного сейчас кадра. null — кадра нет в таблице. */
@@ -449,7 +455,7 @@ export class Player {
     if (!frame) return null;
     // Ключ анимации вида `sw-walk-left` — вытаскиваем из него имя анимации.
     const anim = this.sprite.anims.getName().split('-')[1];
-    const table = ANCHORS[anim];
+    const table = ANCHORS.anims[anim];
     if (!table) return null;
     const index = Number(frame.textureFrame);
     return table.frames[index] ?? null;

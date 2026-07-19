@@ -195,5 +195,19 @@ for (const anim of ANIMS) {
   console.log(`  ${anim.key}: ${cols}x${rows} = ${frames.length} кадров, с оружием ${found}`);
 }
 
-writeFileSync(OUT, JSON.stringify(out, null, 1) + '\n');
-console.log(`\nзаписано: ${OUT}`);
+/**
+ * Эталонная длина клинка — медиана по СПОКОЙНЫМ анимациям (покой и ходьба).
+ *
+ * Кадры замаха для этого не годятся: там художник рисует смазанный след, и
+ * длина облака пикселей взлетает втрое (до 24 против обычных 8). Если тянуть
+ * оружие по ней, на долю секунды посреди удара меч раздувается — что и было
+ * видно в игре. Меч — предмет жёсткий: длина у него одна, меняются лишь
+ * положение и наклон.
+ */
+const calm = ['idle', 'walk'].flatMap((k) => (out[k]?.frames ?? []).filter(Boolean).map((f) => f.len));
+calm.sort((a, b) => a - b);
+const bladeLen = calm.length ? calm[Math.floor(calm.length / 2)] : 8;
+
+writeFileSync(OUT, JSON.stringify({ bladeLen, anims: out }, null, 1) + '\n');
+console.log(`\nэталонная длина клинка: ${bladeLen} px (медиана покоя и ходьбы)`);
+console.log(`записано: ${OUT}`);
