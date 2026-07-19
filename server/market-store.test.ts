@@ -7,6 +7,7 @@ import {
   LISTING_TTL,
   MAX_LOTS_PER_SELLER,
   MAX_PRICE,
+  PAGE_SIZE,
 } from './market-store.ts';
 
 const T0 = 1_000_000;
@@ -163,6 +164,15 @@ test('витрина: сортировка по цене и пагинация',
   assert.equal(p1.pages, 2);
   const p2 = m.browse({ sort: 'price_asc', page: 2, pageSize: 2 }, T0);
   assert.deepEqual(p2.lots.map((l) => l.price), [300]);
+});
+
+test('витрина: pageSize ограничен сверху — гигантский pageSize не отдаёт весь рынок одной страницей', () => {
+  const m = fresh();
+  for (let i = 0; i < PAGE_SIZE + 1; i++) m.list('ann', 'Ann', { id: 'apple', qty: 1 }, 100 + i, T0);
+  const r = m.browse({ pageSize: 1e9 }, T0);
+  assert.equal(r.total, PAGE_SIZE + 1);
+  assert.equal(r.lots.length, PAGE_SIZE, 'страница не больше PAGE_SIZE');
+  assert.equal(r.pages, 2, 'пагинация не обходится через pageSize');
 });
 
 test('persist зовётся на каждое изменение и снимок восстанавливается', () => {

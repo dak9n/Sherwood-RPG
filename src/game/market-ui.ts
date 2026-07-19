@@ -206,11 +206,16 @@ const CSS = `
   #market .notice.ok { color: #8ad46a; } #market .notice.bad { color: #e0885a; }
   #market .footer { display: flex; gap: 18px; justify-content: center; font-size: 11px; color: #b8a284; padding-top: 6px; border-top: 1px solid rgba(255,255,255,.06); margin-top: 4px; }
 
-  /* Диалог создания лота. pointer-events: auto обязателен — .dlg сосед .win, а #market выключил клики. */
-  #market .dlg { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.5); z-index: 2; pointer-events: auto; }
+  /* Диалог создания лота — полупрозрачный фон поверх окна. КЛЮЧЕВОЕ: сам фон
+     pointer-events:none, чтобы клики проходили СКВОЗЬ него к ячейкам инвентаря —
+     предмет для продажи выбирается кликом по сумке справа при открытом диалоге,
+     а полноэкранный бэкдроп с pointer-events:auto перехватывал бы эти клики.
+     Кликается только карточка (.card). Закрытие — кнопкой Cancel/Close или Esc. */
+  #market .dlg { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.5); z-index: 2; pointer-events: none; }
   #market .dlg.open { display: flex; }
-  #market .dlg .card { width: 380px; padding: 14px; border-image: url(${UI}/window.png) 16 5 5 5 fill / ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px repeat;
+  #market .dlg .card { pointer-events: auto; width: 380px; padding: 14px; border-image: url(${UI}/window.png) 16 5 5 5 fill / ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px repeat;
     border-width: ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px; border-style: solid; }
+  #market .dlgerr { color: #e0885a; font-size: 11px; text-align: center; min-height: 14px; margin-top: 6px; }
   #market .dlg h3 { margin: 0 0 8px; text-align: center; color: #eaf6f0; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
   #market .dlg .row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
   #market .dlg .row label { width: 90px; font-size: 12px; color: #d8c0a0; }
@@ -321,7 +326,14 @@ export class MarketUi {
     // Ввод в поля рынка не должен долетать до игры: иначе печатаешь «t» — окно
     // закрывается, цифры кастуют фаербол/жмут хотбар, wasd водят героя. Гасим
     // всплытие на корне окна (Phaser слушает клавиатуру на window).
-    this.root.addEventListener('keydown', (e) => e.stopPropagation());
+    this.root.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      // Esc закрывает диалог (если открыт) или само окно — фон диалога больше не ловит клики.
+      if ((e as KeyboardEvent).key === 'Escape') {
+        if (this.q('.dlg').classList.contains('open')) this.closeDialog();
+        else this.close();
+      }
+    });
 
     this.q('.close').addEventListener('click', () => this.close());
     for (const t of this.root.querySelectorAll<HTMLElement>('.tab')) {
@@ -364,7 +376,6 @@ export class MarketUi {
       this.requery();
     });
     this.q('.create').addEventListener('click', () => this.openDialog());
-    this.q('.dlg').addEventListener('click', (e) => { if (e.target === this.q('.dlg')) this.closeDialog(); });
   }
 
   setState(get: () => MarketView): void { this.state = get; }
@@ -626,17 +637,19 @@ export class MarketUi {
       <div class="row"><label>Item</label><b>${def?.name ?? stack.id}${stack.sharpen ? ` +${stack.sharpen}` : ''}</b></div>
       ${maxQty > 1 ? `<div class="row"><label>Quantity (1–${maxQty})</label><input class="txt qty" type="number" min="1" max="${maxQty}" value="${this.pick.qty}"></div>` : ''}
       <div class="row"><label>Price</label><input class="txt price" type="number" min="1" max="${MAX_PRICE}" value="${this.pick.price || ''}" placeholder="gold"></div>
+      <div class="dlgerr"></div>
       <div class="acts">
         <button class="btn cancel danger">Cancel</button>
         <button class="btn go">List</button>
       </div>`;
     const qtyEl = body.querySelector<HTMLInputElement>('.qty');
     const priceEl = body.querySelector<HTMLInputElement>('.price')!;
+    const errEl = body.querySelector<HTMLElement>('.dlgerr')!;
     body.querySelector('.cancel')!.addEventListener('click', () => this.closeDialog());
     body.querySelector('.go')!.addEventListener('click', () => {
       const qty = qtyEl ? Math.max(1, Math.min(maxQty, Math.floor(Number(qtyEl.value) || 1))) : 1;
       const raw = Math.floor(Number(priceEl.value) || 0);
-      if (raw < 1) { this.flash('Enter a price', false); return; }
+      if (raw < 1) { errEl.textContent = 'Enter a price'; return; } // ошибку показываем в диалоге, а не в .notice под фоном
       const price = Math.min(MAX_PRICE, raw); // тот же потолок, что рисует input — не шлём заведомо отказную цену
       this.actions.onList({ id: stack.id, qty, ...(stack.sharpen ? { sharpen: stack.sharpen } : {}) }, price);
       this.closeDialog();

@@ -188,8 +188,10 @@ export class MarketStore {
     });
 
     // Number.isFinite-защита: кривой ?page=x / ?pageSize=x не должен давать NaN-страницу.
+    // Потолок PAGE_SIZE: честный клиент pageSize не шлёт, а ?pageSize=1e9 не должен
+    // вернуть весь рынок одной страницей (обход пагинации).
     const rawSize = Number(filter.pageSize);
-    const pageSize = Math.max(1, Math.floor(Number.isFinite(rawSize) ? rawSize : PAGE_SIZE));
+    const pageSize = Math.min(PAGE_SIZE, Math.max(1, Math.floor(Number.isFinite(rawSize) ? rawSize : PAGE_SIZE)));
     const total = arr.length;
     const pages = Math.max(1, Math.ceil(total / pageSize));
     const rawPage = Number(filter.page);
