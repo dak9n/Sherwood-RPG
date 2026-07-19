@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { createDirAnims } from './anims';
 import { dirFromVelocity, DIRS_HERO, type Dir } from './dir';
-import { hitRect, rollDamage, type Rect } from './combat';
+import { hitRect, rollDamage, playerDamageTaken, type Rect } from './combat';
+import { BARRIER_DURATION } from './barrier';
 import { creatureDepth, DEPTH_ABOVE } from './depth';
 import { HERO } from './creatures';
 
@@ -138,6 +139,8 @@ export class Player {
   private critMul = 1.5;
   private invulnUntil = 0;
   private lastHurtAt = -Infinity;
+  /** Докуда держится барьер (умение «Барьер», слот 3). Ставит сцена на касте. */
+  private shieldUntil = 0;
 
   private tallObjects: Map<number, number> = new Map();
   private mapWidth = 0;
@@ -295,13 +298,33 @@ export class Player {
   }
 
   /** Урон по игроку. Возвращает false, если попадание съела неуязвимость. */
-  takeDamage(amount: number, now: number): boolean {
-    if (this.state === 'dead' || now < this.invulnUntil) return false;
+  /** Повесить барьер на BARRIER_DURATION от now (умение «Барьер»). */
+  shieldFor(now: number): void {
+    this.shieldUntil = now + BARRIER_DURATION;
+  }
 
-    // Броня режет урон, но не в ноль: неуязвимый герой — не игра. Минимум
-    // единица, иначе с полным набором пауки перестали бы существовать.
-    // Единица проходит всегда: полная неуязвимость от защиты сломала бы бой.
-    const taken = Math.max(1, amount - this.gear.def - this.points.def);
+  /** Держится ли сейчас барьер — по этому сцена рисует пузырь щита. */
+  isShielded(now: number): boolean {
+    return now < this.shieldUntil;
+  }
+
+  /** Сколько барьеру ещё держаться, мс (0 — не активен): пузырь по этому тает. */
+  shieldLeft(now: number): number {
+    return Math.max(0, this.shieldUntil - now);
+  }
+
+  /**
+   * Урон по герою. Возвращает, СКОЛЬКО реально прошло (0 — не прошёл вовсе: герой
+   * мёртв или ещё идут кадры неуязвимости). Раньше возвращался просто «попали», и
+   * сцена показывала над головой сырой удар монстра — теперь всплывает честное
+   * число, в котором уже учтены и броня, и барьер.
+   */
+  takeDamage(amount: number, now: number): number {
+    if (this.state === 'dead' || now < this.invulnUntil) return 0;
+
+    // Броня и барьер режут урон, но не в ноль (см. playerDamageTaken): неуязвимый
+    // герой — не игра, монстры перестали бы существовать.
+    const taken = playerDamageTaken(amount, this.gear.def + this.points.def, this.isShielded(now));
     this.hp -= taken;
     this.invulnUntil = now + HERO.iframes;
     this.lastHurtAt = now;
@@ -312,7 +335,7 @@ export class Player {
     this.scene.time.delayedCall(60, () => this.sprite.clearTint());
 
     if (this.hp <= 0) this.die();
-    return true;
+    return taken;
   }
 
   private die(): void {

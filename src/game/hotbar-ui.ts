@@ -117,8 +117,8 @@ export class HotbarUi {
   /** Нажали слот умения i (0 — огненный шар, 1 — град стрел). */
   onSkill: (index: number) => void = () => {};
 
-  /** Слоты умений — первые (0 — огненный шар, 1 — град стрел): не предметные. */
-  private static readonly SKILL_SLOTS = 2;
+  /** Слоты умений — первые (0 — огненный шар, 1 — град стрел, 2 — барьер): не предметные. */
+  private static readonly SKILL_SLOTS = 3;
   /** Затемнение-перезарядка на слотах умений (по индексу слота). */
   private cdEls: HTMLDivElement[] = [];
 
@@ -145,9 +145,12 @@ export class HotbarUi {
         if (i === 0) {
           el.title = `Fireball (${KEYS[i]})`;
           el.append(Object.assign(document.createElement('div'), { className: 'fire' }));
-        } else {
+        } else if (i === 1) {
           el.title = `Arrow Rain (${KEYS[i]})`;
           el.append(this.skillIcon(ITEMS['bow'].icon)); // лук — узнаваемо для града стрел
+        } else {
+          el.title = `Barrier (${KEYS[i]})`;
+          el.append(this.skillIcon(ITEMS['shield'].icon)); // щит — узнаваемо для барьера
         }
         const cd = Object.assign(document.createElement('div'), { className: 'cd' });
         el.append(cd);

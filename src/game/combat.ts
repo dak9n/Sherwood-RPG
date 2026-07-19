@@ -1,4 +1,5 @@
 import type { Dir } from './dir';
+import { BARRIER_REDUCTION } from './barrier.ts';
 
 export interface Rect {
   x: number;
@@ -61,4 +62,15 @@ export function fireballDamage(level: number): number {
  */
 export function arrowRainDamage(level: number): number {
   return 4 + Math.max(0, Math.floor(level) - 1) * 2;
+}
+
+/**
+ * Сколько урона реально дойдёт до героя: сначала режет броня, потом — барьер
+ * (умение «Барьер», BARRIER_REDUCTION). Меньше единицы не бывает НИ ПРИ КАКОЙ
+ * защите: полностью неуязвимый герой — не игра, монстры перестали бы существовать.
+ */
+export function playerDamageTaken(amount: number, def: number, shielded: boolean): number {
+  const afterArmor = Math.max(1, amount - def);
+  if (!shielded) return afterArmor;
+  return Math.max(1, Math.round(afterArmor * (1 - BARRIER_REDUCTION)));
 }

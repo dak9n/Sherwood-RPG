@@ -8,6 +8,7 @@ import {
   RAIN_TEX, RAIN_RANGE, RAIN_RADIUS, RAIN_MP_COST, RAIN_COOLDOWN, RAIN_DURATION, RAIN_TICKS, RAIN_ARROWS,
   ensureRainArrowTexture,
 } from '../game/arrow-rain';
+import { BARRIER_MP_COST, BARRIER_COOLDOWN, BARRIER_REDUCTION } from '../game/barrier';
 import { fireballDamage, arrowRainDamage } from '../game/combat';
 import { findTallObjects } from '../game/tall-objects';
 import { pickSpawns } from '../game/spawn';
@@ -46,8 +47,10 @@ const ZOOM = 3;
 const SKILL_SLOT = 0;
 /** Слот умения «Град стрел» (клавиша 2). */
 const RAIN_SLOT = 1;
+/** Слот умения «Барьер» (клавиша 3). */
+const BARRIER_SLOT = 2;
 /** Сколько первых слотов хотбара заняты умениями (не предметами). */
-const SKILL_SLOTS = 2;
+const SKILL_SLOTS = 3;
 
 /**
  * Чем помечаем стену в невидимом слое физики. Годится любой существующий номер
@@ -111,6 +114,10 @@ export class GameScene extends MapScene {
   private rainReadyAt = 0;
   /** Активные залпы града: центр, следующая волна урона и сколько волн осталось. */
   private rains: { cx: number; cy: number; nextTick: number; ticksLeft: number }[] = [];
+  /** Докуда «Барьер» на перезарядке (время сцены). 0 — готово. */
+  private barrierReadyAt = 0;
+  /** Пузырь щита вокруг героя, пока держится барьер. Создаётся при первом касте. */
+  private shieldBubble?: Phaser.GameObjects.Arc;
   /** Золото игрока. Падает с монстров, тратится в магазине. Часть сейва. */
   private gold = 0;
   /**
@@ -322,8 +329,12 @@ export class GameScene extends MapScene {
     this.hotbar.setData(this.quick, this.bag, this.equipped);
     this.hotbar.setPlusFor((id) => this.weaponPlusFor(id));
     this.hotbar.onTrigger = (slot) => this.useQuick(slot);
-    // Первые слоты — умения (0 — огненный шар, 1 — град стрел), а не предметы.
-    this.hotbar.onSkill = (i) => (i === SKILL_SLOT ? this.castFireball() : this.castArrowRain());
+    // Первые слоты — умения (0 — огненный шар, 1 — град стрел, 2 — барьер), а не предметы.
+    this.hotbar.onSkill = (i) => {
+      if (i === SKILL_SLOT) this.castFireball();
+      else if (i === RAIN_SLOT) this.castArrowRain();
+      else this.castBarrier();
+    };
     this.hotbar.onBind = (slot, id) => {
       // В слоты умений предмет не кладём — они заняты способностями.
       if (slot < SKILL_SLOTS) return;
@@ -448,6 +459,7 @@ export class GameScene extends MapScene {
       this.castBarBg?.destroy();
       this.castBar?.destroy();
       this.rainReticle?.destroy();
+      this.shieldBubble?.destroy();
       this.hotbar.destroy();
       this.minimap.destroy();
       this.menu.destroy();
@@ -950,6 +962,60 @@ export class GameScene extends MapScene {
     }
   }
 
+  // --- Умение «Барьер» (слот 3): щит на себя ---
+
+  /**
+   * Повесить барьер (клавиша «3» или клик по слоту). Ни прицела, ни снаряда:
+   * мгновенно на себя. На BARRIER_DURATION входящий урон режется на 80% —
+   * считает это player.takeDamage через playerDamageTaken.
+   */
+  private castBarrier(): void {
+    if (this.player.isDead) return;
+
+    const now = this.time.now;
+    if (now < this.barrierReadyAt) {
+      this.hotbar.flash(BARRIER_SLOT); // идёт перезарядка
+      return;
+    }
+    if (this.player.mp < BARRIER_MP_COST) {
+      this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#5ba3e0', 'not enough mana');
+      return;
+    }
+
+    this.player.mp -= BARRIER_MP_COST;
+    this.barrierReadyAt = now + BARRIER_COOLDOWN;
+    this.player.shieldFor(now);
+    this.hotbar.flash(BARRIER_SLOT);
+
+    // Подпись над головой: сколько режет — иначе не видно, что умение сработало.
+    this.damageNumber(
+      this.player.sprite.x, this.player.sprite.y - 44, 0, '#9fd8ff',
+      `barrier −${Math.round(BARRIER_REDUCTION * 100)}%`,
+    );
+
+    if (!this.shieldBubble) {
+      this.shieldBubble = this.add.circle(0, 0, 16, 0x6fb2ff, 0.18)
+        .setStrokeStyle(2, 0x9fd8ff, 0.9);
+    }
+    this.shieldBubble.setVisible(true);
+  }
+
+  /** Пузырь щита идёт за героем и к концу срока тает. Кончился барьер — гасим. */
+  private updateBarrier(now: number): void {
+    if (!this.shieldBubble || !this.shieldBubble.visible) return;
+
+    if (!this.player.isShielded(now) || this.player.isDead) {
+      this.shieldBubble.setVisible(false);
+      return;
+    }
+    const p = this.player.sprite;
+    this.shieldBubble.setPosition(p.x, p.y - 10);
+    this.shieldBubble.setDepth(p.depth + 0.02); // прямо над героем, вместе с ним за крону
+    // Последние 800 мс — плавно гаснет, чтобы конец щита не был неожиданным.
+    const left = this.player.shieldLeft(now);
+    this.shieldBubble.setAlpha(left < 800 ? left / 800 : 1);
+  }
+
   /** Вспышка-взрыв в точке попадания огненного шара: яркое кольцо и ядро, гаснут. */
   private fireBurst(x: number, y: number): void {
     const ring = this.add.graphics({ x, y });
@@ -1149,12 +1215,13 @@ export class GameScene extends MapScene {
 
   /** Клавиши 1-9 и 0 — планка быстрого доступа. «1» — умение, дальше — предметы. */
   private bindQuickKeys(): void {
-    // Слоты умений: «1» — огненный шар, «2» — град стрел.
+    // Слоты умений: «1» — огненный шар, «2» — град стрел, «3» — барьер.
     this.input.keyboard?.on('keydown-ONE', () => this.castFireball());
     this.input.keyboard?.on('keydown-TWO', () => this.castArrowRain());
-    // Клавиши 3..9 — предметные слоты 2..8 (слоты 0,1 заняты умениями).
-    const keys = ['THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE'];
-    keys.forEach((k, i) => this.input.keyboard?.on(`keydown-${k}`, () => this.useQuick(i + 2)));
+    this.input.keyboard?.on('keydown-THREE', () => this.castBarrier());
+    // Клавиши 4..9 — предметные слоты 3..8 (слоты 0..2 заняты умениями).
+    const keys = ['FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE'];
+    keys.forEach((k, i) => this.input.keyboard?.on(`keydown-${k}`, () => this.useQuick(i + 3)));
     // Ноль — десятая ячейка, как подписано на планке.
     this.input.keyboard?.on('keydown-ZERO', () => this.useQuick(9));
   }
@@ -1736,8 +1803,12 @@ export class GameScene extends MapScene {
         m.pendingHit = null;
         const p = this.player.sprite;
         const hit = p.x + 6 > r.x && p.x - 6 < r.x + r.w && p.y > r.y - 4 && p.y - 24 < r.y + r.h;
-        if (hit && this.player.takeDamage(m.stats.dmg, now)) {
-          this.damageNumber(p.x, p.y - 40, m.stats.dmg, '#ff6b5c');
+        // Урон снимаем ТОЛЬКО при попадании (иначе промах бил бы героя). takeDamage
+        // возвращает, сколько реально прошло (броня и барьер уже учтены), — его и
+        // показываем: под щитом число должно быть заметно меньше.
+        const taken = hit ? this.player.takeDamage(m.stats.dmg, now) : 0;
+        if (taken > 0) {
+          this.damageNumber(p.x, p.y - 40, taken, '#ff6b5c');
           this.cameras.main.shake(120, 0.005);
         }
       }
@@ -1750,9 +1821,11 @@ export class GameScene extends MapScene {
     this.updateFireballs(delta);
     this.updateRainAim();  // круг прицела идёт за курсором, пока целятся
     this.updateRains(now); // волны урона активных залпов града стрел
+    this.updateBarrier(now); // пузырь щита за героем, пока держится барьер
     // Перезарядка умений на планке: 1 — только откастовал, 0 — готов.
     this.hotbar.setSkillCooldown(SKILL_SLOT, this.fireballReadyAt > now ? (this.fireballReadyAt - now) / FIREBALL_COOLDOWN : 0);
     this.hotbar.setSkillCooldown(RAIN_SLOT, this.rainReadyAt > now ? (this.rainReadyAt - now) / RAIN_COOLDOWN : 0);
+    this.hotbar.setSkillCooldown(BARRIER_SLOT, this.barrierReadyAt > now ? (this.barrierReadyAt - now) / BARRIER_COOLDOWN : 0);
     this.updateLoot(now);
 
     if (this.player.isDead && !this.deathAt) {
