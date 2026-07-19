@@ -91,7 +91,7 @@ const CSS = `
   #market {
     position: absolute; inset: 0; z-index: 24; display: none;
     align-items: center; justify-content: center;
-    font: 12px/1.4 'Survival Kit', system-ui, sans-serif; color: #f0e0c8; pointer-events: none;
+    font: 12px/1.4 'Simplified Gothic', system-ui, sans-serif; color: #f0e0c8; pointer-events: none;
   }
   #market.open { display: flex; }
   #market * { image-rendering: pixelated; box-sizing: border-box; }

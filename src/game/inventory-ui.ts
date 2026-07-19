@@ -120,7 +120,7 @@ const CSS = `
   #inv {
     position: absolute; inset: 0; z-index: 20; display: none;
     align-items: center; justify-content: center;
-    font: 12px/1 'Survival Kit', system-ui, sans-serif; color: ${C.ink};
+    font: 12px/1 'Simplified Gothic', system-ui, sans-serif; color: ${C.ink};
     /* Растянут на весь экран, но кликов не ловит: игра не на паузе, и мимо окна
        удар должен доходить до пауков. Ловит только само окно — см. .win. */
     pointer-events: none;

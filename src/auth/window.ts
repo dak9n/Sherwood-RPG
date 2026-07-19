@@ -28,7 +28,7 @@ const CSS = `
     position: fixed; inset: 0; z-index: 100;
     display: flex; align-items: center; justify-content: center;
     background: radial-gradient(circle at 50% 35%, #2a3a2c, #12100c 72%);
-    font: 14px/1.5 'Survival Kit', system-ui, sans-serif; color: #f0e0c8;
+    font: 14px/1.5 'Simplified Gothic', system-ui, sans-serif; color: #f0e0c8;
   }
   #auth * { image-rendering: pixelated; }
   #auth i, #auth img { display: block; }
@@ -224,7 +224,7 @@ export function showAccountBadge(name: string, onLogout: () => void): void {
   style.textContent = `
     #acc {
       position: fixed; left: 10px; bottom: 8px; z-index: 15;
-      font: 11px/1 'Survival Kit', system-ui, sans-serif; color: #cfd8dc;
+      font: 11px/1 'Simplified Gothic', system-ui, sans-serif; color: #cfd8dc;
       display: flex; align-items: center; gap: 6px;
       background: rgba(20,24,27,.72); padding: 4px 8px; border-radius: 4px;
       user-select: none;

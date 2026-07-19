@@ -31,7 +31,7 @@ const CSS = `
     width: ${FRAME}px; height: ${FRAME}px;
     /* Мини-карта — табло, а не кнопка: клики должны уходить в игру. */
     pointer-events: none;
-    font: 10px/1 'Survival Kit', system-ui, sans-serif;
+    font: 10px/1 'Simplified Gothic', system-ui, sans-serif;
   }
   /* Дырка кольца: всё, что вылезает за круг, срезается. */
   #mm .hole {
@@ -63,7 +63,7 @@ const CSS = `
     position: absolute; inset: 0; z-index: 21; display: none;
     align-items: center; justify-content: center;
     background: rgba(12, 16, 20, .72);
-    font: 12px/1 'Survival Kit', system-ui, sans-serif; color: #e5d6a1;
+    font: 12px/1 'Simplified Gothic', system-ui, sans-serif; color: #e5d6a1;
     /* Игра не на паузе — мимо карты клики уходят в неё. */
     pointer-events: none;
   }
