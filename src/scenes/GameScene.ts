@@ -186,6 +186,10 @@ export class GameScene extends MapScene {
     this.load.image('icons', 'assets/interface/PNG/Icons.png');
     // Наш дорисованный свиток — лист из одной иконки (см. items.ts про 'scroll').
     this.load.image('scroll', 'assets/interface/ui/scroll.png');
+    // Оружие в руке героя: у каждого меча/лука своя картинка (items.held).
+    for (const def of Object.values(ITEMS)) {
+      if (def.held) this.load.image(`held-${def.id}`, def.held);
+    }
   }
 
   protected onReady(): void {
@@ -1336,6 +1340,10 @@ export class GameScene extends MapScene {
     // Крит и вампиризм — не стат-бонусы, отдельными каналами.
     this.player.setCrit(sb.critChance, BASE_CRIT_MUL + sb.critMul);
     this.lifesteal = sb.lifesteal;
+
+    // Оружие в руке: показываем спрайт ИМЕННО надетого меча/лука (items.held).
+    const weapon = this.equipped.weapon;
+    this.player.setHeldWeapon(weapon && ITEMS[weapon]?.held ? `held-${weapon}` : null);
   }
 
   /** Вложить ранг навыка (дерево L). Проверки — в чистой allocate; окно только шлёт намерение. */

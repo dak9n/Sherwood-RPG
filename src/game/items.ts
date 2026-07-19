@@ -58,6 +58,12 @@ export interface ItemDef {
    * курсора. Стрелы бесконечны — отдельного боезапаса нет (так решил заказчик).
    */
   ranged?: boolean;
+  /**
+   * Картинка оружия В РУКЕ героя (набор weapon-icons, 32x32, клинок по диагонали
+   * вверх-вправо). Надел — этот спрайт появляется в руке и машет при ударе.
+   * Поменять вид меча = поменять номер иконки здесь.
+   */
+  held?: string;
 }
 
 /** Стреляет ли надетое этим оружие. Лук — да, меч — нет. */
@@ -124,6 +130,7 @@ export const ITEMS: Record<string, ItemDef> = {
   sword_basic: {
     id: 'sword_basic', name: 'Recruit Sword', tab: 'weapon',
     icon: ico(1, 0), stack: 1, slot: 'weapon',
+    held: 'assets/weapon-icons/Icons/icon_02.png', // простой меч без прикрас
   },
   // Лук — оружие дальнего боя. Надетым превращает взмах в выстрел стрелой в
   // сторону курсора. Урон чуть выше базового меча, но бить приходится издалека
@@ -131,14 +138,17 @@ export const ITEMS: Record<string, ItemDef> = {
   bow: {
     id: 'bow', name: 'Bow', tab: 'weapon',
     icon: ico(3, 7), stack: 1, slot: 'weapon', ranged: true, bonus: { dmg: 2 }, rarity: 'uncommon',
+    held: 'assets/weapon-icons/Icons/icon_33.png', // простой деревянный лук
   },
   sword: {
     id: 'sword', name: 'Steel Sword', tab: 'weapon',
     icon: ico(0, 8), stack: 1, slot: 'weapon', bonus: { dmg: 3 }, rarity: 'uncommon',
+    held: 'assets/weapon-icons/Icons/icon_04.png', // стальной клинок
   },
   sword_blue: {
     id: 'sword_blue', name: 'Azure Sword', tab: 'weapon',
     icon: ico(3, 8), stack: 1, slot: 'weapon', bonus: { dmg: 6 }, rarity: 'epic',
+    held: 'assets/weapon-icons/Icons/icon_09.png', // лазурная гарда — под имя
   },
   shield: {
     id: 'shield', name: 'Shield', tab: 'armor',

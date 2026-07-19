@@ -41,6 +41,26 @@ export interface Shot {
  */
 export const CHEST_OFFSET = 14;
 
+/**
+ * Оружие в руке: поза по направлению взгляда. Смещение — от ног героя (origin)
+ * к кисти, замерено по кадрам листа Idle. Угол — Phaser angle для иконки, где
+ * клинок нарисован по диагонали вверх-вправо (0 — как нарисовано, -90 — клинок
+ * вверх-влево). front=false — оружие за спиной (герой смотрит вверх), рисуем ПОД
+ * спрайтом. swing — знак дуги взмаха, чтобы махать в сторону удара, а не от неё.
+ */
+const HELD_POSE: Record<Dir, { x: number; y: number; angle: number; front: boolean; swing: 1 | -1 }> = {
+  // Клинок в иконке нарисован под 45° (вверх-вправо). Поворот -80 ставит его
+  // почти вертикально вверх-влево, -10 — круто вверх-вправо.
+  down: { x: -6, y: -9, angle: -80, front: true, swing: 1 },
+  left: { x: -5, y: -9, angle: -80, front: true, swing: -1 },
+  right: { x: 5, y: -9, angle: -10, front: true, swing: 1 },
+  up: { x: 6, y: -9, angle: -10, front: false, swing: -1 },
+};
+/** Иконки 32x32 против героя ~20px тела: в руке оружие ощутимо ужимаем. */
+const HELD_SCALE = 0.38;
+/** Длительность взмаха, мс: 8 кадров атаки при 16 к/с. Дуга оружия идёт от неё. */
+const SWING_MS = 500;
+
 /** Угол полёта для стрельбы «от направления» (пробелом, без курсора). */
 const DIR_ANGLE: Record<Dir, number> = {
   right: 0,
@@ -141,6 +161,11 @@ export class Player {
   private lastHurtAt = -Infinity;
   /** Докуда держится барьер (умение «Барьер», слот 3). Ставит сцена на касте. */
   private shieldUntil = 0;
+  /** Оружие в руке: спрайт надетого меча/лука (набор weapon-icons). Ставит сцена. */
+  private held?: Phaser.GameObjects.Image;
+  private heldKey: string | null = null;
+  /** Когда начался текущий взмах — для дуги оружия в руке. */
+  private attackAt = 0;
 
   private tallObjects: Map<number, number> = new Map();
   private mapWidth = 0;
@@ -314,6 +339,52 @@ export class Player {
   }
 
   /**
+   * Показать в руке героя надетое оружие (ключ текстуры held-<id>) или спрятать
+   * (null — оружие снято). Зовёт сцена из applyGear: там единственное место, где
+   * меняется экипировка. Именно ТОТ меч, что надет: у каждого своя картинка.
+   */
+  setHeldWeapon(texKey: string | null): void {
+    this.heldKey = texKey;
+    if (!texKey) {
+      this.held?.setVisible(false);
+      return;
+    }
+    if (!this.held) {
+      this.held = this.scene.add.image(this.sprite.x, this.sprite.y, texKey);
+      // Пивот — рукоять (низ-лево диагональной иконки, замерено по icon_02:
+      // кончик в (2,30) из 32, кисть чуть выше по диагонали): вокруг неё оружие
+      // и поворачивается при взмахе, как в кисти.
+      this.held.setOrigin(0.12, 0.88);
+      this.held.setScale(HELD_SCALE);
+    } else {
+      this.held.setTexture(texKey);
+    }
+    this.held.setVisible(this.state !== 'dead');
+  }
+
+  /** Оружие в руке: позиция и угол за героем каждый кадр; при взмахе — дуга. */
+  private updateHeld(now: number): void {
+    if (!this.held) return;
+    if (!this.heldKey || this.state === 'dead') {
+      this.held.setVisible(false);
+      return;
+    }
+    const pose = HELD_POSE[this.dir];
+    this.held.setVisible(true);
+    this.held.setPosition(this.sprite.x + pose.x, this.sprite.y + pose.y);
+    // За спиной (взгляд вверх) оружие рисуем под героем, иначе — поверх.
+    this.held.setDepth(this.sprite.depth + (pose.front ? 0.01 : -0.01));
+
+    if (this.state === 'attack') {
+      // Дуга взмаха: за SWING_MS проходим 140° вокруг позы покоя.
+      const t = Math.min(1, (now - this.attackAt) / SWING_MS);
+      this.held.setAngle(pose.angle + pose.swing * (-70 + 140 * t));
+    } else {
+      this.held.setAngle(pose.angle);
+    }
+  }
+
+  /**
    * Урон по герою. Возвращает, СКОЛЬКО реально прошло (0 — не прошёл вовсе: герой
    * мёртв или ещё идут кадры неуязвимости). Раньше возвращался просто «попали», и
    * сцена показывала над головой сырой удар монстра — теперь всплывает честное
@@ -371,6 +442,7 @@ export class Player {
     const now = this.scene.time.now;
     this.regen(delta, now);
     this.blinkWhileInvulnerable(now);
+    this.updateHeld(now); // оружие в руке идёт за героем (и прячется у мёртвого)
 
     if (this.state === 'dead') return;
 
@@ -446,6 +518,7 @@ export class Player {
     this.heavySwing = heavy;
     this.shotAngle = angle;
     this.didHit = false;
+    this.attackAt = this.scene.time.now; // старт дуги оружия в руке
     this.state = 'attack';
     (this.sprite.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
     this.play('attack');
