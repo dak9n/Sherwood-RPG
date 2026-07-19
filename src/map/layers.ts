@@ -85,9 +85,9 @@ export function reorderTarget(from: number, over: number, insertBelow: boolean, 
 //
 // Группа — это метка Layer.group, отдельного списка групп нет: группа существует,
 // пока на неё ссылается хоть один слой. Слои одной группы держатся в массиве
-// подряд (это гарантируют withLayerGrouped и snapGroupToNeighbors), поэтому
-// панель может нарисовать их одной пачкой под общим заголовком, не соврав про
-// z-order. Игра поле group не читает вовсе.
+// подряд (withLayerGrouped ставит слой вплотную к группе, а при перетаскивании
+// членство диктует строка-цель), поэтому панель может нарисовать их одной пачкой
+// под общим заголовком, не соврав про z-order. Игра поле group не читает вовсе.
 
 /** Отрезок панели: подряд идущие слои одной группы (или один слой без группы). */
 export interface LayerRun {
@@ -176,30 +176,21 @@ export function withGroupDisbanded(map: GameMap, name: string): GameMap {
 }
 
 /**
- * Поправить группу слоя после ручной перестановки (drag&drop строк):
- * — бросили МЕЖДУ двумя слоями одной группы — слой входит в неё (как в папку);
- * — утащили прочь от своей группы (ни одного соседа из неё) — слой выходит;
- * — иначе группа не меняется (например, бросили у края своей же группы).
- * Так слои группы всегда остаются подряд. Чистая; map уже с новым порядком.
+ * Сменить метку группы слоя НЕ двигая его: null снимает поле совсем. Чистая.
+ *
+ * Этим завершается перестановка перетаскиванием: членство диктует строка, НА
+ * которую бросили (в папке она или нет), — панель передаёт его явно. Угадывать
+ * группу по соседям нельзя: слой, брошенный вплотную к своей папке, «прилипал»
+ * бы к ней обратно, и вытащить его перетаскиванием было бы невозможно.
  */
-export function snapGroupToNeighbors(map: GameMap, index: number): GameMap {
-  const layers = map.layers;
-  const prev = layers[index - 1]?.group ?? null;
-  const next = layers[index + 1]?.group ?? null;
-  const own = layers[index].group ?? null;
-
-  // Только правим метку, НЕ двигаем слой: игрок уже поставил его куда хотел,
-  // а withLayerGrouped утащил бы слой на верх группы, слома́в место броска.
-  if (prev !== null && prev === next && own !== prev) {
-    const out = layers.slice();
-    out[index] = { ...out[index], group: prev };
-    return { ...map, layers: out };
+export function withGroupLabelAt(map: GameMap, index: number, group: string | null): GameMap {
+  const layers = map.layers.slice();
+  if (group === null) {
+    const { group: _g, ...rest } = layers[index];
+    layers[index] = rest;
+  } else {
+    layers[index] = { ...layers[index], group };
   }
-  if (own !== null && prev !== own && next !== own) {
-    const out = layers.slice();
-    const { group: _g, ...rest } = out[index];
-    out[index] = rest;
-    return { ...map, layers: out };
-  }
-  return map;
+  return { ...map, layers };
 }
+

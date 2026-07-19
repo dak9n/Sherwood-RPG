@@ -3,7 +3,7 @@ import { MapDoc } from '../map/doc';
 import { resizeMap } from '../map/resize';
 import {
   withLayerAdded, withLayerRemoved, withLayerMoved, suggestLayerName,
-  withLayerGrouped, snapGroupToNeighbors,
+  withLayerGrouped, withGroupLabelAt,
 } from '../map/layers';
 import { EditorState } from './state';
 import type { CellEdit } from './edit';
@@ -374,11 +374,12 @@ export function mountEditor(game: Phaser.Game): void {
     passOverlay.relayer(doc, scene.view);
   }
 
-  function reorderLayer(from: number, to: number): void {
-    if (from === to) return; // бросили на то же место — ничего не делаем
-    // После перестановки поправляем группу слоя по соседям: бросил между членами
-    // папки — вошёл в неё, утащил прочь — вышел (см. snapGroupToNeighbors).
-    const doc = new MapDoc(snapGroupToNeighbors(withLayerMoved(state.doc.map, from, to), to));
+  function reorderLayer(from: number, to: number, group: string | null): void {
+    // Членство пришло из панели — со строки, НА которую бросили: в папке она
+    // или нет. Раньше группу угадывали по соседям, и слой, брошенный вплотную к
+    // своей папке, прилипал обратно — вытащить его перетаскиванием было нельзя.
+    if (from === to && (state.doc.layers[from].group ?? null) === group) return; // ни места, ни папки не сменили
+    const doc = new MapDoc(withGroupLabelAt(withLayerMoved(state.doc.map, from, to), to, group));
     scene.rebuild(doc);
     state.relayer(doc, scene.view, to); // перемещённый слой остаётся активным
     passOverlay.relayer(doc, scene.view);

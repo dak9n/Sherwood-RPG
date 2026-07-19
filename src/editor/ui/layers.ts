@@ -9,7 +9,13 @@ import { layerNameError, reorderTarget, layerRuns, groupNames, groupNameError } 
 export interface LayerListOps {
   onDelete: (index: number) => void;
   onRename: (index: number, name: string) => void;
-  onReorder: (from: number, to: number) => void;
+  /**
+   * Перестановка перетаскиванием. group — членство ПО МЕСТУ БРОСКА: бросили на
+   * строку в папке — группа этой папки, на строку вне папок — null. Догадки по
+   * соседям тут не работали: слой, брошенный вплотную к своей группе, «прилипал»
+   * к ней, и вытащить его перетаскиванием было невозможно.
+   */
+  onReorder: (from: number, to: number, group: string | null) => void;
   /** Положить слой в группу (null — вынуть из группы). */
   onAssignGroup: (index: number, group: string | null) => void;
   onRenameGroup: (from: string, to: string) => void;
@@ -188,22 +194,35 @@ export function buildLayers(host: HTMLElement, state: EditorState, ops: LayerLis
       render();
     };
 
-    // Бросок строки слоя на заголовок кладёт слой в группу (даже свёрнутую).
+    // Бросок на заголовок: НИЖНЯЯ половина кладёт слой в группу (даже свёрнутую),
+    // ВЕРХНЯЯ ставит его НАД группой, снаружи — это и есть «вытащить из папки»
+    // перетаскиванием вверх, иначе слою у края некуда было бы выйти.
+    const dropHalf = (e: DragEvent): 'above' | 'into' =>
+      e.clientY - head.getBoundingClientRect().top <= head.getBoundingClientRect().height / 2 ? 'above' : 'into';
     head.ondragover = (e) => {
       if (dragFrom === null) return;
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      head.classList.add('drop-into');
+      head.classList.remove('drop-into', 'drop-above');
+      head.classList.add(dropHalf(e) === 'into' ? 'drop-into' : 'drop-above');
     };
-    head.ondragleave = () => head.classList.remove('drop-into');
+    head.ondragleave = () => head.classList.remove('drop-into', 'drop-above');
     head.ondrop = (e) => {
       if (dragFrom === null) return;
       e.preventDefault();
       const from = dragFrom;
+      const half = dropHalf(e);
       dragFrom = null;
-      head.classList.remove('drop-into');
+      head.classList.remove('drop-into', 'drop-above');
       clearDropMarks();
-      ops.onAssignGroup(from, group);
+      if (half === 'into') {
+        ops.onAssignGroup(from, group); // внутрь, на верх папки
+      } else {
+        // Над группой, снаружи: та же математика, что бросок на верхнюю строку
+        // папки сверху, но с явным членством «без группы».
+        const top = indices[indices.length - 1];
+        ops.onReorder(from, reorderTarget(from, top, false, state.doc.layers.length), null);
+      }
     };
 
     return head;
@@ -272,7 +291,9 @@ export function buildLayers(host: HTMLElement, state: EditorState, ops: LayerLis
         const from = dragFrom;
         dragFrom = null;
         clearDropMarks();
-        ops.onReorder(from, to); // перерисует список
+        // Членство диктует строка-цель: бросил на слой папки — попал в папку,
+        // бросил на слой вне папок — вышел. Никаких догадок по соседям.
+        ops.onReorder(from, to, group); // перерисует список
       };
       row.ondragend = () => {
         dragFrom = null;

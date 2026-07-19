@@ -14,7 +14,7 @@ import {
   withLayerGrouped,
   withGroupRenamed,
   withGroupDisbanded,
-  snapGroupToNeighbors,
+  withGroupLabelAt,
 } from './layers.ts';
 import type { GameMap } from './types.ts';
 
@@ -224,31 +224,33 @@ test('withGroupDisbanded: метки сняты, слои на местах', ()
   assert.ok(m.layers.every((l) => !('group' in l)));
 });
 
-test('snapGroupToNeighbors: брошенный между членами группы входит в неё', () => {
+// Перетаскивание = withLayerMoved + withGroupLabelAt с членством ПО МЕСТУ БРОСКА:
+// панель передаёт группу строки-цели явно, догадок по соседям нет (иначе слой,
+// брошенный вплотную к своей папке, прилипал бы к ней и не мог выйти).
+
+test('перетаскивание в папку: бросок между членами группы даёт её метку', () => {
   const m = makeGrouped();
-  // перетащим e (4) между b и c: порядок a, b, e, c, d
-  const moved = withLayerMoved(m, 4, 2);
-  const snapped = snapGroupToNeighbors(moved, 2);
-  assert.equal(snapped.layers[2].name, 'e');
-  assert.equal(snapped.layers[2].group, 'G');
+  // перетащим e (4) между b и c и пометим группой цели: порядок a, b, e, c, d
+  const out = withGroupLabelAt(withLayerMoved(m, 4, 2), 2, 'G');
+  assert.equal(out.layers[2].name, 'e');
+  assert.equal(out.layers[2].group, 'G');
 });
 
-test('snapGroupToNeighbors: утащенный прочь от группы выходит из неё', () => {
+test('перетаскивание из папки: бросок на строку вне папок снимает метку совсем', () => {
   const m = makeGrouped();
-  // утащим c (2) на самый верх: a, b, d, e, c
-  const moved = withLayerMoved(m, 2, 4);
-  const snapped = snapGroupToNeighbors(moved, 4);
-  assert.equal(snapped.layers[4].name, 'c');
-  assert.ok(!('group' in snapped.layers[4]));
+  // утащим c (2) на самый верх, цель вне группы: a, b, d, e, c
+  const out = withGroupLabelAt(withLayerMoved(m, 2, 4), 4, null);
+  assert.equal(out.layers[4].name, 'c');
+  assert.ok(!('group' in out.layers[4]), 'поле убрано совсем, а не undefined — иначе попадёт в json');
 });
 
-test('snapGroupToNeighbors: у края своей группы слой в ней остаётся', () => {
+test('вытащить слой ПРЯМО НАД свою группу можно: явный null побеждает соседство', () => {
   const m = makeGrouped();
-  // b (1) наверх группы: a, c, b, d — сосед снизу c из G, сверху d без группы
-  const moved = withLayerMoved(m, 1, 2);
-  const snapped = snapGroupToNeighbors(moved, 2);
-  assert.equal(snapped.layers[2].name, 'b');
-  assert.equal(snapped.layers[2].group, 'G');
+  // c (2) кладём сразу над группой (после b..c это позиция 2 же — возьмём верх группы):
+  // бросок на верхнюю половину заголовка = позиция над верхним членом, без группы
+  const out = withGroupLabelAt(withLayerMoved(m, 1, 2), 2, null);
+  assert.equal(out.layers[2].name, 'b');
+  assert.ok(!('group' in out.layers[2]), 'слой вышел из папки, хотя касается её края');
 });
 
 test('groupNameError: пустое имя — ошибка, непустое — нет', () => {

@@ -86,8 +86,9 @@ const CSS = `
   .ed-group .edit, .ed-group .del { width: 16px; text-align: center; opacity: 0; cursor: pointer; }
   .ed-group:hover .edit, .ed-group:hover .del { opacity: .5; }
   .ed-group .edit:hover, .ed-group .del:hover { opacity: 1; }
-  /* Подсветка, когда строку слоя тащат над заголовком: бросишь — слой ляжет в папку. */
+  /* Подсветка при перетаскивании над заголовком: низ — в папку, верх — над папкой (наружу). */
   .ed-group.drop-into { background: #33505e; box-shadow: inset 0 0 0 1px #57c767; }
+  .ed-group.drop-above { box-shadow: inset 0 3px 0 #57c767; }
   /* Карандаш и корзина проявляются по наведению на строку: постоянные иконки на 26 слоёв — визуальный шум. */
   .ed-layer .edit, .ed-layer .del { width: 16px; text-align: center; opacity: 0; cursor: pointer; }
   .ed-layer:hover .edit, .ed-layer:hover .del { opacity: .5; }
