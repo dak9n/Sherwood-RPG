@@ -248,6 +248,10 @@ export class MarketUi {
   private ticker?: number;
   /** Выбранный для выставления стак (индекс в сумке) и введённые цена/кол-во. */
   private pick: { index: number; qty: number; price: number } | null = null;
+  /** Что сейчас в диалоге: выставление своего предмета или подтверждение покупки. */
+  private dlgMode: 'list' | 'buy' | null = null;
+  /** Лот, покупку которого подтверждаем (режим 'buy'). */
+  private buyLot: Lot | null = null;
 
   constructor() {
     this.style = document.createElement('style');
@@ -308,7 +312,7 @@ export class MarketUi {
       </div>
       <div class="dlg">
         <div class="card">
-          <h3>Create Listing</h3>
+          <h3 class="dlgtitle">Create Listing</h3>
           <div class="dlgbody"></div>
         </div>
       </div>
@@ -529,7 +533,8 @@ export class MarketUi {
       const buy = Object.assign(document.createElement('button'), { className: 'btn sm', textContent: 'Buy' });
       buy.disabled = !!v.busy || lot.price > v.gold; // busy: не даём начать вторую покупку (гонка золота)
       buy.title = lot.price > v.gold ? 'Not enough gold' : '';
-      buy.addEventListener('click', () => this.actions.onBuy(lot.id));
+      // Не покупаем сразу: золото тратится необратимо, поэтому сначала подтверждение.
+      buy.addEventListener('click', () => this.openBuyDialog(lot));
       tdBtn.append(buy);
       tr.append(tdItem, tdPrice, tdSeller, tdLeft, tdBtn);
       tb.append(tr);
@@ -631,6 +636,20 @@ export class MarketUi {
   /** Открыть диалог цены. Предмет к этому моменту уже выбран кликом по сумке. */
   private openDialog(): void {
     if (!this.pick) { this.flash('Pick an item in your inventory first', false); return; }
+    this.dlgMode = 'list';
+    this.buyLot = null;
+    this.q('.dlgtitle').textContent = 'Create Listing';
+    this.q('.dlg').classList.add('open');
+    this.key = '';
+    this.renderDialog();
+    this.render();
+  }
+
+  /** Подтверждение покупки: показываем, ЧТО и ЗА СКОЛЬКО, и только по «Buy» покупаем. */
+  private openBuyDialog(lot: Lot): void {
+    this.dlgMode = 'buy';
+    this.buyLot = lot;
+    this.q('.dlgtitle').textContent = 'Confirm Purchase';
     this.q('.dlg').classList.add('open');
     this.key = '';
     this.renderDialog();
@@ -640,6 +659,8 @@ export class MarketUi {
   /** Закрыть диалог. Выбор предмета НЕ сбрасываем: игрок мог просто передумать с ценой. */
   private closeDialog(): void {
     this.q('.dlg').classList.remove('open');
+    this.dlgMode = null;
+    this.buyLot = null;
     this.key = '';
     this.render();
   }
@@ -709,6 +730,7 @@ export class MarketUi {
   }
 
   private renderDialog(): void {
+    if (this.dlgMode === 'buy') { this.renderBuyDialog(); return; }
     const body = this.q('.dlgbody');
     const stack = this.pick ? this.state().bag[this.pick.index] : null;
     // Сюда обычно не попадаем: диалог открывается только с выбранным предметом.
@@ -741,6 +763,43 @@ export class MarketUi {
       const price = Math.min(MAX_PRICE, raw); // тот же потолок, что рисует input — не шлём заведомо отказную цену
       this.actions.onList({ id: stack.id, qty, ...(stack.sharpen ? { sharpen: stack.sharpen } : {}) }, price);
       this.pick = null; // предмет уходит на рынок — снимаем выбор, чтобы панель не показывала проданное
+      this.closeDialog();
+    });
+  }
+
+  /** Тело диалога «Confirm Purchase»: предмет, продавец, цена, остаток золота после. */
+  private renderBuyDialog(): void {
+    const body = this.q('.dlgbody');
+    const lot = this.buyLot;
+    if (!lot) { this.closeDialog(); return; }
+    const gold = this.state().gold;
+    const left = gold - lot.price;
+
+    body.innerHTML = '';
+    const item = document.createElement('div');
+    item.className = 'row';
+    item.append(this.itemCell(lot.item)); // та же карточка, что в таблице: иконка, имя, +N, редкость
+    body.append(item);
+
+    const rows = document.createElement('div');
+    rows.innerHTML = `
+      <div class="row"><label>Seller</label><b>${lot.sellerName}</b></div>
+      <div class="row"><label>Price</label><b class="price">${fmtGold(lot.price)}</b></div>
+      <div class="row"><label>Gold after</label><b class="${left < 0 ? 'minus' : ''}">${fmtGold(left)}</b></div>
+      <div class="dlgerr"></div>
+      <div class="acts">
+        <button class="btn cancel danger">Cancel</button>
+        <button class="btn go">Buy</button>
+      </div>`;
+    body.append(rows);
+
+    (rows.querySelector('.price') as HTMLElement).append(this.iconEl(COIN as Icon, true));
+    rows.querySelector('.cancel')!.addEventListener('click', () => this.closeDialog());
+    const go = rows.querySelector<HTMLButtonElement>('.go')!;
+    go.disabled = left < 0; // золота могло стать меньше, пока смотрели витрину
+    if (left < 0) (rows.querySelector('.dlgerr') as HTMLElement).textContent = 'Not enough gold';
+    go.addEventListener('click', () => {
+      this.actions.onBuy(lot.id);
       this.closeDialog();
     });
   }
