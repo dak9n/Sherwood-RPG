@@ -1,4 +1,4 @@
-import { ITEMS, rarityOf, MARKET_CATEGORIES, RARITY_NAME, type Icon, type Rarity, type Stack } from './items';
+import { ITEMS, rarityOf, marketCategory, MARKET_CATEGORIES, RARITY_NAME, type Icon, type Rarity, type Stack } from './items';
 import { MARKET_COMMISSION, MAX_PRICE, type Lot, type TradeItem, type TradeRecord, type BrowseResult, type BrowseFilter } from './market-types';
 
 /**
@@ -206,16 +206,26 @@ const CSS = `
   #market .notice.ok { color: #8ad46a; } #market .notice.bad { color: #e0885a; }
   #market .footer { display: flex; gap: 18px; justify-content: center; font-size: 11px; color: #b8a284; padding-top: 6px; border-top: 1px solid rgba(255,255,255,.06); margin-top: 4px; }
 
-  /* Диалог создания лота — полупрозрачный фон поверх окна. КЛЮЧЕВОЕ: сам фон
-     pointer-events:none, чтобы клики проходили СКВОЗЬ него к ячейкам инвентаря —
-     предмет для продажи выбирается кликом по сумке справа при открытом диалоге,
-     а полноэкранный бэкдроп с pointer-events:auto перехватывал бы эти клики.
-     Кликается только карточка (.card). Закрытие — кнопкой Cancel/Close или Esc. */
-  #market .dlg { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.5); z-index: 2; pointer-events: none; }
+  /* Диалог создания лота. Предмет выбирается ДО открытия (кликом по сумке), поэтому
+     диалог честно модальный: фон ловит клики (pointer-events:auto обязателен — .dlg
+     сосед .win, а #market клики выключил) и закрывается кликом мимо карточки.
+     Закрыть также можно кнопкой Cancel или Esc. */
+  #market .dlg { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.5); z-index: 2; pointer-events: auto; }
   #market .dlg.open { display: flex; }
   #market .dlg .card { pointer-events: auto; width: 380px; padding: 14px; border-image: url(${UI}/window.png) 16 5 5 5 fill / ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px repeat;
     border-width: ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px; border-style: solid; }
   #market .dlgerr { color: #e0885a; font-size: 11px; text-align: center; min-height: 14px; margin-top: 6px; }
+
+  /* Панель характеристик выбранного предмета — под сумкой, над «Create Listing».
+     Показывает то же, что тултип инвентаря: игрок должен видеть, ЧТО продаёт. */
+  #market .details { display: flex; flex-direction: column; gap: 4px; }
+  #market .details .head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  #market .details .kind { font-size: 10px; color: #9a835f; text-transform: uppercase; letter-spacing: .05em; }
+  #market .details .ln { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: #d8c0a0; }
+  #market .details .ln b { color: #e8dcc0; font-variant-numeric: tabular-nums; }
+  #market .details .ln b.plus { color: #8ad46a; }
+  #market .details .ln b.minus { color: #e0885a; }
+  #market .details .none { font-size: 11px; color: #9a835f; text-align: center; padding: 6px 4px; line-height: 1.4; }
   #market .dlg h3 { margin: 0 0 8px; text-align: center; color: #eaf6f0; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
   #market .dlg .row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
   #market .dlg .row label { width: 90px; font-size: 12px; color: #d8c0a0; }
@@ -285,6 +295,7 @@ export class MarketUi {
               <div class="phead">Your Inventory</div>
               <div class="bag"></div>
             </div>
+            <div class="panel details"></div>
             <button class="btn create">Create Listing</button>
           </div>
         </div>
@@ -376,6 +387,9 @@ export class MarketUi {
       this.requery();
     });
     this.q('.create').addEventListener('click', () => this.openDialog());
+    // Клик мимо карточки закрывает диалог: выбор предмета к этому моменту уже сделан,
+    // так что перехват кликов фоном ничему не мешает.
+    this.q('.dlg').addEventListener('click', (e) => { if (e.target === this.q('.dlg')) this.closeDialog(); });
   }
 
   setState(get: () => MarketView): void { this.state = get; }
@@ -431,6 +445,7 @@ export class MarketUi {
       mine: v.mine.map((l) => [l.id, l.price, l.expiresAt]),
       hist: v.history.map((h) => [h.ts, h.itemId, h.price]),
       bag: v.bag.map((s) => (s ? [s.id, s.qty, s.sharpen ?? 0] : 0)),
+      sel: this.pick?.index ?? -1, // выбор влияет на подсветку, характеристики и кнопку
     });
     if (sig === this.key) return;
     this.key = sig;
@@ -439,6 +454,11 @@ export class MarketUi {
     else this.q('.notice').textContent = '';
 
     this.renderBag(v);
+    this.renderDetails(v);
+    // Выставлять нечего, пока предмет не выбран (и пока идёт другая операция).
+    const create = this.q<HTMLButtonElement>('.create');
+    create.disabled = !this.pick || !!v.busy;
+    create.title = this.pick ? 'Set a price and put it up for sale' : 'Pick an item in your inventory first';
     if (this.tab === 'market') this.renderMarket(v);
     else if (this.tab === 'mine') this.renderMine(v);
     else this.renderHistory(v);
@@ -575,7 +595,6 @@ export class MarketUi {
   private renderBag(v: MarketView): void {
     const bag = this.q('.bag');
     bag.innerHTML = '';
-    const dialogOpen = this.q('.dlg').classList.contains('open');
     v.bag.forEach((stack, i) => {
       const cell = document.createElement('div');
       cell.className = 'cell';
@@ -585,12 +604,12 @@ export class MarketUi {
         if (def) cell.append(this.iconEl(def.icon));
         if (stack.qty > 1) cell.append(Object.assign(document.createElement('span'), { className: 'qty', textContent: String(stack.qty) }));
         if (stack.sharpen) cell.append(Object.assign(document.createElement('span'), { className: 'plus', textContent: `+${stack.sharpen}` }));
-        cell.title = `${def?.name ?? stack.id}${stack.sharpen ? ` +${stack.sharpen}` : ''}`;
-        if (dialogOpen) {
-          cell.classList.add('pick');
-          if (this.pick?.index === i) cell.classList.add('sel');
-          cell.addEventListener('click', () => this.pickForLot(i));
-        }
+        cell.title = `${def?.name ?? stack.id}${stack.sharpen ? ` +${stack.sharpen}` : ''} — click to see stats and sell`;
+        // Ячейка кликабельна всегда: сначала выбираем предмет и смотрим его
+        // характеристики, и только потом жмём «Create Listing» и вводим цену.
+        cell.classList.add('pick');
+        if (this.pick?.index === i) cell.classList.add('sel');
+        cell.addEventListener('click', () => this.selectItem(i));
       }
       bag.append(cell);
     });
@@ -598,35 +617,93 @@ export class MarketUi {
 
   // --- Диалог создания лота ---
 
+  /** Открыть диалог цены. Предмет к этому моменту уже выбран кликом по сумке. */
   private openDialog(): void {
-    this.pick = null;
+    if (!this.pick) { this.flash('Pick an item in your inventory first', false); return; }
     this.q('.dlg').classList.add('open');
     this.key = '';
     this.renderDialog();
     this.render();
   }
 
+  /** Закрыть диалог. Выбор предмета НЕ сбрасываем: игрок мог просто передумать с ценой. */
   private closeDialog(): void {
     this.q('.dlg').classList.remove('open');
-    this.pick = null;
     this.key = '';
-    this.render(); // иначе ячейки инвентаря остаются «выбираемыми» (класс pick + клик) после закрытия
+    this.render();
   }
 
-  private pickForLot(index: number): void {
+  /** Клик по ячейке сумки: выбрать предмет (повторный клик по тому же — снять выбор). */
+  private selectItem(index: number): void {
     const stack = this.state().bag[index];
     if (!stack) return;
-    this.pick = { index, qty: stack.qty, price: 0 };
+    this.pick = this.pick?.index === index ? null : { index, qty: stack.qty, price: 0 };
     this.key = '';
-    this.renderDialog();
     this.render();
+  }
+
+  /**
+   * Характеристики выбранного предмета — под сумкой. Тот же набор строк, что в
+   * тултипе инвентаря: игрок должен видеть, что именно выставляет (и с какой
+   * заточкой), ДО того как назначит цену.
+   */
+  private renderDetails(v: MarketView): void {
+    const box = this.q('.details');
+    const stack = this.pick ? v.bag[this.pick.index] : null;
+    if (!this.pick || !stack) {
+      this.pick = null; // предмет пропал из сумки (продали/использовали) — снимаем выбор
+      box.innerHTML = '<div class="none">Click an item in your inventory to see its stats and put it up for sale.</div>';
+      return;
+    }
+
+    const def = ITEMS[stack.id];
+    const rar = rarityOf(stack.id);
+    const sharpen = stack.sharpen ?? 0;
+    const isWeapon = def?.slot === 'weapon';
+    const kind = MARKET_CATEGORIES.find((c) => c.id === marketCategory(stack.id))?.label ?? '';
+
+    const rows: string[] = [];
+    const row = (name: string, val: string, cls = ''): void => {
+      rows.push(`<div class="ln"><span>${name}</span><b class="${cls}">${val}</b></div>`);
+    };
+    const sign = (n: number): string => (n > 0 ? `+${n}` : String(n));
+
+    if (def?.use?.hp) row('Restores', `+${def.use.hp} health`, 'plus');
+    if (def?.use?.mp) row('Restores', `+${def.use.mp} mana`, 'plus');
+
+    const b = def?.bonus;
+    if (isWeapon) {
+      row('Attack bonus', `+${(b?.dmg ?? 0) + sharpen}`, 'plus');
+      if (sharpen > 0) row('Incl. sharpening', `+${sharpen}`, 'plus');
+      if (def?.ranged) row('Combat', 'arrows, at range');
+    } else if (b) {
+      if (b.dmg) row('Attack', sign(b.dmg), b.dmg > 0 ? 'plus' : 'minus');
+      if (b.def) row('Defense', sign(b.def), b.def > 0 ? 'plus' : 'minus');
+      if (b.speed) row('Speed', sign(b.speed), b.speed > 0 ? 'plus' : 'minus');
+      if (b.hp) row('Health', sign(b.hp), b.hp > 0 ? 'plus' : 'minus');
+      if (b.mp) row('Mana', sign(b.mp), b.mp > 0 ? 'plus' : 'minus');
+    }
+    if (stack.qty > 1) row('In stack', String(stack.qty));
+
+    box.innerHTML = `
+      <div class="head">
+        <div class="ico-wrap r-${rar}"></div>
+        <div>
+          <div class="nm r-${rar}">${def?.name ?? stack.id}${sharpen ? ` +${sharpen}` : ''}</div>
+          <div class="kind">${RARITY_NAME[rar]}${kind ? ` · ${kind}` : ''}</div>
+        </div>
+      </div>
+      ${rows.join('')}`;
+    if (def) box.querySelector('.ico-wrap')!.append(this.iconEl(def.icon));
   }
 
   private renderDialog(): void {
     const body = this.q('.dlgbody');
     const stack = this.pick ? this.state().bag[this.pick.index] : null;
+    // Сюда обычно не попадаем: диалог открывается только с выбранным предметом.
+    // Страховка на случай, если предмет исчез из сумки, пока диалог был открыт.
     if (!this.pick || !stack) {
-      body.innerHTML = '<div class="sub" style="text-align:center;padding:10px">Pick an item from your inventory on the right.</div>' +
+      body.innerHTML = '<div class="sub" style="text-align:center;padding:10px">That item is no longer in your bag.</div>' +
         '<div class="acts"><button class="btn cancel">Close</button></div>';
       body.querySelector('.cancel')!.addEventListener('click', () => this.closeDialog());
       return;
@@ -652,6 +729,7 @@ export class MarketUi {
       if (raw < 1) { errEl.textContent = 'Enter a price'; return; } // ошибку показываем в диалоге, а не в .notice под фоном
       const price = Math.min(MAX_PRICE, raw); // тот же потолок, что рисует input — не шлём заведомо отказную цену
       this.actions.onList({ id: stack.id, qty, ...(stack.sharpen ? { sharpen: stack.sharpen } : {}) }, price);
+      this.pick = null; // предмет уходит на рынок — снимаем выбор, чтобы панель не показывала проданное
       this.closeDialog();
     });
   }
