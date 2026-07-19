@@ -105,32 +105,113 @@ export function buildLayers(host: HTMLElement, state: EditorState, ops: LayerLis
     input.onmousedown = (e: MouseEvent): void => e.stopPropagation(); // клик в поле не выбирает слой
   }
 
-  /** Спросить группу для слоя: пусто — вынуть из группы, Отмена — ничего. */
-  function promptAssign(index: number): void {
-    const groups = groupNames(state.doc.map);
-    const current = state.doc.layers[index].group ?? '';
-    const hint = groups.length
-      ? `Группа для слоя (пусто — без группы).\nСуществующие: ${groups.join(', ')}`
-      : 'Название новой группы (пусто — без группы):';
-    const v = window.prompt(hint, current);
-    if (v === null) return;
-    const name = v.trim();
-    if (name === (state.doc.layers[index].group ?? '')) return; // без изменений
-    ops.onAssignGroup(index, name || null);
+  /**
+   * Общая часть правки имени прямо в строке: подменяем подпись полем ввода.
+   * Через window.prompt этого делать нельзя — браузер молча гасит диалоги, если
+   * в предыдущем окне отметить «не показывать», и кнопка выглядит сломанной.
+   * Инлайн-поле работает всегда и не зависит от настроек браузера.
+   *
+   * error возвращает текст ошибки (или null), commit применяет годное значение.
+   * groups — список для автодополнения; пусто, если подсказывать нечего.
+   */
+  function inlineEdit(
+    labelEl: HTMLElement,
+    value: string,
+    error: (next: string) => string | null,
+    commit: (next: string) => void,
+    groups: string[] = [],
+  ): void {
+    const input = document.createElement('input');
+    input.className = 'rn';
+    input.value = value;
+
+    // Подсказка существующими группами: набирать имя заново на каждый слой лень,
+    // а промахнуться в букве — значит завести вторую группу-двойник.
+    if (groups.length) {
+      const id = 'ed-groups-list';
+      let list = document.getElementById(id) as HTMLDataListElement | null;
+      if (!list) {
+        list = document.createElement('datalist');
+        list.id = id;
+        document.body.append(list);
+      }
+      list.textContent = '';
+      for (const g of groups) list.append(Object.assign(document.createElement('option'), { value: g }));
+      input.setAttribute('list', id);
+    }
+
+    labelEl.replaceWith(input);
+    input.focus();
+    input.select();
+
+    let closed = false;
+    const cancel = (): void => {
+      if (closed) return;
+      closed = true;
+      render(); // вернуть подпись
+    };
+    const apply = (): void => {
+      if (closed) return;
+      const next = input.value.trim();
+      if (next === value) return cancel(); // без изменений
+      const err = error(next);
+      if (err) {
+        input.classList.add('bad');
+        input.title = err;
+        return; // остаёмся в поле — пусть поправят
+      }
+      closed = true; // до commit: он перерисует список и уберёт input
+      commit(next);
+    };
+
+    input.onkeydown = (e: KeyboardEvent): void => {
+      e.stopPropagation(); // иначе хоткеи редактора сработают прямо во время ввода
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        apply();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        cancel();
+      }
+    };
+    input.onblur = (): void => {
+      const next = input.value.trim();
+      if (next !== value && !error(next)) {
+        if (closed) return;
+        closed = true;
+        commit(next);
+      } else {
+        cancel();
+      }
+    };
+    // Клики внутри поля не должны выбирать слой и сворачивать группу.
+    input.onmousedown = (e: MouseEvent): void => e.stopPropagation();
+    input.onclick = (e: MouseEvent): void => e.stopPropagation();
+    input.ondblclick = (e: MouseEvent): void => e.stopPropagation();
   }
 
-  /** Переименовать группу. Слить две группы одним именем нельзя: пачки бы разорвало. */
-  function promptRenameGroup(name: string): void {
-    const v = window.prompt(`Новое имя группы «${name}»:`, name);
-    if (v === null) return;
-    const next = v.trim();
-    if (!next || next === name) return;
-    if (groupNameError(next)) return;
-    if (groupNames(state.doc.map).includes(next)) {
-      alert(`Группа «${next}» уже есть — выбери другое имя.`);
-      return;
-    }
-    ops.onRenameGroup(name, next);
+  /** Правка группы слоя прямо в строке: пустое значение вынимает слой из группы. */
+  function startAssignGroup(index: number, nameEl: HTMLElement): void {
+    const current = state.doc.layers[index].group ?? '';
+    inlineEdit(
+      nameEl,
+      current,
+      () => null, // любое имя годится: новая группа заводится этим же вводом
+      (next) => ops.onAssignGroup(index, next || null),
+      groupNames(state.doc.map),
+    );
+  }
+
+  /** Переименование группы. Слить две группы одним именем нельзя: пачки бы разорвало. */
+  function startRenameGroup(group: string, nameEl: HTMLElement): void {
+    inlineEdit(
+      nameEl,
+      group,
+      (next) =>
+        groupNameError(next) ??
+        (groupNames(state.doc.map).includes(next) ? `группа «${next}» уже есть` : null),
+      (next) => ops.onRenameGroup(group, next),
+    );
   }
 
   /** Заголовок группы: ▸/▾ сворачивание, глаз всей группы, счётчик, ✎ и 🗑. */
@@ -161,7 +242,7 @@ export function buildLayers(host: HTMLElement, state: EditorState, ops: LayerLis
     nm.title = 'Клик — свернуть/развернуть, двойной — переименовать группу';
     nm.ondblclick = (e) => {
       e.stopPropagation();
-      promptRenameGroup(group);
+      startRenameGroup(group, nm);
     };
 
     const ct = document.createElement('span');
@@ -174,7 +255,7 @@ export function buildLayers(host: HTMLElement, state: EditorState, ops: LayerLis
     edit.title = 'Переименовать группу';
     edit.onclick = (e) => {
       e.stopPropagation();
-      promptRenameGroup(group);
+      startRenameGroup(group, nm);
     };
 
     const del = document.createElement('span');
@@ -341,10 +422,12 @@ export function buildLayers(host: HTMLElement, state: EditorState, ops: LayerLis
       const grp = document.createElement('span');
       grp.className = 'grp';
       grp.textContent = '📁';
-      grp.title = group ? `Группа «${group}» — сменить или убрать` : 'Положить слой в группу';
+      grp.title = group
+        ? `Группа «${group}» — вписать другую или очистить, чтобы вынуть`
+        : 'Положить слой в группу: вписать имя';
       grp.onclick = (e) => {
         e.stopPropagation();
-        promptAssign(i);
+        startAssignGroup(i, name); // правим прямо в строке, вместо подписи слоя
       };
 
       row.append(eye, name, count, grp, edit);

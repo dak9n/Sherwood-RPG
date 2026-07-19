@@ -95,11 +95,12 @@ const CSS = `
   .ed-layer .edit, .ed-layer .del { width: 16px; text-align: center; opacity: 0; cursor: pointer; }
   .ed-layer:hover .edit, .ed-layer:hover .del { opacity: .5; }
   .ed-layer .edit:hover, .ed-layer .del:hover { opacity: 1; }
-  .ed-layer input.rn {
+  /* Поле правки имени — и в строке слоя, и в заголовке группы (одна разметка). */
+  .ed-layer input.rn, .ed-group input.rn {
     flex: 1; min-width: 0; font: inherit; color: #fff; background: #12171a;
     border: 1px solid #63a354; border-radius: 2px; padding: 0 3px; outline: none;
   }
-  .ed-layer input.rn.bad { border-color: #e2705f; }
+  .ed-layer input.rn.bad, .ed-group input.rn.bad { border-color: #e2705f; }
   .ed-layer { cursor: grab; }
   .ed-layer.dragging { opacity: .5; cursor: grabbing; }
   /* Куда встанет слой при отпускании: зелёная черта сверху или снизу строки. */
