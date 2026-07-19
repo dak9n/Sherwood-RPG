@@ -453,6 +453,11 @@ export class MarketUi {
     if (v.notice) this.flash(v.notice.text, v.notice.ok);
     else this.q('.notice').textContent = '';
 
+    // Счётчик на вкладке: свои лоты не видны в «Market» (там только чужие), и без
+    // подсказки кажется, что выставленное пропало. Цифра сразу говорит, что оно есть.
+    const mineTab = this.root.querySelector<HTMLElement>('.tab[data-tab="mine"]');
+    if (mineTab) mineTab.textContent = v.mine.length ? `My Listings (${v.mine.length})` : 'My Listings';
+
     this.renderBag(v);
     this.renderDetails(v);
     // Выставлять нечего, пока предмет не выбран (и пока идёт другая операция).
@@ -502,7 +507,13 @@ export class MarketUi {
 
     // «Только по карману» теперь серверный фильтр (страницы и счётчик честные) — клиентом не режем.
     const lots = v.browse?.lots ?? [];
-    if (!lots.length) { box.innerHTML = '<div class="empty">Nothing found.</div>'; return; }
+    if (!lots.length) {
+      // Свои лоты сюда не попадают (excludeSeller на сервере) — говорим об этом прямо,
+      // иначе выставленное выглядит пропавшим.
+      box.innerHTML = '<div class="empty">Nothing found.<br>'
+        + '<span class="sub">Your own listings are not shown here — open "My Listings" to see or cancel them.</span></div>';
+      return;
+    }
 
     const now = Date.now();
     const table = document.createElement('table');

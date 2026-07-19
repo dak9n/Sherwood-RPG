@@ -1510,7 +1510,9 @@ export class GameScene extends MapScene {
     try {
       const r = await marketList(item, price);
       if (r.ok) {
-        this.mkNotice = { text: `Listed: ${ITEMS[item.id]?.name ?? item.id}`, ok: true };
+        // Подсказываем вкладку: своих лотов в «Market» не видно, и без этого кажется,
+        // что предмет пропал.
+        this.mkNotice = { text: `Listed: ${ITEMS[item.id]?.name ?? item.id} — see "My Listings"`, ok: true };
         const mine = await marketMine();
         this.mkMine = mine.lots;
       } else {
