@@ -91,6 +91,9 @@ const CSS = `
     background: transparent;
   }
   #hotbar .hs.skill.ready .fire { box-shadow: 0 0 8px 2px rgba(255, 176, 46, .9); }
+  /* Готовность умения-значка (град стрел): подсветка вокруг иконки. */
+  #hotbar .hs.skill .skillico { position: absolute; inset: 0; margin: auto; }
+  #hotbar .hs.skill.ready .skillico { filter: drop-shadow(0 0 3px rgba(255, 207, 90, .95)); }
 `;
 
 export class HotbarUi {
@@ -111,13 +114,13 @@ export class HotbarUi {
   onSwap: (from: number, to: number) => void = () => {};
   /** Сбросили ячейку правой кнопкой. */
   onClear: (slot: number) => void = () => {};
-  /** Нажали слот умения (первый) — кастуем огненный шар. */
-  onSkill: () => void = () => {};
+  /** Нажали слот умения i (0 — огненный шар, 1 — град стрел). */
+  onSkill: (index: number) => void = () => {};
 
-  /** Слот умения — первый: он не предметный, точить/класть в него нельзя. */
-  private static readonly SKILL_SLOT = 0;
-  /** Затемнение-перезарядка на слоте умения. */
-  private cdEl!: HTMLDivElement;
+  /** Слоты умений — первые (0 — огненный шар, 1 — град стрел): не предметные. */
+  private static readonly SKILL_SLOTS = 2;
+  /** Затемнение-перезарядка на слотах умений (по индексу слота). */
+  private cdEls: HTMLDivElement[] = [];
 
   constructor() {
     this.style = document.createElement('style');
@@ -135,21 +138,38 @@ export class HotbarUi {
       el.style.left = `${(BAR.first + i * BAR.step) * SCALE}px`;
       el.append(Object.assign(document.createElement('span'), { className: 'key', textContent: KEYS[i] }));
 
-      if (i === HotbarUi.SKILL_SLOT) {
-        // Слот умения: огонёк + затемнение перезарядки. Ни перетащить, ни сбросить —
-        // это не предмет, а способность героя.
+      if (i < HotbarUi.SKILL_SLOTS) {
+        // Слоты умений: значок + затемнение перезарядки. Ни перетащить, ни сбросить —
+        // это способности героя, а не предметы.
         el.classList.add('skill', 'ready');
-        el.title = `Fireball (${KEYS[i]})`;
-        el.append(Object.assign(document.createElement('div'), { className: 'fire' }));
-        this.cdEl = Object.assign(document.createElement('div'), { className: 'cd' });
-        el.append(this.cdEl);
-        el.onclick = () => this.onSkill();
+        if (i === 0) {
+          el.title = `Fireball (${KEYS[i]})`;
+          el.append(Object.assign(document.createElement('div'), { className: 'fire' }));
+        } else {
+          el.title = `Arrow Rain (${KEYS[i]})`;
+          el.append(this.skillIcon(ITEMS['bow'].icon)); // лук — узнаваемо для града стрел
+        }
+        const cd = Object.assign(document.createElement('div'), { className: 'cd' });
+        el.append(cd);
+        this.cdEls[i] = cd;
+        el.onclick = () => this.onSkill(i);
         el.oncontextmenu = (e) => e.preventDefault();
       } else {
         this.wire(el, i);
       }
       this.root.append(el);
     }
+  }
+
+  /** Иконка-значок для слота умения (например, лук для града стрел). */
+  private skillIcon(icon: Icon): HTMLElement {
+    const el = document.createElement('i');
+    el.className = 'skillico';
+    el.style.width = `${icon.w}px`;
+    el.style.height = `${icon.h}px`;
+    el.style.backgroundImage = `url(${SHEETS[icon.sheet]})`;
+    el.style.backgroundPosition = `-${icon.x}px -${icon.y}px`;
+    return el;
   }
 
   private wire(el: HTMLDivElement, i: number): void {
@@ -213,12 +233,13 @@ export class HotbarUi {
     el.classList.add('hit');
   }
 
-  /** Перезарядка умения: frac 1 — только откастовал, 0 — готов (зовётся каждый кадр). */
-  setSkillCooldown(frac: number): void {
-    const el = this.slots[HotbarUi.SKILL_SLOT];
-    if (!el) return;
+  /** Перезарядка умения в слоте i: frac 1 — только откастовал, 0 — готов (каждый кадр). */
+  setSkillCooldown(index: number, frac: number): void {
+    const el = this.slots[index];
+    const cd = this.cdEls[index];
+    if (!el || !cd) return;
     const f = Math.max(0, Math.min(1, frac));
-    this.cdEl.style.background = f > 0
+    cd.style.background = f > 0
       ? `conic-gradient(rgba(6, 4, 2, .72) ${f * 360}deg, transparent 0)`
       : 'transparent';
     el.classList.toggle('ready', f <= 0);
@@ -234,7 +255,7 @@ export class HotbarUi {
     this.key = key;
 
     for (const [i, el] of this.slots.entries()) {
-      if (i === HotbarUi.SKILL_SLOT) continue; // слот умения не предметный — его не перерисовываем
+      if (i < HotbarUi.SKILL_SLOTS) continue; // слоты умений не предметные — их не перерисовываем
       const id = this.bar[i];
       el.querySelector('i')?.remove();
       el.querySelector('.cnt')?.remove();

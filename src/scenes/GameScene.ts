@@ -4,7 +4,11 @@ import { Player, CHEST_OFFSET, type Strike, type Shot } from '../game/player';
 import { Monster } from '../game/monster';
 import { Arrow, ARROW_RANGE } from '../game/arrow';
 import { Fireball, FIREBALL_RANGE, FIREBALL_MP_COST, FIREBALL_COOLDOWN, FIREBALL_CAST_TIME } from '../game/fireball';
-import { fireballDamage } from '../game/combat';
+import {
+  RAIN_TEX, RAIN_RANGE, RAIN_RADIUS, RAIN_MP_COST, RAIN_COOLDOWN, RAIN_DURATION, RAIN_TICKS, RAIN_ARROWS,
+  ensureRainArrowTexture,
+} from '../game/arrow-rain';
+import { fireballDamage, arrowRainDamage } from '../game/combat';
 import { findTallObjects } from '../game/tall-objects';
 import { pickSpawns } from '../game/spawn';
 import { buildFlow } from '../game/flow';
@@ -40,6 +44,10 @@ const ZOOM = 3;
 
 /** Первый слот хотбара — умение «Огненный шар» (клавиша 1), а не предмет. */
 const SKILL_SLOT = 0;
+/** Слот умения «Град стрел» (клавиша 2). */
+const RAIN_SLOT = 1;
+/** Сколько первых слотов хотбара заняты умениями (не предметами). */
+const SKILL_SLOTS = 2;
 
 /**
  * Чем помечаем стену в невидимом слое физики. Годится любой существующий номер
@@ -95,6 +103,14 @@ export class GameScene extends MapScene {
   /** Полоска каста над героем (фон + оранжевая заливка). Создаётся при первом касте. */
   private castBarBg?: Phaser.GameObjects.Rectangle;
   private castBar?: Phaser.GameObjects.Rectangle;
+  /** Град стрел: идёт ли прицеливание (круг у курсора ждёт клика по точке залпа). */
+  private rainAiming = false;
+  /** Круг-прицел града стрел. Создаётся при первом прицеливании. */
+  private rainReticle?: Phaser.GameObjects.Arc;
+  /** Докуда «Град стрел» на перезарядке (время сцены). 0 — готово. */
+  private rainReadyAt = 0;
+  /** Активные залпы града: центр, следующая волна урона и сколько волн осталось. */
+  private rains: { cx: number; cy: number; nextTick: number; ticksLeft: number }[] = [];
   /** Золото игрока. Падает с монстров, тратится в магазине. Часть сейва. */
   private gold = 0;
   /**
@@ -178,6 +194,7 @@ export class GameScene extends MapScene {
       (strike) => this.playerStrike(strike),
       () => this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#5ba3e0', 'not enough mana'),
       (shot) => this.spawnArrow(shot),
+      () => !this.rainAiming, // пока целятся градом стрел, обычный удар не проходит
     );
 
     // Большие деревья ищем один раз: карта в игре не меняется.
@@ -305,17 +322,17 @@ export class GameScene extends MapScene {
     this.hotbar.setData(this.quick, this.bag, this.equipped);
     this.hotbar.setPlusFor((id) => this.weaponPlusFor(id));
     this.hotbar.onTrigger = (slot) => this.useQuick(slot);
-    // Первый слот — умение «Огненный шар», а не предмет: каст, а не применение.
-    this.hotbar.onSkill = () => this.castFireball();
+    // Первые слоты — умения (0 — огненный шар, 1 — град стрел), а не предметы.
+    this.hotbar.onSkill = (i) => (i === SKILL_SLOT ? this.castFireball() : this.castArrowRain());
     this.hotbar.onBind = (slot, id) => {
-      // В слот умения предмет не кладём — он занят огненным шаром.
-      if (slot === SKILL_SLOT) return;
+      // В слоты умений предмет не кладём — они заняты способностями.
+      if (slot < SKILL_SLOTS) return;
       bind(this.quick, slot, id);
       this.hotbar.render();
       this.scheduleSave();
     };
     this.hotbar.onSwap = (from, to) => {
-      if (from === SKILL_SLOT || to === SKILL_SLOT) return; // умение не перетаскивается
+      if (from < SKILL_SLOTS || to < SKILL_SLOTS) return; // умения не перетаскиваются
       swap(this.quick, from, to);
       this.hotbar.render();
       this.scheduleSave();
@@ -381,6 +398,15 @@ export class GameScene extends MapScene {
     this.input.keyboard?.on('keydown-K', () => this.toggleForge());
     this.input.keyboard?.on('keydown-T', () => this.toggleMarket());
     this.input.keyboard?.on('keydown-M', () => this.minimap.toggleFull());
+    // Esc отменяет прицеливание града стрел (если целятся).
+    this.input.keyboard?.on('keydown-ESC', () => { if (this.rainAiming) this.cancelRainAim(); });
+    // Клик по миру во время прицеливания: ЛКМ — залп в точку, ПКМ — отмена. Обычный
+    // удар в это время не проходит (Player.canAct), так что конфликта нет.
+    this.input.on(Phaser.Input.Events.POINTER_DOWN, (p: Phaser.Input.Pointer) => {
+      if (!this.rainAiming) return;
+      if (p.rightButtonDown()) this.cancelRainAim();
+      else this.confirmArrowRain(p);
+    });
     this.bindQuickKeys();
 
     // Прогресс вошедшего. Применяем ПОСЛЕ того, как собраны сумка, экипировка и
@@ -421,6 +447,7 @@ export class GameScene extends MapScene {
       for (const f of this.fireballs) f.destroy();
       this.castBarBg?.destroy();
       this.castBar?.destroy();
+      this.rainReticle?.destroy();
       this.hotbar.destroy();
       this.minimap.destroy();
       this.menu.destroy();
@@ -813,6 +840,116 @@ export class GameScene extends MapScene {
     }
   }
 
+  // --- Умение «Град стрел» (слот 2): прицельный AoE ---
+
+  /**
+   * Начать прицеливание града стрел (клавиша «2» или клик по слоту). Не бьём сразу:
+   * включаем режим прицела — круг у курсора ждёт, куда игрок кликнет. Повторная «2»
+   * прицеливание отменяет. Ману и перезарядку тратим только на подтверждении залпа.
+   */
+  private castArrowRain(): void {
+    if (this.player.isDead) return;
+    if (this.rainAiming) { this.cancelRainAim(); return; } // «2» второй раз — отмена
+    if (this.time.now < this.rainReadyAt) { this.hotbar.flash(RAIN_SLOT); return; } // перезарядка
+    if (this.player.mp < RAIN_MP_COST) {
+      this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#5ba3e0', 'not enough mana');
+      return;
+    }
+    this.rainAiming = true;
+    this.hotbar.flash(RAIN_SLOT);
+    if (!this.rainReticle) {
+      this.rainReticle = this.add.circle(0, 0, RAIN_RADIUS, 0x8ad46a, 0.15)
+        .setStrokeStyle(2, 0x8ad46a, 0.9).setDepth(305);
+    }
+    this.rainReticle.setVisible(true);
+    this.updateRainAim();
+  }
+
+  /** Точка не дальше RAIN_RANGE от героя: курсор клампим к дальности умения. */
+  private clampToRange(wx: number, wy: number): { x: number; y: number } {
+    const px = this.player.sprite.x;
+    const py = this.player.sprite.y;
+    let dx = wx - px;
+    let dy = wy - py;
+    const d = Math.hypot(dx, dy);
+    if (d > RAIN_RANGE) { dx = (dx / d) * RAIN_RANGE; dy = (dy / d) * RAIN_RANGE; }
+    return { x: px + dx, y: py + dy };
+  }
+
+  /** Пока целятся — круг идёт за курсором (в пределах дальности). Смерть — отмена. */
+  private updateRainAim(): void {
+    if (!this.rainAiming || !this.rainReticle) return;
+    if (this.player.isDead) { this.cancelRainAim(); return; }
+    const p = this.input.activePointer;
+    const t = this.clampToRange(p.worldX, p.worldY);
+    this.rainReticle.setPosition(t.x, t.y);
+  }
+
+  /** Отменить прицеливание (ПКМ / Esc / смерть / повторная «2») — без траты маны. */
+  private cancelRainAim(): void {
+    this.rainAiming = false;
+    this.rainReticle?.setVisible(false);
+  }
+
+  /** Подтвердить залп по точке клика: тратим ману, ставим перезарядку, сыплем стрелы. */
+  private confirmArrowRain(p: Phaser.Input.Pointer): void {
+    if (!this.rainAiming) return;
+    // Мана могла уйти на другой каст, пока целились, — проверяем ещё раз.
+    if (this.player.mp < RAIN_MP_COST) {
+      this.damageNumber(this.player.sprite.x, this.player.sprite.y - 44, 0, '#5ba3e0', 'not enough mana');
+      this.cancelRainAim();
+      return;
+    }
+    const t = this.clampToRange(p.worldX, p.worldY);
+    this.player.mp -= RAIN_MP_COST;
+    this.rainReadyAt = this.time.now + RAIN_COOLDOWN;
+    this.player.faceToward(t.x, t.y);
+    this.cancelRainAim();
+    this.spawnArrowRain(t.x, t.y);
+  }
+
+  /** Залп: волны урона (updateRains) + падающие с неба стрелы (визуал твинами). */
+  private spawnArrowRain(cx: number, cy: number): void {
+    // Первая волна урона — через долю длительности, дальше по updateRains.
+    this.rains.push({ cx, cy, nextTick: this.time.now + RAIN_DURATION / RAIN_TICKS, ticksLeft: RAIN_TICKS });
+
+    ensureRainArrowTexture(this);
+    const half = Math.round(RAIN_RADIUS / 2);
+    for (let i = 0; i < RAIN_ARROWS; i++) {
+      const ax = cx + Phaser.Math.Between(-RAIN_RADIUS, RAIN_RADIUS);
+      const landY = cy + Phaser.Math.Between(-half, half);
+      const arrow = this.add.image(ax, landY - 220, RAIN_TEX).setDepth(330);
+      this.tweens.add({
+        targets: arrow, y: landY, duration: 300,
+        delay: Phaser.Math.Between(0, RAIN_DURATION - 300), ease: 'Quad.easeIn',
+        onComplete: () => arrow.destroy(),
+      });
+    }
+  }
+
+  /** Волны урона активных залпов: раз в RAIN_DURATION/RAIN_TICKS бьём всех в круге. */
+  private updateRains(now: number): void {
+    const r2 = RAIN_RADIUS * RAIN_RADIUS;
+    const sb = skillBonuses(this.skillRanks);
+    for (let i = this.rains.length - 1; i >= 0; i--) {
+      const rain = this.rains[i];
+      if (now < rain.nextTick) continue;
+      for (const m of this.monsters) {
+        if (m.isDead) continue;
+        const dx = m.sprite.x - rain.cx;
+        const dy = m.sprite.y - rain.cy;
+        if (dx * dx + dy * dy > r2) continue;
+        const crit = sb.critChance > 0 && Math.random() < sb.critChance;
+        let dmg = arrowRainDamage(this.player.level);
+        if (crit) dmg = Math.round(dmg * (BASE_CRIT_MUL + sb.critMul));
+        this.hitMonster(m, dmg, false, crit);
+      }
+      rain.ticksLeft -= 1;
+      rain.nextTick += RAIN_DURATION / RAIN_TICKS;
+      if (rain.ticksLeft <= 0) this.rains.splice(i, 1);
+    }
+  }
+
   /** Вспышка-взрыв в точке попадания огненного шара: яркое кольцо и ядро, гаснут. */
   private fireBurst(x: number, y: number): void {
     const ring = this.add.graphics({ x, y });
@@ -995,7 +1132,7 @@ export class GameScene extends MapScene {
     // считались от уже финального оружия.
     ensureStarterWeapon(this.equipped, this.bag);
     for (let i = 0; i < this.quick.length; i++) this.quick[i] = prog.quick[i] ?? null;
-    this.quick[SKILL_SLOT] = null; // первый слот занят умением: предмету там не место (в т.ч. из старых сейвов)
+    for (let i = 0; i < SKILL_SLOTS; i++) this.quick[i] = null; // слоты умений не предметные (в т.ч. из старых сейвов, где слот 1 был предметным)
     this.spent = prog.spent;
     this.gold = prog.gold;
     // Заточка и навыки — ДО applyGear: тот считает урон, здоровье, крит уже с ними.
@@ -1012,11 +1149,12 @@ export class GameScene extends MapScene {
 
   /** Клавиши 1-9 и 0 — планка быстрого доступа. «1» — умение, дальше — предметы. */
   private bindQuickKeys(): void {
-    // Первый слот (клавиша «1») — огненный шар, а не предмет.
+    // Слоты умений: «1» — огненный шар, «2» — град стрел.
     this.input.keyboard?.on('keydown-ONE', () => this.castFireball());
-    // Клавиши 2..9 — предметные слоты 1..8 (слот 0 занят умением).
-    const keys = ['TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE'];
-    keys.forEach((k, i) => this.input.keyboard?.on(`keydown-${k}`, () => this.useQuick(i + 1)));
+    this.input.keyboard?.on('keydown-TWO', () => this.castArrowRain());
+    // Клавиши 3..9 — предметные слоты 2..8 (слоты 0,1 заняты умениями).
+    const keys = ['THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE'];
+    keys.forEach((k, i) => this.input.keyboard?.on(`keydown-${k}`, () => this.useQuick(i + 2)));
     // Ноль — десятая ячейка, как подписано на планке.
     this.input.keyboard?.on('keydown-ZERO', () => this.useQuick(9));
   }
@@ -1610,8 +1748,11 @@ export class GameScene extends MapScene {
     this.updateArrows(delta);
     this.updateCast(now); // сначала докрутить каст: он может выпустить шар в этот кадр
     this.updateFireballs(delta);
-    // Перезарядка умения на планке: 1 — только откастовал, 0 — готов.
-    this.hotbar.setSkillCooldown(this.fireballReadyAt > now ? (this.fireballReadyAt - now) / FIREBALL_COOLDOWN : 0);
+    this.updateRainAim();  // круг прицела идёт за курсором, пока целятся
+    this.updateRains(now); // волны урона активных залпов града стрел
+    // Перезарядка умений на планке: 1 — только откастовал, 0 — готов.
+    this.hotbar.setSkillCooldown(SKILL_SLOT, this.fireballReadyAt > now ? (this.fireballReadyAt - now) / FIREBALL_COOLDOWN : 0);
+    this.hotbar.setSkillCooldown(RAIN_SLOT, this.rainReadyAt > now ? (this.rainReadyAt - now) / RAIN_COOLDOWN : 0);
     this.updateLoot(now);
 
     if (this.player.isDead && !this.deathAt) {

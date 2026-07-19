@@ -166,6 +166,8 @@ export class Player {
     private onNoMana: () => void = () => {},
     /** Выпустить стрелу — когда надет лук. Сцена рождает снаряд. */
     private onShoot: (shot: Shot) => void = () => {},
+    /** Можно ли сейчас бить: сцена запрещает удар, пока целятся градом стрел. */
+    private canAct: () => boolean = () => true,
   ) {
     createDirAnims(scene, 'sw', DIRS_HERO, {
       idle: { texture: 'sw-idle', cols: 12, frameRate: 8, loop: true },
@@ -405,6 +407,10 @@ export class Player {
   }
 
   private startAttack(wantHeavy: boolean, angle: number): void {
+    // Пока целятся умением (град стрел), удар мышью/пробелом не проходит: тот же
+    // клик выбирает точку залпа, а не машет мечом.
+    if (!this.canAct()) return;
+
     // Тяжёлый удар тратит ману. Обычный бесплатный: кончившаяся мана не должна
     // отнимать у игрока единственное действие.
     const heavy = wantHeavy && this.mp >= HERO.heavyCost;

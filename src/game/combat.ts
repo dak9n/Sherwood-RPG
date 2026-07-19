@@ -52,3 +52,13 @@ export function rollDamage(min: number, max: number, rng: () => number = Math.ra
 export function fireballDamage(level: number): number {
   return 16 + Math.max(0, Math.floor(level) - 1) * 3;
 }
+
+/**
+ * Урон одной волны умения «Град стрел» (слот 2). За залп волн RAIN_TICKS, так что
+ * монстр под всем градом получает примерно вчетверо больше — но это AoE и стоит
+ * дольше перезаряжается. Растёт с уровнем героя. Тоже здесь, а не в arrow-rain.ts
+ * (тот тянет Phaser), — чтобы формулу проверяли тесты.
+ */
+export function arrowRainDamage(level: number): number {
+  return 4 + Math.max(0, Math.floor(level) - 1) * 2;
+}
