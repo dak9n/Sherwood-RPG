@@ -57,6 +57,18 @@ const CSS = `
   #helm .hint { color: #7d8f99; font-size: 12px; line-height: 1.45; margin-top: 8px; }
   #helm hr { border: none; border-top: 1px solid #2b3439; margin: 12px 0; }
   #helm-preview { image-rendering: pixelated; background: #10151a; border: 1px solid #0d1114; }
+  /* Справка: тёмная вуаль на весь экран, карточка по центру. */
+  #helm-info { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.55);
+    display: flex; align-items: center; justify-content: center; }
+  #helm-info .card { background: #20272b; border: 1px solid #0d1114; border-radius: 6px;
+    max-width: 560px; max-height: 86vh; overflow-y: auto; padding: 14px 18px;
+    box-shadow: 0 12px 44px rgba(0,0,0,.55); }
+  #helm-info h3 { margin: 0 0 8px; font-size: 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  #helm-info h4 { margin: 10px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #7d8f99; }
+  #helm-info ul { margin: 0; padding-left: 18px; }
+  #helm-info li { margin: 3px 0; line-height: 1.45; }
+  #helm-info button { font: inherit; color: inherit; background: #2f383e; border: 1px solid #0d1114;
+    border-radius: 3px; padding: 3px 10px; cursor: pointer; }
 `;
 
 const load = (src: string): Promise<HTMLImageElement> =>
@@ -141,6 +153,10 @@ export async function mountHelmEditor(): Promise<void> {
         <button id="h-shrink">− Smaller</button>
         <button id="h-grow">+ Bigger</button>
       </div>
+      <div class="row">
+        <button id="h-hero" aria-pressed="true">Hero: on</button>
+        <button id="h-info">Info</button>
+      </div>
       <hr>
       <h2>Preview (walk)</h2>
       <canvas id="helm-preview" width="64" height="64" style="width:192px;height:192px"></canvas>
@@ -185,6 +201,13 @@ export async function mountHelmEditor(): Promise<void> {
   let eraser = false;
   /** Ячейка, которой касались последней, — её двигают стрелки. */
   let activeCell = 0;
+  /**
+   * Показывать ли героя под рисунком. Выключение отвечает на «ластик не
+   * работает»: стёртая заготовка туники открывала героя в почти такой же
+   * тунике, и казалось, что ничего не стёрлось. Без героя виден только СВОЙ
+   * рисунок — что стёр, там дырка.
+   */
+  let showHero = true;
   const undoStack: ImageData[][] = [];
 
   const pushUndo = (): void => {
@@ -315,7 +338,9 @@ export async function mountHelmEditor(): Promise<void> {
     ctx.clearRect(0, 0, c.width, c.height);
     // герой (голова по центру ячейки — как посадит игра): весь кадр 64x64,
     // сдвинутый так, чтобы центр головы лёг в клетку (16,16)
-    ctx.drawImage(refs[di].frame, 0, 0, FRAME, FRAME, Math.round(refs[di].dx) * ZOOM, Math.round(refs[di].dy) * ZOOM, FRAME * ZOOM, FRAME * ZOOM);
+    if (showHero) {
+      ctx.drawImage(refs[di].frame, 0, 0, FRAME, FRAME, Math.round(refs[di].dx) * ZOOM, Math.round(refs[di].dy) * ZOOM, FRAME * ZOOM, FRAME * ZOOM);
+    }
     ctx.drawImage(layers[di], 0, 0, CELL, CELL, 0, 0, CELL * ZOOM, CELL * ZOOM);
     // сетка
     ctx.strokeStyle = 'rgba(255,255,255,.07)';
@@ -395,8 +420,10 @@ export async function mountHelmEditor(): Promise<void> {
     }
     if (e.key === 'e' || e.key === 'E') return setEraser(!eraser);
     if (e.key === 'b' || e.key === 'B') return setEraser(false);
+    if (e.key === 'h' || e.key === 'H') return setHero(!showHero);
     if (e.key === '+' || e.key === '=') return scaleAll(1.125);
     if (e.key === '-' || e.key === '_') return scaleAll(1 / 1.125);
+    if (e.key === 'Escape') return setInfo(false);
     const arrows: Record<string, [number, number]> = {
       ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
     };
@@ -469,6 +496,55 @@ export async function mountHelmEditor(): Promise<void> {
   }
   $<HTMLButtonElement>('h-grow').onclick = () => scaleAll(1.125);
   $<HTMLButtonElement>('h-shrink').onclick = () => scaleAll(1 / 1.125);
+
+  function setHero(on: boolean): void {
+    showHero = on;
+    const b = $<HTMLButtonElement>('h-hero');
+    b.setAttribute('aria-pressed', String(on));
+    b.textContent = on ? 'Hero: on' : 'Hero: off';
+    renderAll();
+  }
+  $<HTMLButtonElement>('h-hero').onclick = () => setHero(!showHero);
+
+  // --- Справка: все кнопки и клавиши в одном месте ---
+  const info = document.createElement('div');
+  info.id = 'helm-info';
+  info.hidden = true;
+  info.innerHTML = `
+    <div class="card">
+      <h3>Editor reference <button id="h-info-close">Close</button></h3>
+      <h4>Buttons</h4>
+      <ul>
+        <li><b>Armor piece</b> — which item you are drawing. Its file is what Save writes.</li>
+        <li><b>Color swatches / custom</b> — brush color. Picking a color turns the eraser off.</li>
+        <li><b>Eraser</b> — erase YOUR pixels. The hero underneath is background and cannot be erased —
+            erasing over him just reveals him, which can look like "nothing happened".</li>
+        <li><b>Undo</b> — step back (40 steps).</li>
+        <li><b>Front to sides</b> — copy the Front cell onto Left and Right.</li>
+        <li><b>Clear</b> — wipe all four cells.</li>
+        <li><b>Insert item icon 100/75/50%</b> — stamp the item's shop icon into all four cells.</li>
+        <li><b>− Smaller / + Bigger</b> — resize the drawing in all cells around its centre.</li>
+        <li><b>Hero: on/off</b> — show or hide the hero under your pixels. Turn him off to see
+            exactly what your sprite contains.</li>
+        <li><b>Save</b> — write the file (with a backup); the game picks it up on reload.
+            <b>Reload</b> — discard and reload the saved file.</li>
+      </ul>
+      <h4>Hotkeys</h4>
+      <ul>
+        <li><b>LMB</b> — draw, <b>RMB</b> — erase.</li>
+        <li><b>Alt+click</b> — pick a color: from your pixels, or from the hero under them.</li>
+        <li><b>Shift+drag</b> — grab the cell's drawing and move it.</li>
+        <li><b>Arrows</b> — nudge the last-touched cell by one pixel.</li>
+        <li><b>+ / −</b> — resize the drawing.</li>
+        <li><b>Ctrl/Cmd+Z</b> — undo. <b>E</b> — eraser, <b>B</b> — brush, <b>H</b> — hero on/off.</li>
+        <li><b>Esc</b> — close this help.</li>
+      </ul>
+    </div>`;
+  document.body.append(info);
+  const setInfo = (open: boolean): void => { info.hidden = !open; };
+  $<HTMLButtonElement>('h-info').onclick = () => setInfo(Boolean(info.hidden));
+  info.onclick = (e) => { if (e.target === info) setInfo(false); };
+  info.querySelector<HTMLButtonElement>('#h-info-close')!.onclick = () => setInfo(false);
 
   $<HTMLButtonElement>('h-undo').onclick = popUndo;
   $<HTMLButtonElement>('h-clear').onclick = () => {
