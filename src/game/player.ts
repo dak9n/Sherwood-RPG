@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { createDirAnims } from './anims';
 import { dirFromVelocity, DIRS_HERO, type Dir } from './dir';
 import { hitRect, rollDamage, playerDamageTaken, type Rect } from './combat';
+import { WORN_TORSO_DROP } from './items';
 import { BARRIER_DURATION } from './barrier';
 import anchorData from './weapon-anchors.json';
 import { creatureDepth, DEPTH_ABOVE } from './depth';
@@ -95,7 +96,7 @@ const HELD_SCALE = 1.15;
  * пять серо-зелёных, волосы — шесть фиолетово-серых. Палитры комплектов идут
  * от тени к блику, той же длины.
  */
-export type ArmorTint = 'leather' | 'iron' | 'azure';
+export type ArmorTint = 'leather' | 'iron' | 'azure' | 'bronze' | 'gilded' | 'emerald' | 'crimson' | 'cloth';
 
 const rgb = (r: number, g: number, b: number): number => (r << 16) | (g << 8) | b;
 
@@ -122,6 +123,11 @@ const ARMOR_PALETTES: Record<ArmorTint, [number, number, number][]> = {
   leather: [[56, 34, 20], [88, 56, 32], [120, 80, 46], [150, 106, 62], [180, 136, 84]],
   iron: [[48, 48, 56], [84, 86, 94], [120, 124, 133], [158, 162, 171], [196, 200, 208]],
   azure: [[12, 66, 72], [23, 113, 120], [37, 152, 157], [58, 180, 183], [110, 220, 216]],
+  bronze: [[74, 46, 28], [110, 68, 40], [148, 94, 52], [180, 124, 70], [212, 160, 96]],
+  gilded: [[96, 52, 16], [150, 86, 24], [196, 124, 32], [228, 164, 52], [248, 206, 96]],
+  emerald: [[24, 64, 36], [36, 98, 50], [52, 134, 66], [84, 170, 88], [130, 208, 120]],
+  crimson: [[86, 24, 24], [130, 38, 34], [172, 56, 44], [206, 86, 58], [232, 128, 88]],
+  cloth: [[120, 112, 100], [158, 150, 136], [190, 182, 168], [214, 208, 196], [238, 234, 224]],
 };
 
 /**
@@ -349,7 +355,7 @@ export class Player {
 
       // Центры головы считаем один раз — по слою head, до всяких перекрасок.
       Player.headCenters.set(key, Player.scanHeadCenters(scene, key, first.width, first.height));
-      Player.drawSheet(scene, key, tex, null, null, null);
+      Player.drawSheet(scene, key, tex, null, null, null, null);
 
       // Кадры режем сами: addSpriteSheet канвас не принимает, а сетка та же.
       const cols = first.width / FRAME;
@@ -403,7 +409,7 @@ export class Player {
    * Нагрудник — перекраска туники (свап применяется К СЛОЮ body до склейки:
    * по склеенному листу свапать нельзя — те же цвета могли бы встретиться в
    * другой части и перекраситься за компанию). Шлем — СПРАЙТ из
-   * assets/helmets/<id>.png, штампуется в центр головы каждого кадра
+   * assets/worn/<id>.png, штампуется в центр головы каждого кадра
    * (см. stampHelmet); если спрайта у шлема нет — рисованная каска (helmetize).
    */
   private static drawSheet(
@@ -413,15 +419,18 @@ export class Player {
     tunic: ArmorTint | null,
     hair: ArmorTint | null,
     helmTex: string | null,
+    chestTex: string | null,
   ): void {
     const ctx = tex.context;
     ctx.clearRect(0, 0, tex.width, tex.height);
     for (const part of BODY_PARTS) {
       const img = scene.textures.get(`sw-${key}-${part}`).getSourceImage() as HTMLImageElement;
-      // Спрайт шлема сильнее фолбэка-каски: волосы не трогаем, шлем ляжет поверх.
-      const tint = part === 'body' ? tunic : part === 'head' && !helmTex ? hair : null;
+      // Спрайт брони сильнее фолбэка-перекраски: слой не трогаем, спрайт ляжет поверх.
+      const tint = part === 'body' && !chestTex ? tunic : part === 'head' && !helmTex ? hair : null;
       if (!tint) {
         ctx.drawImage(img, 0, 0);
+        // Нагрудник — МЕЖДУ телом и головой: подбородок остаётся поверх воротника.
+        if (part === 'body' && chestTex) Player.stampWorn(scene, key, ctx, tex.width, chestTex, WORN_TORSO_DROP);
         continue;
       }
       // Слой через offscreen: красим его отдельно и только потом кладём в лист.
@@ -450,26 +459,29 @@ export class Player {
       octx.putImageData(image, 0, 0);
       ctx.drawImage(off, 0, 0);
     }
-    if (helmTex) Player.stampHelmet(scene, key, ctx, tex.width, helmTex);
+    if (helmTex) Player.stampWorn(scene, key, ctx, tex.width, helmTex, 0);
     tex.refresh(); // канвас уехал в GPU — иначе WebGL показывал бы старый лист
   }
 
   /**
-   * Штампует спрайт шлема в центр головы каждого кадра листа.
+   * Штампует спрайт надетой брони в каждый кадр листа.
    *
-   * Файл шлема — полоса 128x32: четыре ячейки 32x32 по направлениям в порядке
-   * DIRS_HERO (вниз/влево/вправо/спина). Ряд листа = направление, центр ячейки
-   * ложится на центр головы кадра — шлем едет и кивает вместе с головой во всех
-   * анимациях, потому что читает те же кадры.
+   * Файл — полоса 128x32: четыре ячейки 32x32 по направлениям в порядке
+   * DIRS_HERO (вниз/влево/вправо/спина). Ряд листа = направление; центр ячейки
+   * ложится в центр головы кадра, сдвинутый на drop вниз (0 — шлем на голове,
+   * WORN_TORSO_DROP — нагрудник на корпусе). Якорь всегда от головы: bbox тела
+   * дёргают шагающие ноги, а голова кивает плавно — броня едет вместе с ней,
+   * потому что читает те же кадры.
    */
-  private static stampHelmet(
+  private static stampWorn(
     scene: Phaser.Scene,
     key: string,
     ctx: CanvasRenderingContext2D,
     width: number,
-    helmTex: string,
+    texKey: string,
+    drop: number,
   ): void {
-    const helm = scene.textures.get(helmTex).getSourceImage() as HTMLImageElement;
+    const strip = scene.textures.get(texKey).getSourceImage() as HTMLImageElement;
     const centers = Player.headCenters.get(key) ?? [];
     const cols = width / FRAME;
     for (let fr = 0; fr < centers.length; fr++) {
@@ -478,7 +490,7 @@ export class Player {
       const row = Math.floor(fr / cols); // ряд = направление (DIRS_HERO)
       const fx = (fr % cols) * FRAME;
       const fy = row * FRAME;
-      ctx.drawImage(helm, row * 32, 0, 32, 32, Math.round(fx + c.x - 16), Math.round(fy + c.y - 16), 32, 32);
+      ctx.drawImage(strip, row * 32, 0, 32, 32, Math.round(fx + c.x - 16), Math.round(fy + c.y - 16 + drop), 32, 32);
     }
   }
 
@@ -493,13 +505,19 @@ export class Player {
    * у WebGL листы обновляет refresh. Четыре перерисовки — десятки миллисекунд,
    * и случаются они только при смене экипировки.
    */
-  static retintArmor(scene: Phaser.Scene, tunic: ArmorTint | null, hair: ArmorTint | null, helmTex: string | null = null): void {
-    const want = `${tunic ?? 'none'}/${hair ?? 'none'}/${helmTex ?? 'none'}`;
+  static retintArmor(
+    scene: Phaser.Scene,
+    tunic: ArmorTint | null,
+    hair: ArmorTint | null,
+    helmTex: string | null = null,
+    chestTex: string | null = null,
+  ): void {
+    const want = `${tunic ?? 'none'}/${hair ?? 'none'}/${helmTex ?? 'none'}/${chestTex ?? 'none'}`;
     if (Player.currentTint === want) return;
     Player.currentTint = want;
     for (const key of Object.keys(ANIM_SHEETS)) {
       const tex = scene.textures.get(`sw-${key}`) as Phaser.Textures.CanvasTexture;
-      Player.drawSheet(scene, key, tex, tunic, hair, helmTex);
+      Player.drawSheet(scene, key, tex, tunic, hair, helmTex, chestTex);
     }
   }
 

@@ -1,17 +1,18 @@
 /**
- * Редактор шлемов (?helm): рисуешь шлем ПРЯМО НА ГЕРОЕ, пиксель за пикселем.
+ * Редактор брони (?helm): рисуешь шлем или нагрудник ПРЯМО НА ГЕРОЕ.
  *
- * Шлем — полоса 128x32: четыре ячейки 32x32 по направлениям (вниз/влево/
- * вправо/спина), центр ячейки игра сажает в центр головы каждого кадра.
- * Здесь под каждой ячейкой нарисован сам герой (idle-кадр направления,
- * голова по центру) — что видишь, то и получишь в игре.
+ * Спрайт — полоса 128x32: четыре ячейки 32x32 по направлениям (вниз/влево/
+ * вправо/спина). Центр ячейки игра сажает в якорь предмета на каждом кадре:
+ * шлему — центр головы, нагруднику — центр головы плюс WORN_TORSO_DROP вниз
+ * (корпус). Здесь под ячейкой нарисован сам герой с тем же якорем по центру —
+ * что видишь, то и получишь в игре.
  *
  * Появился потому, что автогенерация шлема заказчика не устроила (и
  * справедливо), а рисовать пиксели удобнее руками. Живёт только на
  * дев-сервере, в сборку не попадает (динамический импорт в main.ts).
  */
 
-import { ITEMS } from '../game/items';
+import { ITEMS, WORN_TORSO_DROP } from '../game/items';
 
 const PARTS = 'assets/characters/PNG/Swordsman_lvl1/Parts/';
 const PREFIX = 'Swordsman_lvl1_';
@@ -116,7 +117,7 @@ export async function mountHelmEditor(): Promise<void> {
   root.innerHTML = `
     <div id="helm-stage"></div>
     <div id="helm-side">
-      <h2>Helmet</h2>
+      <h2>Armor piece</h2>
       <div class="row"><select id="h-item"></select></div>
       <h2>Color</h2>
       <div class="row"><div class="swatches" id="h-swatches"></div></div>
@@ -150,7 +151,7 @@ export async function mountHelmEditor(): Promise<void> {
   const $ = <T extends HTMLElement>(id: string): T => root.querySelector(`#${id}`) as T;
   const note = $<HTMLDivElement>('h-note');
 
-  const helms = Object.values(ITEMS).filter((d) => d.slot === 'helm');
+  const helms = Object.values(ITEMS).filter((d) => d.slot === 'helm' || d.slot === 'body');
   const selItem = $<HTMLSelectElement>('h-item');
   for (const h of helms) selItem.append(new Option(h.name, h.id));
 
@@ -218,11 +219,20 @@ export async function mountHelmEditor(): Promise<void> {
     window.addEventListener('mouseup', () => { drawing = null; });
   });
 
-  // Референс: idle-кадр направления, голова в центре ячейки.
-  const refs = DIRS.map((_, di) => {
+  /** Якорь текущего предмета: шлем — центр головы, нагрудник — ниже на корпус. */
+  const drop = (): number => (ITEMS[selItem.value]?.slot === 'body' ? WORN_TORSO_DROP : 0);
+
+  // Референс: idle-кадр направления, якорь предмета в центре ячейки.
+  let refs = DIRS.map((_, di) => {
     const hc = headCenter('Idle', 0, di);
     return { frame: heroFrame('Idle', 0, di), dx: 16 - hc.x, dy: 16 - hc.y };
   });
+  function rebuildRefs(): void {
+    refs = DIRS.map((_, di) => {
+      const hc = headCenter('Idle', 0, di);
+      return { frame: heroFrame('Idle', 0, di), dx: 16 - hc.x, dy: 16 - hc.y - drop() };
+    });
+  }
 
   function renderCell(di: number): void {
     const c = cellCanvases[di];
@@ -254,7 +264,7 @@ export async function mountHelmEditor(): Promise<void> {
     pctx.clearRect(0, 0, 64, 64);
     pctx.drawImage(heroFrame('Walk', pvFrame, 0), 0, 0);
     const hc = headCenter('Walk', pvFrame, 0);
-    pctx.drawImage(layers[0], 0, 0, CELL, CELL, Math.round(hc.x - 16), Math.round(hc.y - 16), CELL, CELL);
+    pctx.drawImage(layers[0], 0, 0, CELL, CELL, Math.round(hc.x - 16), Math.round(hc.y - 16 + drop()), CELL, CELL);
   }
   window.setInterval(() => {
     pvFrame = (pvFrame + 1) % 6;
@@ -314,9 +324,10 @@ export async function mountHelmEditor(): Promise<void> {
   }
 
   async function loadHelm(id: string): Promise<void> {
+    rebuildRefs(); // у шлема и нагрудника разные якоря — референс сдвигается
     layers.forEach((l) => l.getContext('2d')!.clearRect(0, 0, CELL, CELL));
     try {
-      const img = await load(`assets/helmets/${id}.png?t=${Date.now()}`);
+      const img = await load(`assets/worn/${id}.png?t=${Date.now()}`);
       DIRS.forEach((_, di) => layers[di].getContext('2d')!.drawImage(img, di * 32, 0, 32, 32, 0, 0, 32, 32));
       note.textContent = 'loaded';
       note.className = 'note ok';

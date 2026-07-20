@@ -1,10 +1,10 @@
 /**
- * Ручка дев-сервера для редактора шлемов (?helm).
+ * Ручка дев-сервера для редактора брони (?helm).
  *
  * Принимает нарисованную полосу 128x32 (четыре ячейки 32x32 по направлениям)
- * и пишет её в public/assets/helmets/<id>.png — оттуда игра штампует шлем на
- * голову героя. Заодно пересобирает manifest.json: по нему игра знает, какие
- * шлемы нарисованы, и не сыплет 404 по ненарисованным.
+ * и пишет её в public/assets/worn/<id>.png — оттуда игра штампует шлем на
+ * голову героя, а нагрудник на корпус. Заодно пересобирает manifest.json: по
+ * нему игра знает, какие спрайты нарисованы, и не сыплет 404 по остальным.
  *
  * Живёт только при `apply: 'serve'`, как и остальные дев-ручки.
  */
@@ -15,8 +15,8 @@ import type { Plugin, ViteDevServer } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { ITEMS } from '../src/game/items.ts';
 
-const DIR = 'public/assets/helmets';
-const BACKUP_DIR = '.map-backups/helmets';
+const DIR = 'public/assets/worn';
+const BACKUP_DIR = '.map-backups/worn';
 const MAX_BODY = 256 * 1024;
 /** Полоса шлема: 4 ячейки 32x32. */
 const STRIP_W = 128;
@@ -75,9 +75,11 @@ export function saveHelmPlugin(): Plugin {
           }
 
           const { id, png } = data;
-          // Шлем должен существовать как предмет: файл на чужое имя игра не подберёт.
-          if (typeof id !== 'string' || ITEMS[id]?.slot !== 'helm') {
-            return send(400, { ok: false, error: `${String(id)} is not a helm item` });
+          // Предмет должен существовать и быть шлемом или нагрудником: файл на
+          // чужое имя игра не подберёт, а другие слоты на герое не рисуются.
+          const slot = typeof id === 'string' ? ITEMS[id]?.slot : undefined;
+          if (typeof id !== 'string' || (slot !== 'helm' && slot !== 'body')) {
+            return send(400, { ok: false, error: `${String(id)} is not a helm or body item` });
           }
           if (typeof png !== 'string' || !png.startsWith('data:image/png;base64,')) {
             return send(400, { ok: false, error: 'png must be a png data url' });

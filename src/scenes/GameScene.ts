@@ -191,17 +191,18 @@ export class GameScene extends MapScene {
       if (def.held) this.load.image(`held-${def.id}`, def.held);
     }
 
-    // Спрайты шлемов НА голове: полосы 128x32 из assets/helmets (рисуются в
-    // редакторе ?helm). Каких шлемов нарисовано — говорит манифест: грузить
-    // вслепую по каждому предмету значило бы сыпать 404 в консоль. Пока
-    // манифест не дочитан, докидываем картинки прямо в работающий загрузчик —
-    // Phaser так умеет.
-    this.load.json('helms-manifest', 'assets/helmets/manifest.json');
-    this.load.on('filecomplete-json-helms-manifest', (_k: string, _t: string, ids: unknown) => {
+    // Спрайты брони НА герое: полосы 128x32 из assets/worn (рисуются в
+    // редакторе ?helm) — шлемы на голову, нагрудники на корпус. Каких спрайтов
+    // нарисовано — говорит манифест: грузить вслепую по каждому предмету
+    // значило бы сыпать 404 в консоль. Пока манифест не дочитан, докидываем
+    // картинки прямо в работающий загрузчик — Phaser так умеет.
+    this.load.json('worn-manifest', 'assets/worn/manifest.json');
+    this.load.on('filecomplete-json-worn-manifest', (_k: string, _t: string, ids: unknown) => {
       if (!Array.isArray(ids)) return;
       for (const id of ids) {
-        if (typeof id === 'string' && ITEMS[id]?.slot === 'helm') {
-          this.load.image(`helm-${id}`, `assets/helmets/${id}.png`);
+        const slot = typeof id === 'string' ? ITEMS[id]?.slot : undefined;
+        if (slot === 'helm' || slot === 'body') {
+          this.load.image(`worn-${id}`, `assets/worn/${id}.png`);
         }
       }
     });
@@ -1363,14 +1364,16 @@ export class GameScene extends MapScene {
     const weapon = this.equipped.weapon;
     this.player.setHeldWeapon(weapon && ITEMS[weapon]?.held ? `held-${weapon}` : null);
 
-    // Броня на модельке: нагрудник перекрашивает тунику; шлем — нарисованный
-    // спрайт на голове (assets/helmets, правится в ?helm), а если спрайта нет —
-    // фолбэк-каска по палитре (items.tint).
+    // Броня на модельке: у шлема и нагрудника сперва ищется нарисованный
+    // спрайт (assets/worn, правится в ?helm); нет спрайта — фолбэк по палитре
+    // (items.tint): нагрудник перекрашивает тунику, шлем становится каской.
     const tintOf = (id: string | undefined): ArmorTint | null =>
       (id && ITEMS[id]?.tint) || null;
+    const wornTex = (id: string | undefined): string | null =>
+      id && this.textures.exists(`worn-${id}`) ? `worn-${id}` : null;
     const helmId = this.equipped.helm;
-    const helmTex = helmId && this.textures.exists(`helm-${helmId}`) ? `helm-${helmId}` : null;
-    Player.retintArmor(this, tintOf(this.equipped.body), tintOf(helmId), helmTex);
+    const bodyId = this.equipped.body;
+    Player.retintArmor(this, tintOf(bodyId), tintOf(helmId), wornTex(helmId), wornTex(bodyId));
   }
 
   /** Вложить ранг навыка (дерево L). Проверки — в чистой allocate; окно только шлёт намерение. */

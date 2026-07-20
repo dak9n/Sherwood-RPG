@@ -74,8 +74,19 @@ export interface ItemDef {
    * пол-персонажа) они превращались в кашу, закрывающую лицо, — проверено.
    * Есть только у шлемов и нагрудников: перчатки и сапоги на герое — 2-3 пикселя.
    */
-  tint?: 'leather' | 'iron' | 'azure';
+  tint?: 'leather' | 'iron' | 'azure' | 'bronze' | 'gilded' | 'emerald' | 'crimson' | 'cloth';
 }
+
+/**
+ * Насколько ниже центра головы сидит центр спрайта нагрудника (пиксели кадра).
+ *
+ * Якорь нагрудника ведём от ГОЛОВЫ, а не от bbox тела: тело включает ноги, и
+ * его bbox дёргается при шагах — нагрудник бы ёрзал. Голова же плавно кивает
+ * вместе с корпусом. Константа живёт здесь, потому что её делят игра
+ * (player.ts) и редактор (?helm) — а этот модуль единственный общий у них
+ * без Phaser.
+ */
+export const WORN_TORSO_DROP = 11;
 
 /** Стреляет ли надетое этим оружие. Лук — да, меч — нет. */
 export const isRanged = (id: string | undefined): boolean =>
@@ -253,6 +264,100 @@ export const ITEMS: Record<string, ItemDef> = {
   azure_boots: {
     id: 'azure_boots', name: 'Azure Sabatons', tab: 'armor',
     icon: aico(38), stack: 1, slot: 'boots', bonus: { def: 1, speed: 10 }, rarity: 'epic',
+  },
+
+  // --- Вторая волна комплектов (колонки набора подобраны по цвету) ---
+  //
+  // Bronze — самый дешёвый металл, вход в броню до кожи по цене.
+  bronze_helm: {
+    id: 'bronze_helm', name: 'Bronze Cap', tab: 'armor',
+    icon: aico(1), stack: 1, slot: 'helm', bonus: { def: 1 }, rarity: 'common',
+    tint: 'bronze',
+  },
+  bronze_chest: {
+    id: 'bronze_chest', name: 'Bronze Cuirass', tab: 'armor',
+    icon: aico(11), stack: 1, slot: 'body', bonus: { def: 2, speed: -2 }, rarity: 'common',
+    tint: 'bronze',
+  },
+  bronze_gloves: {
+    id: 'bronze_gloves', name: 'Bronze Gloves', tab: 'armor',
+    icon: aico(21), stack: 1, slot: 'gloves', bonus: { def: 1 }, rarity: 'common',
+  },
+  bronze_boots: {
+    id: 'bronze_boots', name: 'Bronze Boots', tab: 'armor',
+    icon: aico(31), stack: 1, slot: 'boots', bonus: { def: 1, speed: 2 }, rarity: 'common',
+  },
+
+  // Gilded — парадная золочёная сталь, ступень между железом и лазурью.
+  gilded_helm: {
+    id: 'gilded_helm', name: 'Gilded Helm', tab: 'armor',
+    icon: aico(5), stack: 1, slot: 'helm', bonus: { def: 2, hp: 15 }, rarity: 'rare',
+    tint: 'gilded',
+  },
+  gilded_chest: {
+    id: 'gilded_chest', name: 'Gilded Cuirass', tab: 'armor',
+    icon: aico(15), stack: 1, slot: 'body', bonus: { def: 3, hp: 10, speed: -3 }, rarity: 'rare',
+    tint: 'gilded',
+  },
+  gilded_gloves: {
+    id: 'gilded_gloves', name: 'Gilded Gauntlets', tab: 'armor',
+    icon: aico(25), stack: 1, slot: 'gloves', bonus: { dmg: 2 }, rarity: 'rare',
+  },
+  gilded_boots: {
+    id: 'gilded_boots', name: 'Gilded Greaves', tab: 'armor',
+    icon: aico(35), stack: 1, slot: 'boots', bonus: { def: 1, speed: 6 }, rarity: 'rare',
+  },
+
+  // Emerald — лесной лёгкий эпик: единственный нагрудник, который УСКОРЯЕТ.
+  emerald_helm: {
+    id: 'emerald_helm', name: 'Emerald Warhelm', tab: 'armor',
+    icon: aico(49), stack: 1, slot: 'helm', bonus: { def: 2, mp: 15 }, rarity: 'epic',
+    tint: 'emerald',
+  },
+  emerald_chest: {
+    id: 'emerald_chest', name: 'Emerald Mail', tab: 'armor',
+    icon: aico(19), stack: 1, slot: 'body', bonus: { def: 3, speed: 4 }, rarity: 'epic',
+    tint: 'emerald',
+  },
+  emerald_gloves: {
+    id: 'emerald_gloves', name: 'Emerald Gloves', tab: 'armor',
+    icon: aico(29), stack: 1, slot: 'gloves', bonus: { dmg: 2, def: 1 }, rarity: 'epic',
+  },
+  emerald_boots: {
+    id: 'emerald_boots', name: 'Emerald Striders', tab: 'armor',
+    icon: aico(39), stack: 1, slot: 'boots', bonus: { speed: 12 }, rarity: 'epic',
+  },
+
+  // Crimson — тяжёлый боевой эпик: максимум брони и урона, платишь скоростью.
+  crimson_helm: {
+    id: 'crimson_helm', name: 'Crimson Helm', tab: 'armor',
+    icon: aico(50), stack: 1, slot: 'helm', bonus: { def: 2, dmg: 1, hp: 10 }, rarity: 'epic',
+    tint: 'crimson',
+  },
+  crimson_chest: {
+    id: 'crimson_chest', name: 'Crimson Plate', tab: 'armor',
+    icon: aico(20), stack: 1, slot: 'body', bonus: { def: 4, hp: 20, speed: -4 }, rarity: 'epic',
+    tint: 'crimson',
+  },
+  crimson_gloves: {
+    id: 'crimson_gloves', name: 'Crimson Fists', tab: 'armor',
+    icon: aico(30), stack: 1, slot: 'gloves', bonus: { dmg: 4 }, rarity: 'epic',
+  },
+  crimson_boots: {
+    id: 'crimson_boots', name: 'Crimson Sabatons', tab: 'armor',
+    icon: aico(40), stack: 1, slot: 'boots', bonus: { def: 1, speed: 6 }, rarity: 'epic',
+  },
+
+  // Cloth — тканевая пара для магов: почти без брони, зато мана.
+  cloth_hood: {
+    id: 'cloth_hood', name: 'Cloth Hood', tab: 'armor',
+    icon: aico(81), stack: 1, slot: 'helm', bonus: { mp: 10 }, rarity: 'common',
+    tint: 'cloth',
+  },
+  cloth_chest: {
+    id: 'cloth_chest', name: 'Padded Tunic', tab: 'armor',
+    icon: aico(91), stack: 1, slot: 'body', bonus: { def: 1, mp: 20 }, rarity: 'common',
+    tint: 'cloth',
   },
 };
 

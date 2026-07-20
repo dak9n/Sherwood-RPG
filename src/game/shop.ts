@@ -55,6 +55,26 @@ export const VALUE: Record<string, number> = Object.assign(Object.create(null), 
   azure_chest: 340,
   azure_gloves: 210,
   azure_boots: 240,
+  // Вторая волна: бронза дешевле кожи, золочёная — между железом и лазурью,
+  // изумруд и кармазин — эпики уровня лазури с разным уклоном, ткань — копейки.
+  bronze_helm: 30,
+  bronze_chest: 55,
+  bronze_gloves: 25,
+  bronze_boots: 35,
+  gilded_helm: 150,
+  gilded_chest: 210,
+  gilded_gloves: 120,
+  gilded_boots: 130,
+  emerald_helm: 240,
+  emerald_chest: 300,
+  emerald_gloves: 190,
+  emerald_boots: 220,
+  crimson_helm: 280,
+  crimson_chest: 360,
+  crimson_gloves: 230,
+  crimson_boots: 250,
+  cloth_hood: 20,
+  cloth_chest: 35,
 });
 
 /** Что стоит на витрине и в каком порядке. Только эти предметы можно купить. */
@@ -66,6 +86,11 @@ export const SHOP_STOCK: string[] = [
   'leather_helm', 'leather_chest', 'leather_gloves', 'leather_boots',
   'iron_helm', 'iron_chest', 'iron_gloves', 'iron_boots',
   'azure_helm', 'azure_chest', 'azure_gloves', 'azure_boots',
+  'bronze_helm', 'bronze_chest', 'bronze_gloves', 'bronze_boots',
+  'gilded_helm', 'gilded_chest', 'gilded_gloves', 'gilded_boots',
+  'emerald_helm', 'emerald_chest', 'emerald_gloves', 'emerald_boots',
+  'crimson_helm', 'crimson_chest', 'crimson_gloves', 'crimson_boots',
+  'cloth_hood', 'cloth_chest',
 ];
 
 /** Доля ценности, которую даёт лавка при продаже. Разница с покупкой — её навар. */

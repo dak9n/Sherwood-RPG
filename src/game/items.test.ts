@@ -242,7 +242,8 @@ test('перекраска на герое (tint) — только у шлемо
 
 test('у каждого комплекта брони все четыре части и общая редкость', () => {
   // Комплект без сапога — это дыра в магазине: «кожаный» ряд продаётся не целиком.
-  for (const set of ['leather', 'iron', 'azure']) {
+  // Тканевая пара (cloth) сюда не входит: это намеренная двойка для магов.
+  for (const set of ['leather', 'iron', 'azure', 'bronze', 'gilded', 'emerald', 'crimson']) {
     const parts = Object.values(ITEMS).filter((d) => d.id.startsWith(`${set}_`));
     assert.equal(parts.length, 4, `${set}: частей ${parts.length}, а не 4`);
     const rarities = new Set(parts.map((d) => d.rarity));
