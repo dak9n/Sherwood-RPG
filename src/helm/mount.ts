@@ -40,7 +40,7 @@ const CSS = `
   #helm-stage { overflow: auto; display: flex; flex-wrap: wrap; gap: 18px; padding: 18px; align-content: center; justify-content: center; }
   .hcell { text-align: center; }
   .hcell canvas { image-rendering: pixelated; background: #10151a; border: 1px solid #0d1114; cursor: crosshair; }
-  .hcell .cap { margin: 4px 0 0; color: #9fb0ba; }
+  .hcell .cap { margin: 0 0 4px; color: #9fb0ba; }
   #helm-side { background: #20272b; border-left: 1px solid #0d1114; padding: 12px; overflow-y: auto; }
   #helm h2 { margin: 0 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #7d8f99; }
   #helm .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
@@ -182,6 +182,7 @@ export async function mountHelmEditor(): Promise<void> {
     if (!prev) return;
     layers.forEach((l, i) => l.getContext('2d')!.putImageData(prev[i], 0, 0));
     renderAll();
+    renderPreview(); // иначе превью застревает с отменённым рисунком
     dirty();
   };
 
@@ -195,7 +196,9 @@ export async function mountHelmEditor(): Promise<void> {
     c.width = CELL * ZOOM;
     c.height = CELL * ZOOM;
     c.style.width = `${CELL * ZOOM}px`;
-    wrap.append(c, Object.assign(document.createElement('div'), { className: 'cap', textContent: DIR_LABEL[dirn] }));
+    // Подпись НАД ячейкой: под ней она при прокрутке читалась заголовком
+    // СЛЕДУЮЩЕЙ ячейки — «Front» над профилем сбивал с толку.
+    wrap.append(Object.assign(document.createElement('div'), { className: 'cap', textContent: DIR_LABEL[dirn] }), c);
     stage.append(wrap);
     cellCanvases.push(c);
 
@@ -403,6 +406,7 @@ export async function mountHelmEditor(): Promise<void> {
   }
 
   async function loadHelm(id: string): Promise<void> {
+    currentId = id; // теперь в слоях рисунок ЭТОГО предмета — Save пишет его
     rebuildRefs(); // у шлема и нагрудника разные якоря — референс сдвигается
     layers.forEach((l) => l.getContext('2d')!.clearRect(0, 0, CELL, CELL));
     try {
@@ -426,9 +430,14 @@ export async function mountHelmEditor(): Promise<void> {
     renderPreview();
   }
 
+  // Какой предмет сейчас в слоях. Именно ЕГО пишет Save — не selItem.value:
+  // при отказе от смены select уже показывает новый id, и сохранение по нему
+  // записало бы пиксели старого предмета в чужой файл.
+  let currentId = '';
   selItem.onchange = () => {
     if (isDirty && !confirm('Discard unsaved changes?')) {
-      return; // остаёмся как есть: select уже переключился, вернём
+      selItem.value = currentId; // вернуть список к предмету, что в слоях
+      return;
     }
     void loadHelm(selItem.value);
   };
@@ -444,7 +453,7 @@ export async function mountHelmEditor(): Promise<void> {
     const r = await fetch('/__save-helm', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ id: selItem.value, png: strip.toDataURL('image/png') }),
+      body: JSON.stringify({ id: currentId, png: strip.toDataURL('image/png') }),
     });
     const j = await r.json().catch(() => ({ ok: false, error: 'bad response' }));
     if (j.ok) {
