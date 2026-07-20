@@ -336,6 +336,9 @@ export class Player {
    * ПЕРЕКРАШИВАЕТ героя (тунику и волосы, см. retintArmor), и канвас позволяет
    * перерисовать лист на месте — кадры и анимации при этом остаются жить.
    */
+  /** Центр головы в каждом кадре листа: сюда штампуется спрайт шлема. */
+  private static headCenters = new Map<string, ({ x: number; y: number } | null)[]>();
+
   static buildTextures(scene: Phaser.Scene): void {
     for (const key of Object.keys(ANIM_SHEETS)) {
       const texKey = `sw-${key}`;
@@ -343,7 +346,10 @@ export class Player {
 
       const first = scene.textures.get(`sw-${key}-body`).getSourceImage() as HTMLImageElement;
       const tex = scene.textures.createCanvas(texKey, first.width, first.height)!;
-      Player.drawSheet(scene, key, tex, null, null);
+
+      // Центры головы считаем один раз — по слою head, до всяких перекрасок.
+      Player.headCenters.set(key, Player.scanHeadCenters(scene, key, first.width, first.height));
+      Player.drawSheet(scene, key, tex, null, null, null);
 
       // Кадры режем сами: addSpriteSheet канвас не принимает, а сетка та же.
       const cols = first.width / FRAME;
@@ -354,12 +360,51 @@ export class Player {
     }
   }
 
+  /** Центры головы по кадрам листа: середина bbox непрозрачных пикселей слоя head. */
+  private static scanHeadCenters(
+    scene: Phaser.Scene,
+    key: string,
+    width: number,
+    height: number,
+  ): ({ x: number; y: number } | null)[] {
+    const img = scene.textures.get(`sw-${key}-head`).getSourceImage() as HTMLImageElement;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+    ctx.drawImage(img, 0, 0);
+    const data = ctx.getImageData(0, 0, width, height).data;
+
+    const cols = width / FRAME;
+    const rows = height / FRAME;
+    const centers: ({ x: number; y: number } | null)[] = [];
+    for (let fr = 0; fr < cols * rows; fr++) {
+      const fx = (fr % cols) * FRAME;
+      const fy = Math.floor(fr / cols) * FRAME;
+      let x0 = FRAME, x1 = -1, y0 = FRAME, y1 = -1;
+      for (let y = 0; y < FRAME; y++) {
+        for (let x = 0; x < FRAME; x++) {
+          if (data[((fy + y) * width + (fx + x)) * 4 + 3] > 24) {
+            if (x < x0) x0 = x;
+            if (x > x1) x1 = x;
+            if (y < y0) y0 = y;
+            if (y > y1) y1 = y;
+          }
+        }
+      }
+      centers.push(y1 < 0 ? null : { x: (x0 + x1) / 2, y: (y0 + y1) / 2 });
+    }
+    return centers;
+  }
+
   /**
-   * Рисует лист героя: тень + тело + голова, с перекраской под надетую броню.
+   * Рисует лист героя: тень + тело + голова, с надетой бронёй.
    *
-   * Свап цветов применяется К СЛОЮ до склейки: туника перекрашивается только в
-   * body, волосы — только в head. По склеенному листу свапать нельзя — те же
-   * цвета могли бы встретиться в другой части и перекраситься за компанию.
+   * Нагрудник — перекраска туники (свап применяется К СЛОЮ body до склейки:
+   * по склеенному листу свапать нельзя — те же цвета могли бы встретиться в
+   * другой части и перекраситься за компанию). Шлем — СПРАЙТ из
+   * assets/helmets/<id>.png, штампуется в центр головы каждого кадра
+   * (см. stampHelmet); если спрайта у шлема нет — рисованная каска (helmetize).
    */
   private static drawSheet(
     scene: Phaser.Scene,
@@ -367,12 +412,14 @@ export class Player {
     tex: Phaser.Textures.CanvasTexture,
     tunic: ArmorTint | null,
     hair: ArmorTint | null,
+    helmTex: string | null,
   ): void {
     const ctx = tex.context;
     ctx.clearRect(0, 0, tex.width, tex.height);
     for (const part of BODY_PARTS) {
       const img = scene.textures.get(`sw-${key}-${part}`).getSourceImage() as HTMLImageElement;
-      const tint = part === 'body' ? tunic : part === 'head' ? hair : null;
+      // Спрайт шлема сильнее фолбэка-каски: волосы не трогаем, шлем ляжет поверх.
+      const tint = part === 'body' ? tunic : part === 'head' && !helmTex ? hair : null;
       if (!tint) {
         ctx.drawImage(img, 0, 0);
         continue;
@@ -403,7 +450,36 @@ export class Player {
       octx.putImageData(image, 0, 0);
       ctx.drawImage(off, 0, 0);
     }
+    if (helmTex) Player.stampHelmet(scene, key, ctx, tex.width, helmTex);
     tex.refresh(); // канвас уехал в GPU — иначе WebGL показывал бы старый лист
+  }
+
+  /**
+   * Штампует спрайт шлема в центр головы каждого кадра листа.
+   *
+   * Файл шлема — полоса 128x32: четыре ячейки 32x32 по направлениям в порядке
+   * DIRS_HERO (вниз/влево/вправо/спина). Ряд листа = направление, центр ячейки
+   * ложится на центр головы кадра — шлем едет и кивает вместе с головой во всех
+   * анимациях, потому что читает те же кадры.
+   */
+  private static stampHelmet(
+    scene: Phaser.Scene,
+    key: string,
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    helmTex: string,
+  ): void {
+    const helm = scene.textures.get(helmTex).getSourceImage() as HTMLImageElement;
+    const centers = Player.headCenters.get(key) ?? [];
+    const cols = width / FRAME;
+    for (let fr = 0; fr < centers.length; fr++) {
+      const c = centers[fr];
+      if (!c) continue; // пустой кадр листа
+      const row = Math.floor(fr / cols); // ряд = направление (DIRS_HERO)
+      const fx = (fr % cols) * FRAME;
+      const fy = row * FRAME;
+      ctx.drawImage(helm, row * 32, 0, 32, 32, Math.round(fx + c.x - 16), Math.round(fy + c.y - 16), 32, 32);
+    }
   }
 
   /** Что сейчас надето на листах — чтобы не перерисовывать четыре канваса зря. */
@@ -417,13 +493,13 @@ export class Player {
    * у WebGL листы обновляет refresh. Четыре перерисовки — десятки миллисекунд,
    * и случаются они только при смене экипировки.
    */
-  static retintArmor(scene: Phaser.Scene, tunic: ArmorTint | null, hair: ArmorTint | null): void {
-    const want = `${tunic ?? 'none'}/${hair ?? 'none'}`;
+  static retintArmor(scene: Phaser.Scene, tunic: ArmorTint | null, hair: ArmorTint | null, helmTex: string | null = null): void {
+    const want = `${tunic ?? 'none'}/${hair ?? 'none'}/${helmTex ?? 'none'}`;
     if (Player.currentTint === want) return;
     Player.currentTint = want;
     for (const key of Object.keys(ANIM_SHEETS)) {
       const tex = scene.textures.get(`sw-${key}`) as Phaser.Textures.CanvasTexture;
-      Player.drawSheet(scene, key, tex, tunic, hair);
+      Player.drawSheet(scene, key, tex, tunic, hair, helmTex);
     }
   }
 

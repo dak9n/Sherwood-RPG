@@ -190,6 +190,21 @@ export class GameScene extends MapScene {
     for (const def of Object.values(ITEMS)) {
       if (def.held) this.load.image(`held-${def.id}`, def.held);
     }
+
+    // Спрайты шлемов НА голове: полосы 128x32 из assets/helmets (рисуются в
+    // редакторе ?helm). Каких шлемов нарисовано — говорит манифест: грузить
+    // вслепую по каждому предмету значило бы сыпать 404 в консоль. Пока
+    // манифест не дочитан, докидываем картинки прямо в работающий загрузчик —
+    // Phaser так умеет.
+    this.load.json('helms-manifest', 'assets/helmets/manifest.json');
+    this.load.on('filecomplete-json-helms-manifest', (_k: string, _t: string, ids: unknown) => {
+      if (!Array.isArray(ids)) return;
+      for (const id of ids) {
+        if (typeof id === 'string' && ITEMS[id]?.slot === 'helm') {
+          this.load.image(`helm-${id}`, `assets/helmets/${id}.png`);
+        }
+      }
+    });
   }
 
   protected onReady(): void {
@@ -1348,10 +1363,14 @@ export class GameScene extends MapScene {
     const weapon = this.equipped.weapon;
     this.player.setHeldWeapon(weapon && ITEMS[weapon]?.held ? `held-${weapon}` : null);
 
-    // Броня на модельке: нагрудник перекрашивает тунику, шлем — волосы (items.tint).
+    // Броня на модельке: нагрудник перекрашивает тунику; шлем — нарисованный
+    // спрайт на голове (assets/helmets, правится в ?helm), а если спрайта нет —
+    // фолбэк-каска по палитре (items.tint).
     const tintOf = (id: string | undefined): ArmorTint | null =>
       (id && ITEMS[id]?.tint) || null;
-    Player.retintArmor(this, tintOf(this.equipped.body), tintOf(this.equipped.helm));
+    const helmId = this.equipped.helm;
+    const helmTex = helmId && this.textures.exists(`helm-${helmId}`) ? `helm-${helmId}` : null;
+    Player.retintArmor(this, tintOf(this.equipped.body), tintOf(helmId), helmTex);
   }
 
   /** Вложить ранг навыка (дерево L). Проверки — в чистой allocate; окно только шлёт намерение. */

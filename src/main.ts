@@ -17,6 +17,9 @@ const editMode = import.meta.env.DEV && new URLSearchParams(location.search).has
  */
 const animMode = import.meta.env.DEV && new URLSearchParams(location.search).has('anim');
 
+/** ?helm — пиксельный редактор шлемов. Как ?anim: без игры и без сборки. */
+const helmMode = import.meta.env.DEV && new URLSearchParams(location.search).has('helm');
+
 function bootGame(): void {
   const game = new Phaser.Game({
     type: Phaser.AUTO,
@@ -58,6 +61,13 @@ async function main(): Promise<void> {
   if (animMode) {
     const { mountAnimEditor } = await import('./anim/mount');
     await mountAnimEditor();
+    return;
+  }
+
+  // Редактор шлемов — такой же дев-инструмент.
+  if (helmMode) {
+    const { mountHelmEditor } = await import('./helm/mount');
+    await mountHelmEditor();
     return;
   }
 
