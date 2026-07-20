@@ -1,11 +1,20 @@
 [
+ "armor",
+ "azure_chest",
  "azure_helm",
+ "bronze_chest",
  "bronze_helm",
+ "cloth_chest",
  "cloth_hood",
+ "crimson_chest",
  "crimson_helm",
+ "emerald_chest",
  "emerald_helm",
+ "gilded_chest",
  "gilded_helm",
  "helm",
+ "iron_chest",
  "iron_helm",
+ "leather_chest",
  "leather_helm"
 ]

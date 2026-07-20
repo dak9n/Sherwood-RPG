@@ -12,7 +12,7 @@
  * дев-сервере, в сборку не попадает (динамический импорт в main.ts).
  */
 
-import { ITEMS, WORN_TORSO_DROP, TUNIC_TONES, ARMOR_PALETTES } from '../game/items';
+import { ITEMS, WORN_TORSO_DROP } from '../game/items';
 
 const PARTS = 'assets/characters/PNG/Swordsman_lvl1/Parts/';
 const PREFIX = 'Swordsman_lvl1_';
@@ -595,42 +595,28 @@ export async function mountHelmEditor(): Promise<void> {
   }
 
   /**
-   * Заготовка для нагрудника без спрайта: его ТЕКУЩИЙ вид в игре — туника
-   * idle-кадра, перекрашенная палитрой предмета и вырезанная вокруг якоря.
+   * Заготовка для вещи без спрайта — ЕЁ СОБСТВЕННАЯ ИКОНКА, ужатая до героя.
    *
-   * Без неё выбор нагрудника показывал пустой слой на голом герое, и казалось,
-   * что «армор не отображается». Сохранишь заготовку как есть — в игре ничего
-   * не изменится (спрайт-копия ляжет на место перекраски), а дальше её можно
-   * дорисовывать в настоящую кирасу.
+   * Раньше нагруднику подкладывалась перекрашенная туника, и заказчик резонно
+   * спросил, почему на герое «непонятные пиксели», а не броня с иконки. Иконка
+   * и есть то, что человек ожидает увидеть: ужимаем её до ширины торса (или
+   * головы у шлема) — дальше правится руками.
    */
-  function seedChestLayers(id: string): boolean {
-    const tint = ITEMS[id]?.tint;
-    if (!tint) return false;
-    const pal = ARMOR_PALETTES[tint];
+  async function seedFromIcon(id: string): Promise<boolean> {
+    const def = ITEMS[id];
+    if (!def) return false;
+    const ico = def.icon;
+    iconSheets[ico.sheet] ??= await load(ICON_SHEETS[ico.sheet]);
+    // Те же ширины, что у генератора tools/worn-from-icons.py: фас/спина шире,
+    // профиль уже — торс сбоку узкий.
+    const widths = def.slot === 'body' ? [14, 11, 11, 14] : [17, 14, 14, 17];
     DIRS.forEach((_, di) => {
-      const hc = headCenter('Idle', 0, di);
-      const cy = hc.y + WORN_TORSO_DROP;
-      // Слой body idle-кадра — только туника, перекрашенная в палитру.
-      const src = document.createElement('canvas');
-      src.width = FRAME;
-      src.height = FRAME;
-      const sctx = src.getContext('2d', { willReadFrequently: true })!;
-      sctx.drawImage(sheets['Idle-body'], 0, di * FRAME, FRAME, FRAME, 0, 0, FRAME, FRAME);
-      const image = sctx.getImageData(0, 0, FRAME, FRAME);
-      const d = image.data;
-      for (let i = 0; i < d.length; i += 4) {
-        if (d[i + 3] <= 24) { d[i + 3] = 0; continue; }
-        const to = TUNIC_TONES.get((d[i] << 16) | (d[i + 1] << 8) | d[i + 2]);
-        if (to === undefined) { d[i + 3] = 0; continue; } // не туника (кожа, штаны) — мимо
-        const c = pal[to];
-        d[i] = c[0];
-        d[i + 1] = c[1];
-        d[i + 2] = c[2];
-      }
-      sctx.putImageData(image, 0, 0);
       const ctx = layers[di].getContext('2d')!;
+      ctx.imageSmoothingEnabled = false;
       ctx.clearRect(0, 0, CELL, CELL);
-      ctx.drawImage(src, Math.round(hc.x) - 16, Math.round(cy) - 16, CELL, CELL, 0, 0, CELL, CELL);
+      const w = widths[di];
+      const h = Math.max(1, Math.round((ico.h / ico.w) * w));
+      ctx.drawImage(iconSheets[ico.sheet], ico.x, ico.y, ico.w, ico.h, Math.round(16 - w / 2), Math.round(16 - h / 2), w, h);
     });
     return true;
   }
@@ -671,9 +657,9 @@ export async function mountHelmEditor(): Promise<void> {
       note.textContent = 'loaded';
       note.className = 'note ok';
     } catch {
-      // Спрайта нет: нагруднику подкладываем его текущий вид, шлему — чистый лист.
-      if (ITEMS[id]?.slot === 'body' && seedChestLayers(id)) {
-        note.textContent = 'current look loaded — repaint it and save';
+      // Спрайта нет — подкладываем иконку предмета как заготовку.
+      if (await seedFromIcon(id)) {
+        note.textContent = 'seeded from the item icon — edit and save';
         note.className = 'note ok';
       } else {
         note.textContent = 'no sprite yet — draw one';
