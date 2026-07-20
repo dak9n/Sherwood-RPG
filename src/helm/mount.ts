@@ -136,6 +136,11 @@ export async function mountHelmEditor(): Promise<void> {
         <button id="h-icon75">75%</button>
         <button id="h-icon50">50%</button>
       </div>
+      <h2>Resize drawing</h2>
+      <div class="row">
+        <button id="h-shrink">− Smaller</button>
+        <button id="h-grow">+ Bigger</button>
+      </div>
       <hr>
       <h2>Preview (walk)</h2>
       <canvas id="helm-preview" width="64" height="64" style="width:192px;height:192px"></canvas>
@@ -156,7 +161,8 @@ export async function mountHelmEditor(): Promise<void> {
         Hotkeys: <b>Alt+click</b> — pick a color (from your pixels, or the hero
         under them); <b>Ctrl/Cmd+Z</b> — undo; <b>Shift+drag</b> — grab the
         cell's drawing and move it; <b>arrows</b> — nudge the last-touched cell
-        by a pixel; <b>E</b> — eraser, <b>B</b> — brush.
+        by a pixel; <b>+ / −</b> — resize the drawing; <b>E</b> — eraser,
+        <b>B</b> — brush.
       </p>
     </div>`;
   document.body.append(root);
@@ -389,6 +395,8 @@ export async function mountHelmEditor(): Promise<void> {
     }
     if (e.key === 'e' || e.key === 'E') return setEraser(!eraser);
     if (e.key === 'b' || e.key === 'B') return setEraser(false);
+    if (e.key === '+' || e.key === '=') return scaleAll(1.125);
+    if (e.key === '-' || e.key === '_') return scaleAll(1 / 1.125);
     const arrows: Record<string, [number, number]> = {
       ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
     };
@@ -435,6 +443,32 @@ export async function mountHelmEditor(): Promise<void> {
   $<HTMLButtonElement>('h-icon100').onclick = () => void stampIcon(1);
   $<HTMLButtonElement>('h-icon75').onclick = () => void stampIcon(0.75);
   $<HTMLButtonElement>('h-icon50').onclick = () => void stampIcon(0.5);
+
+  /**
+   * Масштаб рисунка: все четыре ячейки разом, вокруг центра (там якорь — шлем
+   * или нагрудник остаётся на месте). Шаг ~12%: достаточно мелкий, чтобы
+   * подогнать вставленную иконку, и один клик — один Undo. Пиксель-арт при
+   * многократном масштабировании сыпется — это нормально, откат всегда есть.
+   */
+  function scaleAll(k: number): void {
+    pushUndo();
+    for (const layer of layers) {
+      const snap = document.createElement('canvas');
+      snap.width = CELL;
+      snap.height = CELL;
+      snap.getContext('2d')!.drawImage(layer, 0, 0);
+      const ctx = layer.getContext('2d')!;
+      ctx.imageSmoothingEnabled = false; // пиксели, а не мыло
+      ctx.clearRect(0, 0, CELL, CELL);
+      const w = CELL * k;
+      ctx.drawImage(snap, 16 - w / 2, 16 - w / 2, w, w);
+    }
+    renderAll();
+    renderPreview();
+    dirty();
+  }
+  $<HTMLButtonElement>('h-grow').onclick = () => scaleAll(1.125);
+  $<HTMLButtonElement>('h-shrink').onclick = () => scaleAll(1 / 1.125);
 
   $<HTMLButtonElement>('h-undo').onclick = popUndo;
   $<HTMLButtonElement>('h-clear').onclick = () => {
