@@ -155,7 +155,11 @@ export async function mountHelmEditor(): Promise<void> {
       <div class="row"><div class="swatches" id="h-swatches"></div></div>
       <div class="row">
         <input type="color" id="h-custom" value="#208c92" title="Custom color">
-        <button id="h-eraser">Eraser</button>
+      </div>
+      <h2>Tool</h2>
+      <div class="row">
+        <button id="h-brush" aria-pressed="true">✏ Brush</button>
+        <button id="h-eraser" aria-pressed="false">🧽 Eraser</button>
       </div>
       <div class="row">
         <button id="h-undo">Undo</button>
@@ -400,9 +404,15 @@ export async function mountHelmEditor(): Promise<void> {
     $<HTMLInputElement>('h-custom').value = hex;
     swEls.forEach((el, i) => el.classList.toggle('on', SWATCHES[i] === hex));
   }
+  /**
+   * Кисть или ластик. Подсвечиваем ОБЕ кнопки: у заказчика клавиша E занята
+   * браузером, значит кнопка — основной способ переключения, и по ней должно
+   * быть видно, какой инструмент сейчас в руке.
+   */
   function setEraser(on: boolean): void {
     eraser = on;
     $<HTMLButtonElement>('h-eraser').setAttribute('aria-pressed', String(on));
+    $<HTMLButtonElement>('h-brush').setAttribute('aria-pressed', String(!on));
   }
   for (const c of SWATCHES) {
     const el = document.createElement('div');
@@ -413,7 +423,10 @@ export async function mountHelmEditor(): Promise<void> {
     swEls.push(el);
   }
   $<HTMLInputElement>('h-custom').oninput = (e) => setColor((e.target as HTMLInputElement).value);
-  $<HTMLButtonElement>('h-eraser').onclick = () => setEraser(!eraser);
+  // Кнопки задают инструмент прямо, а не переключают: нажал «Ластик» — ластик,
+  // нажал ещё раз — он и остаётся. Так не бывает «нажал и случайно выключил».
+  $<HTMLButtonElement>('h-eraser').onclick = () => setEraser(true);
+  $<HTMLButtonElement>('h-brush').onclick = () => setEraser(false);
 
   // --- Горячие клавиши: Alt-пипетка живёт в mousedown ячейки, остальное тут ---
   /** Сдвиг рисунка ячейки на пиксель — стрелками, после Shift-перетаскивания доводка. */
@@ -538,9 +551,10 @@ export async function mountHelmEditor(): Promise<void> {
       <h4>Buttons</h4>
       <ul>
         <li><b>Armor piece</b> — which item you are drawing. Its file is what Save writes.</li>
-        <li><b>Color swatches / custom</b> — brush color. Picking a color turns the eraser off.</li>
-        <li><b>Eraser</b> — erase YOUR pixels. The hero underneath is background and cannot be erased —
-            erasing over him just reveals him, which can look like "nothing happened".</li>
+        <li><b>Color swatches / custom</b> — brush color. Picking a color switches back to the brush.</li>
+        <li><b>Brush / Eraser</b> — the current tool; the active one is highlighted. The eraser removes
+            YOUR pixels. The hero underneath is background and cannot be erased — erasing over him just
+            reveals him, which can look like "nothing happened" (turn Hero off to be sure).</li>
         <li><b>Undo</b> — step back (40 steps).</li>
         <li><b>Front to sides</b> — copy the Front cell onto Left and Right.</li>
         <li><b>Clear</b> — wipe all four cells.</li>
