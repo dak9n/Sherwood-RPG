@@ -323,15 +323,21 @@ export async function mountHelmEditor(): Promise<void> {
     if (!def) return;
     const ico = def.icon;
     iconSheets[ico.sheet] ??= await load(ICON_SHEETS[ico.sheet]);
-    pushUndo();
-    const ctx = layers[0].getContext('2d')!;
-    ctx.imageSmoothingEnabled = false; // пиксели, а не мыло
+    pushUndo(); // один снимок на все ячейки — одна отмена возвращает всё
     const w = Math.max(1, Math.round(ico.w * scale));
     const h = Math.max(1, Math.round(ico.h * scale));
-    ctx.drawImage(iconSheets[ico.sheet], ico.x, ico.y, ico.w, ico.h, Math.round(16 - w / 2), Math.round(16 - h / 2), w, h);
-    renderCell(0);
+    // Во ВСЕ четыре ячейки: вставка только во Front, прокрученный за экран,
+    // выглядела как «ничего не произошло» (в превью шлем есть, в панели нет).
+    for (const layer of layers) {
+      const ctx = layer.getContext('2d')!;
+      ctx.imageSmoothingEnabled = false; // пиксели, а не мыло
+      ctx.drawImage(iconSheets[ico.sheet], ico.x, ico.y, ico.w, ico.h, Math.round(16 - w / 2), Math.round(16 - h / 2), w, h);
+    }
+    renderAll();
     renderPreview();
     dirty();
+    // И показать результат: первая ячейка может быть прокручена прочь.
+    cellCanvases[0].parentElement?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
   $<HTMLButtonElement>('h-icon100').onclick = () => void stampIcon(1);
   $<HTMLButtonElement>('h-icon75').onclick = () => void stampIcon(0.75);
