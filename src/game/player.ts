@@ -125,16 +125,20 @@ const ARMOR_PALETTES: Record<ArmorTint, [number, number, number][]> = {
 };
 
 /**
- * Превращает волосы каждого кадра листа в купол шлема.
+ * Надевает на голову каждого кадра листа НАРИСОВАННУЮ каску-шапель.
  *
- * По маске волос кадра: срезаем торчащие пряди (эрозия — пиксель без двух
- * соседей-волос выбывает), остальное заливаем горизонтальными полосами палитры
- * (блик у макушки, темнее к низу — так на пикселях читается металл), а внешний
- * контур купола красим самым тёмным тоном — тонкий обод. Кадр обрабатывается
- * отдельно: пояс полос считается от размаха волос ИМЕННО этого кадра, ведь в
- * ударе и смерти голова ездит по кадру.
+ * Перекраска волос не годилась: любой перекрас наследует форму причёски, и
+ * заказчик честно видел «поменялась причёска», а не шлем. Каска строится
+ * ГЕОМЕТРИЕЙ, симметричным полуэллипсом по bbox головы кадра: ширина — вся
+ * голова, низ — над глазами (52% высоты), полосы света сверху вниз и тёмный
+ * обод. У каждого комплекта своя деталь, по которой шлем и узнают: щель
+ * забрала у железа, Т-прорезь у лазури, швы у кожи. Со спины деталей нет —
+ * там затылок.
+ *
+ * Волосы вне купола не стираются, а темнеют в подшлемник: стереть нельзя —
+ * при взгляде вверх голова целиком из волос, и герой остался бы без затылка.
  */
-function helmetize(image: ImageData, width: number, pal: [number, number, number][]): void {
+function helmetize(image: ImageData, width: number, pal: [number, number, number][], tint: ArmorTint): void {
   const data = image.data;
   const cols = Math.floor(width / FRAME);
   const rows = Math.floor(image.data.length / 4 / width / FRAME);
@@ -143,60 +147,54 @@ function helmetize(image: ImageData, width: number, pal: [number, number, number
   for (let fr = 0; fr < cols * rows; fr++) {
     const fx = (fr % cols) * FRAME;
     const fy = Math.floor(fr / cols) * FRAME;
+    const isBack = Math.floor(fr / cols) === DIRS_HERO.indexOf('up');
 
-    const mask = new Uint8Array(FRAME * FRAME);
+    // bbox всей головы кадра (волосы и лицо) — по нему сидит каска.
+    let x0 = FRAME, x1 = -1, y0 = FRAME, y1 = -1;
     for (let y = 0; y < FRAME; y++) {
       for (let x = 0; x < FRAME; x++) {
-        const i = at(fx, fy, x, y);
-        if (data[i + 3] > 24 && HAIR_MASK.has((data[i] << 16) | (data[i + 1] << 8) | data[i + 2])) {
-          mask[y * FRAME + x] = 1;
-        }
-      }
-    }
-
-    // Эрозия силуэта: у купола нет отдельно висящих прядей.
-    const dome = mask.slice();
-    for (let y = 0; y < FRAME; y++) {
-      for (let x = 0; x < FRAME; x++) {
-        if (!mask[y * FRAME + x]) continue;
-        const n =
-          (y > 0 ? mask[(y - 1) * FRAME + x] : 0) +
-          (y < FRAME - 1 ? mask[(y + 1) * FRAME + x] : 0) +
-          (x > 0 ? mask[y * FRAME + x - 1] : 0) +
-          (x < FRAME - 1 ? mask[y * FRAME + x + 1] : 0);
-        if (n < 2) dome[y * FRAME + x] = 0;
-      }
-    }
-
-    // Размах купола по вертикали — от него считаются полосы металла.
-    let y0 = FRAME;
-    let y1 = -1;
-    for (let y = 0; y < FRAME; y++) {
-      for (let x = 0; x < FRAME; x++) {
-        if (dome[y * FRAME + x]) {
+        if (data[at(fx, fy, x, y) + 3] > 24) {
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
           if (y < y0) y0 = y;
           if (y > y1) y1 = y;
         }
       }
     }
-    if (y1 < 0) continue; // волос в кадре нет (пустой кадр листа)
-    const span = Math.max(1, y1 - y0);
+    if (y1 < 0) continue; // пустой кадр листа
+
+    const cx = (x0 + x1) / 2;
+    const yBase = y0 + Math.round((y1 - y0) * 0.52); // низ каски — над глазами
+    const a = (x1 - x0) / 2 + 0.6;
+    const b = yBase - y0 + 1.2;
 
     for (let y = 0; y < FRAME; y++) {
       for (let x = 0; x < FRAME; x++) {
         const i = at(fx, fy, x, y);
-        if (!dome[y * FRAME + x]) {
-          if (mask[y * FRAME + x]) data[i + 3] = 0; // срезанная прядь — прозрачность
+        if (data[i + 3] <= 24) continue;
+        const inDome = y <= yBase && ((x - cx) / a) ** 2 + ((y - yBase) / b) ** 2 <= 1;
+
+        if (!inDome) {
+          // Пряди вне каски — тёмный подшлемник (затылок со спины — он же).
+          if (HAIR_MASK.has((data[i] << 16) | (data[i + 1] << 8) | data[i + 2])) {
+            const c = pal[0];
+            data[i] = c[0];
+            data[i + 1] = c[1];
+            data[i + 2] = c[2];
+          }
           continue;
         }
-        const t = (y - y0) / span;
-        const band = t < 0.12 ? 4 : t < 0.42 ? 3 : t < 0.72 ? 2 : 1;
-        const edge =
-          !(x > 0 && dome[y * FRAME + x - 1]) ||
-          !(x < FRAME - 1 && dome[y * FRAME + x + 1]) ||
-          !(y > 0 && dome[(y - 1) * FRAME + x]) ||
-          !(y < FRAME - 1 && dome[(y + 1) * FRAME + x]);
-        const c = pal[edge ? 0 : band];
+
+        const d2 = ((x - cx) / a) ** 2 + ((y - yBase) / b) ** 2;
+        const t = (y - (yBase - b)) / b; // 0 — макушка, 1 — кромка
+        const band = t < 0.25 ? 4 : t < 0.55 ? 3 : t < 0.85 ? 2 : 1;
+        let c = d2 > 0.72 || y === yBase ? pal[0] : pal[band];
+        if (!isBack) {
+          // Деталь комплекта — то, по чему шлем узнаётся.
+          if (tint === 'iron' && y === yBase - 1 && Math.abs(x - cx) <= a * 0.55) c = pal[0];
+          if (tint === 'azure' && ((Math.abs(x - cx) <= 0.7 && t > 0.35) || (y === yBase - 1 && Math.abs(x - cx) <= a * 0.45))) c = pal[0];
+          if (tint === 'leather' && Math.abs(x - cx) % 3 < 1 && t > 0.3 && t < 0.8) c = pal[1];
+        }
         data[i] = c[0];
         data[i + 1] = c[1];
         data[i + 2] = c[2];
@@ -388,8 +386,8 @@ export class Player {
       const image = octx.getImageData(0, 0, off.width, off.height);
       const pal = ARMOR_PALETTES[tint];
       if (part === 'head') {
-        // Голова — не потоновый свап, а купол шлема из маски волос.
-        helmetize(image, img.width, pal);
+        // Голова — не потоновый свап, а нарисованная каска по геометрии головы.
+        helmetize(image, img.width, pal, tint);
       } else {
         const data = image.data;
         for (let i = 0; i < data.length; i += 4) {
