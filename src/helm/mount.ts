@@ -57,13 +57,21 @@ const CSS = `
   #helm .hint { color: #7d8f99; font-size: 12px; line-height: 1.45; margin-top: 8px; }
   #helm hr { border: none; border-top: 1px solid #2b3439; margin: 12px 0; }
   #helm-preview { image-rendering: pixelated; background: #10151a; border: 1px solid #0d1114; }
-  /* Справка: тёмная вуаль на весь экран, карточка по центру. */
-  #helm-info { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.55);
-    display: flex; align-items: center; justify-content: center; }
-  #helm-info .card { background: #20272b; border: 1px solid #0d1114; border-radius: 6px;
-    max-width: 560px; max-height: 86vh; overflow-y: auto; padding: 14px 18px;
+  /* Иконка предмета: то, что игрок видит в сумке и лавке — референс для рисунка. */
+  #h-ref { image-rendering: pixelated; width: 64px; height: 64px;
+    background: #10151a; border: 1px solid #0d1114; border-radius: 3px; }
+  #helm .refcap { flex: 1; min-width: 0; line-height: 1.3; }
+  #helm .refcap .dim { color: #7d8f99; font-size: 12px; }
+  /* Справка — нативный dialog: Esc закрывает его сам браузер. */
+  #helm-info { border: 1px solid #0d1114; border-radius: 6px; padding: 0;
+    max-width: 560px; width: 92vw; background: #20272b; color: #cfd8dc;
     box-shadow: 0 12px 44px rgba(0,0,0,.55); }
-  #helm-info h3 { margin: 0 0 8px; font-size: 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  #helm-info::backdrop { background: rgba(0,0,0,.55); }
+  #helm-info .card { max-height: 82vh; overflow-y: auto; padding: 0 18px 14px; }
+  /* Шапка липкая: при прокрутке длинной справки кнопка Close остаётся на виду. */
+  #helm-info h3 { position: sticky; top: 0; margin: 0 -18px 8px; padding: 12px 18px;
+    background: #20272b; border-bottom: 1px solid #0d1114; font-size: 14px;
+    display: flex; justify-content: space-between; align-items: center; gap: 12px; }
   #helm-info h4 { margin: 10px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #7d8f99; }
   #helm-info ul { margin: 0; padding-left: 18px; }
   #helm-info li { margin: 3px 0; line-height: 1.45; }
@@ -131,6 +139,13 @@ export async function mountHelmEditor(): Promise<void> {
     <div id="helm-side">
       <h2>Armor piece</h2>
       <div class="row"><select id="h-item"></select></div>
+      <div class="row">
+        <canvas id="h-ref" width="32" height="32" title="The item's icon as it looks in the bag and shop"></canvas>
+        <div class="refcap">
+          <div id="h-ref-name"></div>
+          <div id="h-ref-slot" class="dim"></div>
+        </div>
+      </div>
       <h2>Color</h2>
       <div class="row"><div class="swatches" id="h-swatches"></div></div>
       <div class="row">
@@ -507,12 +522,14 @@ export async function mountHelmEditor(): Promise<void> {
   $<HTMLButtonElement>('h-hero').onclick = () => setHero(!showHero);
 
   // --- Справка: все кнопки и клавиши в одном месте ---
-  const info = document.createElement('div');
+  // Нативный <dialog>, как справка редактора карт: Esc закрывает его силами
+  // браузера, даже если наш обработчик почему-то не сработает. Прошлая версия
+  // была самодельным div-оверлеем, и заказчик не смог её закрыть.
+  const info = document.createElement('dialog');
   info.id = 'helm-info';
-  info.hidden = true;
   info.innerHTML = `
     <div class="card">
-      <h3>Editor reference <button id="h-info-close">Close</button></h3>
+      <h3>Editor reference <button id="h-info-close" autofocus>Close</button></h3>
       <h4>Buttons</h4>
       <ul>
         <li><b>Armor piece</b> — which item you are drawing. Its file is what Save writes.</li>
@@ -541,8 +558,12 @@ export async function mountHelmEditor(): Promise<void> {
       </ul>
     </div>`;
   document.body.append(info);
-  const setInfo = (open: boolean): void => { info.hidden = !open; };
-  $<HTMLButtonElement>('h-info').onclick = () => setInfo(Boolean(info.hidden));
+  const setInfo = (open: boolean): void => {
+    if (open) info.showModal();
+    else info.close();
+  };
+  $<HTMLButtonElement>('h-info').onclick = () => setInfo(!info.open);
+  // Клик по подложке (вне карточки) тоже закрывает — третий способ выхода.
   info.onclick = (e) => { if (e.target === info) setInfo(false); };
   info.querySelector<HTMLButtonElement>('#h-info-close')!.onclick = () => setInfo(false);
 
@@ -614,8 +635,34 @@ export async function mountHelmEditor(): Promise<void> {
     return true;
   }
 
+  /**
+   * Иконка выбранного предмета крупно — та самая, что игрок видит в сумке и
+   * лавке. Без неё непонятно, ЧТО рисуешь: в списке одно имя, а как вещь
+   * выглядит в игре — не видно.
+   */
+  async function showItemIcon(id: string): Promise<void> {
+    const def = ITEMS[id];
+    const ref = $<HTMLCanvasElement>('h-ref');
+    const ctx = ref.getContext('2d')!;
+    ctx.clearRect(0, 0, 32, 32);
+    $<HTMLDivElement>('h-ref-name').textContent = def?.name ?? '';
+    $<HTMLDivElement>('h-ref-slot').textContent = def
+      ? `${def.slot === 'helm' ? 'helmet' : 'chest'} · ${def.rarity ?? 'common'}`
+      : '';
+    if (!def) return;
+    const ico = def.icon;
+    iconSheets[ico.sheet] ??= await load(ICON_SHEETS[ico.sheet]);
+    ctx.imageSmoothingEnabled = false;
+    // Иконки бывают 16x16 и 32x32 — вписываем в клетку, сохраняя пропорции.
+    const k = Math.min(32 / ico.w, 32 / ico.h);
+    const w = Math.round(ico.w * k);
+    const h = Math.round(ico.h * k);
+    ctx.drawImage(iconSheets[ico.sheet], ico.x, ico.y, ico.w, ico.h, Math.round(16 - w / 2), Math.round(16 - h / 2), w, h);
+  }
+
   async function loadHelm(id: string): Promise<void> {
     currentId = id; // теперь в слоях рисунок ЭТОГО предмета — Save пишет его
+    void showItemIcon(id);
     rebuildRefs(); // у шлема и нагрудника разные якоря — референс сдвигается
     layers.forEach((l) => l.getContext('2d')!.clearRect(0, 0, CELL, CELL));
     try {
