@@ -37,7 +37,12 @@ const CSS = `
     font: 13px/1.5 system-ui, sans-serif; user-select: none; }
   body.helm-edit #game { display: none; }
   #helm { position: fixed; inset: 0; display: grid; grid-template-columns: 1fr 280px; }
-  #helm-stage { overflow: auto; display: flex; flex-wrap: wrap; gap: 18px; padding: 18px; align-content: center; justify-content: center; }
+  /* align-content: center НЕЛЬЗЯ: когда ячейки выше окна, центрирование
+     выносит верхнюю за начало области прокрутки, и доскроллить до неё
+     невозможно — первая ячейка (Front) просто пропадала, а рисование по ней
+     выглядело как «ластик/вставка не работают». flex-start безопасен всегда. */
+  #helm-stage { overflow: auto; display: flex; flex-wrap: wrap; gap: 18px; padding: 18px;
+    align-content: flex-start; justify-content: center; }
   .hcell { text-align: center; }
   .hcell canvas { image-rendering: pixelated; background: #10151a; border: 1px solid #0d1114; cursor: crosshair; }
   .hcell .cap { margin: 0 0 4px; color: #9fb0ba; }
