@@ -35,8 +35,15 @@ interface Table { bladeLen: number; anims: Record<string, { cols: number; rows: 
 const CSS = `
   body.anim-edit { margin: 0; background: #171c1f; color: #cfd8dc;
     font: 13px/1.5 system-ui, sans-serif; user-select: none; }
-  #anim { display: grid; grid-template-columns: 1fr 300px; height: 100vh; }
-  #anim-stage { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+  /* Контейнер игры убираем совсем: Phaser тут не запускается, а пустой div на
+     весь экран стоит в разметке ПЕРВЫМ и сдвигал бы редактор ниже сгиба —
+     экран выглядел бы пустым, будто редактор не загрузился. */
+  body.anim-edit #game { display: none; }
+  #anim { position: fixed; inset: 0; display: grid; grid-template-columns: 1fr 300px; }
+  /* Кадр может быть крупнее экрана при большом увеличении — пусть прокручивается
+     внутри своей колонки, а не растягивает страницу. */
+  #anim-stage { display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; overflow: auto; padding: 12px; }
   #anim-canvas { image-rendering: pixelated; background: #10151a; border: 1px solid #0d1114; cursor: grab; }
   #anim-canvas.dragging { cursor: grabbing; }
   #anim-strip { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; max-width: 90%; }
