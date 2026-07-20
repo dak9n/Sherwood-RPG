@@ -130,6 +130,12 @@ export async function mountHelmEditor(): Promise<void> {
         <button id="h-copy">Front to sides</button>
         <button id="h-clear">Clear</button>
       </div>
+      <h2>Insert item icon</h2>
+      <div class="row">
+        <button id="h-icon100">100%</button>
+        <button id="h-icon75">75%</button>
+        <button id="h-icon50">50%</button>
+      </div>
       <hr>
       <h2>Preview (walk)</h2>
       <canvas id="helm-preview" width="64" height="64" style="width:192px;height:192px"></canvas>
@@ -296,6 +302,38 @@ export async function mountHelmEditor(): Promise<void> {
     eraser = !eraser;
     $<HTMLButtonElement>('h-eraser').setAttribute('aria-pressed', String(eraser));
   };
+  // --- Вставка настоящей иконки предмета (те же листы, что в сумке/лавке) ---
+  //
+  // Иконка — готовый пиксель-арт: часто быстрее вставить её и подтереть, чем
+  // рисовать спрайт с нуля. 100% — как в сумке (32px, крупнее героя), 75% и
+  // 50% — ужатые до размеров головы/торса. Вставляется во фронтальную ячейку;
+  // на бока и спину — Front to sides и правка руками.
+  const ICON_SHEETS: Record<string, string> = {
+    icons: 'assets/interface/PNG/Icons.png',
+    armor: 'assets/armor-icons/armor_atlas.png',
+    Objects: 'assets/tilesets/Objects.png',
+    scroll: 'assets/interface/ui/scroll.png',
+  };
+  const iconSheets: Record<string, HTMLImageElement> = {};
+  async function stampIcon(scale: number): Promise<void> {
+    const def = ITEMS[selItem.value];
+    if (!def) return;
+    const ico = def.icon;
+    iconSheets[ico.sheet] ??= await load(ICON_SHEETS[ico.sheet]);
+    pushUndo();
+    const ctx = layers[0].getContext('2d')!;
+    ctx.imageSmoothingEnabled = false; // пиксели, а не мыло
+    const w = Math.max(1, Math.round(ico.w * scale));
+    const h = Math.max(1, Math.round(ico.h * scale));
+    ctx.drawImage(iconSheets[ico.sheet], ico.x, ico.y, ico.w, ico.h, Math.round(16 - w / 2), Math.round(16 - h / 2), w, h);
+    renderCell(0);
+    renderPreview();
+    dirty();
+  }
+  $<HTMLButtonElement>('h-icon100').onclick = () => void stampIcon(1);
+  $<HTMLButtonElement>('h-icon75').onclick = () => void stampIcon(0.75);
+  $<HTMLButtonElement>('h-icon50').onclick = () => void stampIcon(0.5);
+
   $<HTMLButtonElement>('h-undo').onclick = popUndo;
   $<HTMLButtonElement>('h-clear').onclick = () => {
     pushUndo();
