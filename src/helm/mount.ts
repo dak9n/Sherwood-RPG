@@ -152,6 +152,12 @@ export async function mountHelmEditor(): Promise<void> {
         like — the helmet is drawn over it. Save writes the file and the game
         picks it up on reload.
       </p>
+      <p class="hint">
+        Hotkeys: <b>Alt+click</b> — pick a color (from your pixels, or the hero
+        under them); <b>Ctrl/Cmd+Z</b> — undo; <b>Shift+drag</b> — grab the
+        cell's drawing and move it; <b>arrows</b> — nudge the last-touched cell
+        by a pixel; <b>E</b> — eraser, <b>B</b> — brush.
+      </p>
     </div>`;
   document.body.append(root);
   const $ = <T extends HTMLElement>(id: string): T => root.querySelector(`#${id}`) as T;
@@ -171,6 +177,8 @@ export async function mountHelmEditor(): Promise<void> {
 
   let color = '#208c92';
   let eraser = false;
+  /** Ячейка, которой касались последней, — её двигают стрелки. */
+  let activeCell = 0;
   const undoStack: ImageData[][] = [];
 
   const pushUndo = (): void => {
@@ -203,10 +211,17 @@ export async function mountHelmEditor(): Promise<void> {
     cellCanvases.push(c);
 
     let drawing: 'paint' | 'erase' | null = null;
-    const paint = (e: MouseEvent): void => {
+    /** Перетаскивание пикселей ячейки (Shift+драг): снимок и точка старта. */
+    let moving: { snap: HTMLCanvasElement; x: number; y: number } | null = null;
+    const cellPos = (e: MouseEvent): { x: number; y: number } => {
       const r = c.getBoundingClientRect();
-      const x = Math.floor(((e.clientX - r.left) / r.width) * CELL);
-      const y = Math.floor(((e.clientY - r.top) / r.height) * CELL);
+      return {
+        x: Math.floor(((e.clientX - r.left) / r.width) * CELL),
+        y: Math.floor(((e.clientY - r.top) / r.height) * CELL),
+      };
+    };
+    const paint = (e: MouseEvent): void => {
+      const { x, y } = cellPos(e);
       if (x < 0 || y < 0 || x >= CELL || y >= CELL) return;
       const ctx = layers[di].getContext('2d')!;
       if (drawing === 'erase' || eraser) ctx.clearRect(x, y, 1, 1);
@@ -219,13 +234,57 @@ export async function mountHelmEditor(): Promise<void> {
     };
     c.oncontextmenu = (e) => e.preventDefault();
     c.onmousedown = (e) => {
+      activeCell = di; // стрелки двигают ту ячейку, которой касались последней
+      const { x, y } = cellPos(e);
+
+      // Alt — пипетка: цвет из рисунка, а под ним — из самого героя (удобно
+      // брать тона кожи и волос). Действие не меняет пиксели — без Undo.
+      if (e.altKey) {
+        e.preventDefault();
+        const ld = layers[di].getContext('2d')!.getImageData(x, y, 1, 1).data;
+        let picked: [number, number, number] | null = ld[3] > 24 ? [ld[0], ld[1], ld[2]] : null;
+        if (!picked) {
+          const fx = x - Math.round(refs[di].dx);
+          const fy = y - Math.round(refs[di].dy);
+          if (fx >= 0 && fy >= 0 && fx < FRAME && fy < FRAME) {
+            const hd = refs[di].frame.getContext('2d', { willReadFrequently: true })!.getImageData(fx, fy, 1, 1).data;
+            if (hd[3] > 24) picked = [hd[0], hd[1], hd[2]];
+          }
+        }
+        if (picked) setColor(`#${picked.map((v) => v.toString(16).padStart(2, '0')).join('')}`);
+        return;
+      }
+
+      // Shift — взять рисунок ячейки и перетащить целиком.
+      if (e.shiftKey) {
+        pushUndo();
+        const snap = document.createElement('canvas');
+        snap.width = CELL;
+        snap.height = CELL;
+        snap.getContext('2d')!.drawImage(layers[di], 0, 0);
+        moving = { snap, x, y };
+        dirty();
+        return;
+      }
+
       pushUndo();
       drawing = e.button === 2 ? 'erase' : 'paint';
       dirty();
       paint(e);
     };
-    c.onmousemove = (e) => { if (drawing) paint(e); };
-    window.addEventListener('mouseup', () => { drawing = null; });
+    c.onmousemove = (e) => {
+      if (moving) {
+        const { x, y } = cellPos(e);
+        const ctx = layers[di].getContext('2d')!;
+        ctx.clearRect(0, 0, CELL, CELL);
+        ctx.drawImage(moving.snap, x - moving.x, y - moving.y);
+        renderCell(di);
+        renderPreview();
+        return;
+      }
+      if (drawing) paint(e);
+    };
+    window.addEventListener('mouseup', () => { drawing = null; moving = null; });
   });
 
   /** Якорь текущего предмета: шлем — центр головы, нагрудник — ниже на корпус. */
@@ -283,28 +342,62 @@ export async function mountHelmEditor(): Promise<void> {
   // --- Палитра ---
   const swatches = $<HTMLDivElement>('h-swatches');
   const swEls: HTMLDivElement[] = [];
+  /** Единая смена цвета: пипетка, плашки и своё поле идут через неё. */
+  function setColor(hex: string): void {
+    color = hex;
+    setEraser(false);
+    $<HTMLInputElement>('h-custom').value = hex;
+    swEls.forEach((el, i) => el.classList.toggle('on', SWATCHES[i] === hex));
+  }
+  function setEraser(on: boolean): void {
+    eraser = on;
+    $<HTMLButtonElement>('h-eraser').setAttribute('aria-pressed', String(on));
+  }
   for (const c of SWATCHES) {
     const el = document.createElement('div');
     el.className = 'sw';
     el.style.background = c;
-    el.onclick = () => {
-      color = c;
-      eraser = false;
-      swEls.forEach((e) => e.classList.toggle('on', e === el));
-      $<HTMLButtonElement>('h-eraser').setAttribute('aria-pressed', 'false');
-    };
+    el.onclick = () => setColor(c);
     swatches.append(el);
     swEls.push(el);
   }
-  $<HTMLInputElement>('h-custom').oninput = (e) => {
-    color = (e.target as HTMLInputElement).value;
-    eraser = false;
-    swEls.forEach((el) => el.classList.remove('on'));
-  };
-  $<HTMLButtonElement>('h-eraser').onclick = () => {
-    eraser = !eraser;
-    $<HTMLButtonElement>('h-eraser').setAttribute('aria-pressed', String(eraser));
-  };
+  $<HTMLInputElement>('h-custom').oninput = (e) => setColor((e.target as HTMLInputElement).value);
+  $<HTMLButtonElement>('h-eraser').onclick = () => setEraser(!eraser);
+
+  // --- Горячие клавиши: Alt-пипетка живёт в mousedown ячейки, остальное тут ---
+  /** Сдвиг рисунка ячейки на пиксель — стрелками, после Shift-перетаскивания доводка. */
+  function nudge(di: number, dx: number, dy: number): void {
+    pushUndo();
+    const snap = document.createElement('canvas');
+    snap.width = CELL;
+    snap.height = CELL;
+    snap.getContext('2d')!.drawImage(layers[di], 0, 0);
+    const ctx = layers[di].getContext('2d')!;
+    ctx.clearRect(0, 0, CELL, CELL);
+    ctx.drawImage(snap, dx, dy);
+    renderCell(di);
+    renderPreview();
+    dirty();
+  }
+  window.addEventListener('keydown', (e) => {
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      popUndo();
+      return;
+    }
+    if (e.key === 'e' || e.key === 'E') return setEraser(!eraser);
+    if (e.key === 'b' || e.key === 'B') return setEraser(false);
+    const arrows: Record<string, [number, number]> = {
+      ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
+    };
+    const d = arrows[e.key];
+    if (d) {
+      e.preventDefault(); // стрелки двигают рисунок, а не прокрутку страницы
+      nudge(activeCell, d[0], d[1]);
+    }
+  });
   // --- Вставка настоящей иконки предмета (те же листы, что в сумке/лавке) ---
   //
   // Иконка — готовый пиксель-арт: часто быстрее вставить её и подтереть, чем
