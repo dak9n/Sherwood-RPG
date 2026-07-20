@@ -104,17 +104,106 @@ const TUNIC_TONES = new Map<number, number>([
   [rgb(45, 49, 43), 0], [rgb(63, 67, 61), 1], [rgb(94, 97, 90), 2],
   [rgb(111, 115, 106), 3], [rgb(134, 139, 124), 4],
 ]);
-/** Тон волос -> индекс в палитре. Два самых тёмных делят нижний тон. */
-const HAIR_TONES = new Map<number, number>([
-  [rgb(33, 26, 28), 0], [rgb(43, 32, 35), 0], [rgb(59, 44, 51), 1],
-  [rgb(77, 57, 69), 2], [rgb(104, 79, 90), 3], [rgb(135, 108, 125), 4],
+/**
+ * Все тона волос, включая контур (17,11,0), — это МАСКА для шлема.
+ *
+ * Волосы не перекрашиваются потон-в-тон, как туника: перекрашенные пряди так и
+ * читались прядями, «шлем не отображается — только волосы красятся» (слова
+ * заказчика). Вместо этого из маски волос строится купол (см. helmetize):
+ * торчащие пряди срезаются, а купол заливается горизонтальными полосами
+ * металла — бликом сверху и тонким тёмным ободом по контуру.
+ */
+const HAIR_MASK = new Set<number>([
+  rgb(17, 11, 0), rgb(33, 26, 28), rgb(43, 32, 35), rgb(59, 44, 51),
+  rgb(77, 57, 69), rgb(104, 79, 90), rgb(135, 108, 125),
 ]);
 
 const ARMOR_PALETTES: Record<ArmorTint, [number, number, number][]> = {
-  leather: [[70, 44, 26], [96, 62, 36], [126, 85, 48], [155, 110, 64], [184, 140, 86]],
-  iron: [[58, 58, 64], [84, 86, 94], [120, 124, 133], [148, 152, 161], [182, 186, 194]],
-  azure: [[16, 80, 86], [23, 113, 120], [37, 152, 157], [58, 180, 183], [96, 210, 208]],
+  leather: [[56, 34, 20], [88, 56, 32], [120, 80, 46], [150, 106, 62], [180, 136, 84]],
+  iron: [[48, 48, 56], [84, 86, 94], [120, 124, 133], [158, 162, 171], [196, 200, 208]],
+  azure: [[12, 66, 72], [23, 113, 120], [37, 152, 157], [58, 180, 183], [110, 220, 216]],
 };
+
+/**
+ * Превращает волосы каждого кадра листа в купол шлема.
+ *
+ * По маске волос кадра: срезаем торчащие пряди (эрозия — пиксель без двух
+ * соседей-волос выбывает), остальное заливаем горизонтальными полосами палитры
+ * (блик у макушки, темнее к низу — так на пикселях читается металл), а внешний
+ * контур купола красим самым тёмным тоном — тонкий обод. Кадр обрабатывается
+ * отдельно: пояс полос считается от размаха волос ИМЕННО этого кадра, ведь в
+ * ударе и смерти голова ездит по кадру.
+ */
+function helmetize(image: ImageData, width: number, pal: [number, number, number][]): void {
+  const data = image.data;
+  const cols = Math.floor(width / FRAME);
+  const rows = Math.floor(image.data.length / 4 / width / FRAME);
+  const at = (fx: number, fy: number, x: number, y: number): number => ((fy + y) * width + (fx + x)) * 4;
+
+  for (let fr = 0; fr < cols * rows; fr++) {
+    const fx = (fr % cols) * FRAME;
+    const fy = Math.floor(fr / cols) * FRAME;
+
+    const mask = new Uint8Array(FRAME * FRAME);
+    for (let y = 0; y < FRAME; y++) {
+      for (let x = 0; x < FRAME; x++) {
+        const i = at(fx, fy, x, y);
+        if (data[i + 3] > 24 && HAIR_MASK.has((data[i] << 16) | (data[i + 1] << 8) | data[i + 2])) {
+          mask[y * FRAME + x] = 1;
+        }
+      }
+    }
+
+    // Эрозия силуэта: у купола нет отдельно висящих прядей.
+    const dome = mask.slice();
+    for (let y = 0; y < FRAME; y++) {
+      for (let x = 0; x < FRAME; x++) {
+        if (!mask[y * FRAME + x]) continue;
+        const n =
+          (y > 0 ? mask[(y - 1) * FRAME + x] : 0) +
+          (y < FRAME - 1 ? mask[(y + 1) * FRAME + x] : 0) +
+          (x > 0 ? mask[y * FRAME + x - 1] : 0) +
+          (x < FRAME - 1 ? mask[y * FRAME + x + 1] : 0);
+        if (n < 2) dome[y * FRAME + x] = 0;
+      }
+    }
+
+    // Размах купола по вертикали — от него считаются полосы металла.
+    let y0 = FRAME;
+    let y1 = -1;
+    for (let y = 0; y < FRAME; y++) {
+      for (let x = 0; x < FRAME; x++) {
+        if (dome[y * FRAME + x]) {
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+        }
+      }
+    }
+    if (y1 < 0) continue; // волос в кадре нет (пустой кадр листа)
+    const span = Math.max(1, y1 - y0);
+
+    for (let y = 0; y < FRAME; y++) {
+      for (let x = 0; x < FRAME; x++) {
+        const i = at(fx, fy, x, y);
+        if (!dome[y * FRAME + x]) {
+          if (mask[y * FRAME + x]) data[i + 3] = 0; // срезанная прядь — прозрачность
+          continue;
+        }
+        const t = (y - y0) / span;
+        const band = t < 0.12 ? 4 : t < 0.42 ? 3 : t < 0.72 ? 2 : 1;
+        const edge =
+          !(x > 0 && dome[y * FRAME + x - 1]) ||
+          !(x < FRAME - 1 && dome[y * FRAME + x + 1]) ||
+          !(y > 0 && dome[(y - 1) * FRAME + x]) ||
+          !(y < FRAME - 1 && dome[(y + 1) * FRAME + x]);
+        const c = pal[edge ? 0 : band];
+        data[i] = c[0];
+        data[i + 1] = c[1];
+        data[i + 2] = c[2];
+      }
+    }
+  }
+}
 
 /** Угол полёта для стрельбы «от направления» (пробелом, без курсора). */
 const DIR_ANGLE: Record<Dir, number> = {
@@ -286,28 +375,32 @@ export class Player {
     for (const part of BODY_PARTS) {
       const img = scene.textures.get(`sw-${key}-${part}`).getSourceImage() as HTMLImageElement;
       const tint = part === 'body' ? tunic : part === 'head' ? hair : null;
-      const tones = part === 'body' ? TUNIC_TONES : HAIR_TONES;
       if (!tint) {
         ctx.drawImage(img, 0, 0);
         continue;
       }
-      // Слой через offscreen: свапаем цвета в нём и только потом кладём в лист.
+      // Слой через offscreen: красим его отдельно и только потом кладём в лист.
       const off = document.createElement('canvas');
       off.width = img.width;
       off.height = img.height;
       const octx = off.getContext('2d', { willReadFrequently: true })!;
       octx.drawImage(img, 0, 0);
       const image = octx.getImageData(0, 0, off.width, off.height);
-      const data = image.data;
       const pal = ARMOR_PALETTES[tint];
-      for (let i = 0; i < data.length; i += 4) {
-        if (data[i + 3] <= 24) continue;
-        const to = tones.get((data[i] << 16) | (data[i + 1] << 8) | data[i + 2]);
-        if (to === undefined) continue;
-        const c = pal[to];
-        data[i] = c[0];
-        data[i + 1] = c[1];
-        data[i + 2] = c[2];
+      if (part === 'head') {
+        // Голова — не потоновый свап, а купол шлема из маски волос.
+        helmetize(image, img.width, pal);
+      } else {
+        const data = image.data;
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i + 3] <= 24) continue;
+          const to = TUNIC_TONES.get((data[i] << 16) | (data[i + 1] << 8) | data[i + 2]);
+          if (to === undefined) continue;
+          const c = pal[to];
+          data[i] = c[0];
+          data[i + 1] = c[1];
+          data[i + 2] = c[2];
+        }
       }
       octx.putImageData(image, 0, 0);
       ctx.drawImage(off, 0, 0);
