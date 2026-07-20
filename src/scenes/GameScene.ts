@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { MapScene } from './MapScene';
-import { Player, CHEST_OFFSET, type Strike, type Shot } from '../game/player';
+import { Player, CHEST_OFFSET, type ArmorTint, type Strike, type Shot } from '../game/player';
 import { Monster } from '../game/monster';
 import { Arrow, ARROW_RANGE } from '../game/arrow';
 import { Fireball, FIREBALL_RANGE, FIREBALL_MP_COST, FIREBALL_COOLDOWN, FIREBALL_CAST_TIME } from '../game/fireball';
@@ -1347,6 +1347,11 @@ export class GameScene extends MapScene {
     // Оружие в руке: показываем спрайт ИМЕННО надетого меча/лука (items.held).
     const weapon = this.equipped.weapon;
     this.player.setHeldWeapon(weapon && ITEMS[weapon]?.held ? `held-${weapon}` : null);
+
+    // Броня на модельке: нагрудник перекрашивает тунику, шлем — волосы (items.tint).
+    const tintOf = (id: string | undefined): ArmorTint | null =>
+      (id && ITEMS[id]?.tint) || null;
+    Player.retintArmor(this, tintOf(this.equipped.body), tintOf(this.equipped.helm));
   }
 
   /** Вложить ранг навыка (дерево L). Проверки — в чистой allocate; окно только шлёт намерение. */

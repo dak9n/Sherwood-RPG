@@ -177,6 +177,16 @@ function centroidOf(img, fx, fy) {
   return n ? [sx / n, sy / n] : null;
 }
 
+/**
+ * Позы оружия заказчик правит РУКАМИ в редакторе ?anim — они авторские данные.
+ * Поэтому обычный запуск существующие позы СОХРАНЯЕТ (пересчитывает лишь то,
+ * чего в файле нет — например, при добавлении новой анимации). Полный пересчёт
+ * поз — только явным флагом --reset-weapons.
+ */
+const RESET_WEAPONS = process.argv.includes('--reset-weapons');
+const prev = existsSync(OUT) ? JSON.parse(readFileSync(OUT, 'utf8')) : null;
+const prevAnims = prev?.anims ?? null;
+
 const out = {};
 for (const anim of ANIMS) {
   const front = resolve(PARTS, anim.file);
@@ -209,8 +219,12 @@ for (const anim of ANIMS) {
     }
     frames.push(...smoothAngles(row));
   }
-  out[anim.key] = { cols, rows, frames };
-  console.log(`  ${anim.key}: ${cols}x${rows} = ${frames.length} кадров, с оружием ${found}`);
+
+  // Авторские позы оружия сохраняем, если размеры листа не поменялись.
+  const keep = !RESET_WEAPONS && prevAnims?.[anim.key]?.frames?.length === frames.length;
+  out[anim.key] = { cols, rows, frames: keep ? prevAnims[anim.key].frames : frames };
+  const note = keep ? 'позы оружия сохранены из файла' : 'позы оружия ПЕРЕСЧИТАНЫ';
+  console.log(`  ${anim.key}: ${cols}x${rows} = ${frames.length} кадров, с оружием ${found} (${note})`);
 }
 
 /**
@@ -224,7 +238,9 @@ for (const anim of ANIMS) {
  */
 const calm = ['idle', 'walk'].flatMap((k) => (out[k]?.frames ?? []).filter(Boolean).map((f) => f.len));
 calm.sort((a, b) => a - b);
-const bladeLen = calm.length ? calm[Math.floor(calm.length / 2)] : 8;
+const measured = calm.length ? calm[Math.floor(calm.length / 2)] : 8;
+// Длину клинка тоже правят в редакторе — без --reset-weapons она авторская.
+const bladeLen = !RESET_WEAPONS && prev?.bladeLen ? prev.bladeLen : measured;
 
 writeFileSync(OUT, JSON.stringify({ bladeLen, anims: out }, null, 1) + '\n');
 console.log(`\nэталонная длина клинка: ${bladeLen} px (медиана покоя и ходьбы)`);

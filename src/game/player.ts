@@ -82,6 +82,40 @@ const ICON_BLADE_LEN = 34;
 /** Насколько оружие крупнее штатного меча. 1 — точно его длины. */
 const HELD_SCALE = 1.15;
 
+/**
+ * Броня на герое — ПЕРЕКРАСКА, а не спрайт поверх.
+ *
+ * Пробовали накладывать сами иконки: герой — чиби, голова 15px и есть
+ * пол-персонажа, и любая иконка на нём превращается либо в кашу, либо в колпак,
+ * закрывающий лицо (проверено на макетах). Перекраска же оставляет героя
+ * героем: нагрудник красит тунику, шлем — волосы, которые облегают голову и
+ * сами становятся формой шлема.
+ *
+ * Тона исходников замерены по слоям Idle (см. tools-скан в истории): туника —
+ * пять серо-зелёных, волосы — шесть фиолетово-серых. Палитры комплектов идут
+ * от тени к блику, той же длины.
+ */
+export type ArmorTint = 'leather' | 'iron' | 'azure';
+
+const rgb = (r: number, g: number, b: number): number => (r << 16) | (g << 8) | b;
+
+/** Тон туники -> индекс в палитре (по яркости). */
+const TUNIC_TONES = new Map<number, number>([
+  [rgb(45, 49, 43), 0], [rgb(63, 67, 61), 1], [rgb(94, 97, 90), 2],
+  [rgb(111, 115, 106), 3], [rgb(134, 139, 124), 4],
+]);
+/** Тон волос -> индекс в палитре. Два самых тёмных делят нижний тон. */
+const HAIR_TONES = new Map<number, number>([
+  [rgb(33, 26, 28), 0], [rgb(43, 32, 35), 0], [rgb(59, 44, 51), 1],
+  [rgb(77, 57, 69), 2], [rgb(104, 79, 90), 3], [rgb(135, 108, 125), 4],
+]);
+
+const ARMOR_PALETTES: Record<ArmorTint, [number, number, number][]> = {
+  leather: [[70, 44, 26], [96, 62, 36], [126, 85, 48], [155, 110, 64], [184, 140, 86]],
+  iron: [[58, 58, 64], [84, 86, 94], [120, 124, 133], [148, 152, 161], [182, 186, 194]],
+  azure: [[16, 80, 86], [23, 113, 120], [37, 152, 157], [58, 180, 183], [96, 210, 208]],
+};
+
 /** Угол полёта для стрельбы «от направления» (пробелом, без курсора). */
 const DIR_ANGLE: Record<Dir, number> = {
   right: 0,
@@ -211,7 +245,9 @@ export class Player {
    * приходили из файла (`sw-idle` и прочие), — остальной код о подмене не знает.
    *
    * Зовётся сценой ПОСЛЕ загрузки и ДО создания анимаций: те нарезают кадры из
-   * готовой текстуры. Рисуем на обычном canvas: Phaser принимает его как лист.
+   * готовой текстуры. Листы — CanvasTexture, а не картинки: надетая броня
+   * ПЕРЕКРАШИВАЕТ героя (тунику и волосы, см. retintArmor), и канвас позволяет
+   * перерисовать лист на месте — кадры и анимации при этом остаются жить.
    */
   static buildTextures(scene: Phaser.Scene): void {
     for (const key of Object.keys(ANIM_SHEETS)) {
@@ -219,19 +255,84 @@ export class Player {
       if (scene.textures.exists(texKey)) continue;
 
       const first = scene.textures.get(`sw-${key}-body`).getSourceImage() as HTMLImageElement;
-      const canvas = document.createElement('canvas');
-      canvas.width = first.width;
-      canvas.height = first.height;
-      const ctx = canvas.getContext('2d')!;
-      // Порядок важен: тень под всеми, голова поверх тела.
-      for (const part of BODY_PARTS) {
-        const img = scene.textures.get(`sw-${key}-${part}`).getSourceImage() as HTMLImageElement;
-        ctx.drawImage(img, 0, 0);
+      const tex = scene.textures.createCanvas(texKey, first.width, first.height)!;
+      Player.drawSheet(scene, key, tex, null, null);
+
+      // Кадры режем сами: addSpriteSheet канвас не принимает, а сетка та же.
+      const cols = first.width / FRAME;
+      const rows = first.height / FRAME;
+      for (let i = 0; i < cols * rows; i++) {
+        tex.add(i, 0, (i % cols) * FRAME, Math.floor(i / cols) * FRAME, FRAME, FRAME);
       }
-      scene.textures.addSpriteSheet(texKey, canvas as unknown as HTMLImageElement, {
-        frameWidth: FRAME,
-        frameHeight: FRAME,
-      });
+    }
+  }
+
+  /**
+   * Рисует лист героя: тень + тело + голова, с перекраской под надетую броню.
+   *
+   * Свап цветов применяется К СЛОЮ до склейки: туника перекрашивается только в
+   * body, волосы — только в head. По склеенному листу свапать нельзя — те же
+   * цвета могли бы встретиться в другой части и перекраситься за компанию.
+   */
+  private static drawSheet(
+    scene: Phaser.Scene,
+    key: string,
+    tex: Phaser.Textures.CanvasTexture,
+    tunic: ArmorTint | null,
+    hair: ArmorTint | null,
+  ): void {
+    const ctx = tex.context;
+    ctx.clearRect(0, 0, tex.width, tex.height);
+    for (const part of BODY_PARTS) {
+      const img = scene.textures.get(`sw-${key}-${part}`).getSourceImage() as HTMLImageElement;
+      const tint = part === 'body' ? tunic : part === 'head' ? hair : null;
+      const tones = part === 'body' ? TUNIC_TONES : HAIR_TONES;
+      if (!tint) {
+        ctx.drawImage(img, 0, 0);
+        continue;
+      }
+      // Слой через offscreen: свапаем цвета в нём и только потом кладём в лист.
+      const off = document.createElement('canvas');
+      off.width = img.width;
+      off.height = img.height;
+      const octx = off.getContext('2d', { willReadFrequently: true })!;
+      octx.drawImage(img, 0, 0);
+      const image = octx.getImageData(0, 0, off.width, off.height);
+      const data = image.data;
+      const pal = ARMOR_PALETTES[tint];
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 3] <= 24) continue;
+        const to = tones.get((data[i] << 16) | (data[i + 1] << 8) | data[i + 2]);
+        if (to === undefined) continue;
+        const c = pal[to];
+        data[i] = c[0];
+        data[i + 1] = c[1];
+        data[i + 2] = c[2];
+      }
+      octx.putImageData(image, 0, 0);
+      ctx.drawImage(off, 0, 0);
+    }
+    tex.refresh(); // канвас уехал в GPU — иначе WebGL показывал бы старый лист
+  }
+
+  /** Что сейчас надето на листах — чтобы не перерисовывать четыре канваса зря. */
+  private static currentTint = 'none/none';
+
+  /**
+   * Перекрасить героя под надетую броню: нагрудник красит тунику, шлем — волосы.
+   *
+   * Перерисовываются все четыре листа (покой/ходьба/атака/смерть) на месте:
+   * текстуры — канвасы (см. buildTextures), кадры и анимации остаются жить,
+   * у WebGL листы обновляет refresh. Четыре перерисовки — десятки миллисекунд,
+   * и случаются они только при смене экипировки.
+   */
+  static retintArmor(scene: Phaser.Scene, tunic: ArmorTint | null, hair: ArmorTint | null): void {
+    const want = `${tunic ?? 'none'}/${hair ?? 'none'}`;
+    if (Player.currentTint === want) return;
+    Player.currentTint = want;
+    for (const key of Object.keys(ANIM_SHEETS)) {
+      const tex = scene.textures.get(`sw-${key}`) as Phaser.Textures.CanvasTexture;
+      Player.drawSheet(scene, key, tex, tunic, hair);
     }
   }
 

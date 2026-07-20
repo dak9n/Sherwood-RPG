@@ -7,7 +7,7 @@
  */
 
 export type Tab = 'weapon' | 'armor' | 'resource' | 'food';
-export type EquipSlot = 'helm' | 'body' | 'weapon' | 'shield' | 'boots' | 'ring' | 'amulet';
+export type EquipSlot = 'helm' | 'body' | 'weapon' | 'shield' | 'boots' | 'ring' | 'amulet' | 'gloves';
 
 /**
  * Редкость. Красит рамку ячейки, но это не украшение: цвет обязан совпадать с
@@ -26,9 +26,11 @@ export interface Icon {
   /**
    * Какой лист: 'icons' — набор интерфейса, 'Objects' — тайлсет карты,
    * 'scroll' — наш дорисованный свиток (в наборе свитка не оказалось нигде,
-   * пришлось нарисовать самим в палитре набора: assets/interface/ui/scroll.png).
+   * пришлось нарисовать самим в палитре набора: assets/interface/ui/scroll.png),
+   * 'armor' — атлас брони, склеенный из сотни отдельных PNG набора armor-icons
+   * (см. armor_atlas.png: иконка N лежит в клетке (N-1)%10, (N-1)/10, все 32x32).
    */
-  sheet: 'icons' | 'Objects' | 'scroll';
+  sheet: 'icons' | 'Objects' | 'scroll' | 'armor';
   x: number;
   y: number;
   w: number;
@@ -64,6 +66,15 @@ export interface ItemDef {
    * Поменять вид меча = поменять номер иконки здесь.
    */
   held?: string;
+  /**
+   * Как броня выглядит НА герое: палитра перекраски (см. ARMOR_PALETTES в
+   * player.ts). Нагрудник перекрашивает тунику, шлем — волосы (они облегают
+   * голову и сами становятся формой шлема). Именно перекраска, а не спрайт
+   * поверх: иконки предметов детальные, и ужатые до чиби-героя (голова —
+   * пол-персонажа) они превращались в кашу, закрывающую лицо, — проверено.
+   * Есть только у шлемов и нагрудников: перчатки и сапоги на герое — 2-3 пикселя.
+   */
+  tint?: 'leather' | 'iron' | 'azure';
 }
 
 /** Стреляет ли надетое этим оружие. Лук — да, меч — нет. */
@@ -79,6 +90,9 @@ export const isRanged = (id: string | undefined): boolean =>
  * (5,16) лежат честными клетками 16x16.
  */
 const ico = (col: number, row: number): Icon => ({ sheet: 'icons', x: col * 16, y: row * 16, w: 16, h: 16 });
+
+/** Иконка брони из атласа armor_atlas.png по номеру файла Icons_6_NN (1..100). */
+const aico = (n: number): Icon => ({ sheet: 'armor', x: ((n - 1) % 10) * 32, y: Math.floor((n - 1) / 10) * 32, w: 32, h: 32 });
 
 /**
  * Грибы режутся из тайлсета карты Objects.png — в наборе интерфейса грибов нет,
@@ -174,6 +188,71 @@ export const ITEMS: Record<string, ItemDef> = {
   amulet: {
     id: 'amulet', name: 'Amulet', tab: 'armor',
     icon: ico(0, 9), stack: 1, slot: 'amulet', bonus: { mp: 15 }, rarity: 'epic',
+  },
+
+  // --- Комплекты брони (набор armor-icons) ---
+  //
+  // Три комплекта по четыре части: кожа (лёгкая, для скорости), железо (тяжёлая,
+  // для защиты), лазурь (топ, в цвет Azure Sword). Иконки выбраны из сотни по
+  // монтажу: aico(N) — номер файла Icons_6_NN. Шлем и нагрудник видны на
+  // модельке героя (поле worn), перчатки и сапоги дают только статы.
+  leather_helm: {
+    id: 'leather_helm', name: 'Leather Cap', tab: 'armor',
+    icon: aico(41), stack: 1, slot: 'helm', bonus: { def: 1 }, rarity: 'uncommon',
+    tint: 'leather',
+  },
+  leather_chest: {
+    id: 'leather_chest', name: 'Leather Jerkin', tab: 'armor',
+    // Кожа не мешает бегать — этим и берёт против железа.
+    icon: aico(51), stack: 1, slot: 'body', bonus: { def: 1, speed: 2 }, rarity: 'uncommon',
+    tint: 'leather',
+  },
+  leather_gloves: {
+    id: 'leather_gloves', name: 'Leather Gloves', tab: 'armor',
+    icon: aico(61), stack: 1, slot: 'gloves', bonus: { dmg: 1 }, rarity: 'uncommon',
+  },
+  leather_boots: {
+    id: 'leather_boots', name: 'Leather Boots', tab: 'armor',
+    icon: aico(71), stack: 1, slot: 'boots', bonus: { speed: 6 }, rarity: 'uncommon',
+  },
+
+  iron_helm: {
+    id: 'iron_helm', name: 'Iron Helm', tab: 'armor',
+    icon: aico(4), stack: 1, slot: 'helm', bonus: { def: 2, hp: 10 }, rarity: 'rare',
+    tint: 'iron',
+  },
+  iron_chest: {
+    id: 'iron_chest', name: 'Iron Cuirass', tab: 'armor',
+    // Тяжелее Plate Armor по защите и так же тянет вниз по скорости.
+    icon: aico(13), stack: 1, slot: 'body', bonus: { def: 3, speed: -4 }, rarity: 'rare',
+    tint: 'iron',
+  },
+  iron_gloves: {
+    id: 'iron_gloves', name: 'Iron Gauntlets', tab: 'armor',
+    icon: aico(23), stack: 1, slot: 'gloves', bonus: { def: 1, dmg: 1 }, rarity: 'rare',
+  },
+  iron_boots: {
+    id: 'iron_boots', name: 'Iron Greaves', tab: 'armor',
+    icon: aico(33), stack: 1, slot: 'boots', bonus: { def: 1, speed: 4 }, rarity: 'rare',
+  },
+
+  azure_helm: {
+    id: 'azure_helm', name: 'Azure Helm', tab: 'armor',
+    icon: aico(8), stack: 1, slot: 'helm', bonus: { def: 2, hp: 20, mp: 10 }, rarity: 'epic',
+    tint: 'azure',
+  },
+  azure_chest: {
+    id: 'azure_chest', name: 'Azure Plate', tab: 'armor',
+    icon: aico(18), stack: 1, slot: 'body', bonus: { def: 4, hp: 15, speed: -2 }, rarity: 'epic',
+    tint: 'azure',
+  },
+  azure_gloves: {
+    id: 'azure_gloves', name: 'Azure Gauntlets', tab: 'armor',
+    icon: aico(28), stack: 1, slot: 'gloves', bonus: { def: 1, dmg: 3 }, rarity: 'epic',
+  },
+  azure_boots: {
+    id: 'azure_boots', name: 'Azure Sabatons', tab: 'armor',
+    icon: aico(38), stack: 1, slot: 'boots', bonus: { def: 1, speed: 10 }, rarity: 'epic',
   },
 };
 

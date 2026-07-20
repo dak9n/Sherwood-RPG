@@ -32,6 +32,7 @@ const SHEETS: Record<Icon['sheet'], string> = {
   icons: ICONS,
   Objects: 'assets/tilesets/Objects.png',
   scroll: `${UI}/scroll.png`,
+  armor: 'assets/armor-icons/armor_atlas.png',
 };
 
 /** Рамки редкости — те же, что в инвентаре и магазине. */

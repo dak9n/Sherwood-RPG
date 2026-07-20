@@ -229,3 +229,25 @@ test('раскладка сохраняет заточку каждого экз
   );
   assert.equal(b.find((s) => s?.id === 'sword_blue')?.sharpen, undefined, 'незаточенный меч — без поля');
 });
+
+test('перекраска на герое (tint) — только у шлемов и нагрудников', () => {
+  // Игра красит tint-ом ровно две зоны модельки: волосы (helm) и тунику (body).
+  // tint на сапогах молча не отобразился бы вовсе — предмет «врал» бы игроку.
+  for (const def of Object.values(ITEMS)) {
+    if (!def.tint) continue;
+    assert.ok(def.slot === 'helm' || def.slot === 'body',
+      `${def.id}: tint есть, а слот ${def.slot} на модельке не красится`);
+  }
+});
+
+test('у каждого комплекта брони все четыре части и общая редкость', () => {
+  // Комплект без сапога — это дыра в магазине: «кожаный» ряд продаётся не целиком.
+  for (const set of ['leather', 'iron', 'azure']) {
+    const parts = Object.values(ITEMS).filter((d) => d.id.startsWith(`${set}_`));
+    assert.equal(parts.length, 4, `${set}: частей ${parts.length}, а не 4`);
+    const rarities = new Set(parts.map((d) => d.rarity));
+    assert.equal(rarities.size, 1, `${set}: редкость частей разная — рамки врут про комплект`);
+    const slots = new Set(parts.map((d) => d.slot));
+    assert.deepEqual([...slots].sort(), ['body', 'boots', 'gloves', 'helm'], `${set}: слоты не полные`);
+  }
+});

@@ -42,12 +42,30 @@ export const VALUE: Record<string, number> = Object.assign(Object.create(null), 
   boots: 60,
   ring: 90,
   amulet: 160,
+  // Комплекты брони: кожа дешевле железа, лазурь — топ (в цвет Azure Sword за 220).
+  leather_helm: 50,
+  leather_chest: 80,
+  leather_gloves: 40,
+  leather_boots: 55,
+  iron_helm: 130,
+  iron_chest: 190,
+  iron_gloves: 95,
+  iron_boots: 110,
+  azure_helm: 260,
+  azure_chest: 340,
+  azure_gloves: 210,
+  azure_boots: 240,
 });
 
 /** Что стоит на витрине и в каком порядке. Только эти предметы можно купить. */
 export const SHOP_STOCK: string[] = [
   'potion_hp', 'potion_mp', 'apple', 'scroll_sharpen',
   'bow', 'sword', 'shield', 'boots', 'helm',
+  // Броня комплектами: у каждого надеваемого предмета должен быть источник
+  // (за этим следит тест), и для брони источник — лавка.
+  'leather_helm', 'leather_chest', 'leather_gloves', 'leather_boots',
+  'iron_helm', 'iron_chest', 'iron_gloves', 'iron_boots',
+  'azure_helm', 'azure_chest', 'azure_gloves', 'azure_boots',
 ];
 
 /** Доля ценности, которую даёт лавка при продаже. Разница с покупкой — её навар. */

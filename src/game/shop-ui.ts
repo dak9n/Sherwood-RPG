@@ -25,6 +25,7 @@ const SHEETS: Record<Icon['sheet'], string> = {
   icons: ICONS,
   Objects: 'assets/tilesets/Objects.png',
   scroll: `${UI}/scroll.png`,
+  armor: 'assets/armor-icons/armor_atlas.png',
 };
 
 /** Монета для ценников: клетка (0,1) листа иконок. */

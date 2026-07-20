@@ -55,6 +55,7 @@ const SHEETS: Record<Icon['sheet'], string> = {
   icons: 'assets/interface/PNG/Icons.png',
   Objects: 'assets/tilesets/Objects.png',
   scroll: 'assets/interface/ui/scroll.png',
+  armor: 'assets/armor-icons/armor_atlas.png',
 };
 
 /** Кадр героя для портрета: мечник анфас, поза покоя. */
@@ -113,6 +114,8 @@ const SLOT_GHOST: Record<string, Icon> = {
   ring: ico(5, 8),
   weapon: ico(0, 8),
   shield: ico(1, 8),
+  // Перчаток в старом UI-наборе нет — призрак берём из атласа брони (кожаные).
+  gloves: { sheet: 'armor', x: 0, y: 192, w: 32, h: 32 },
   boots: ico(2, 8),
 };
 
