@@ -2,7 +2,11 @@ import Phaser from 'phaser';
 import { createDirAnims } from './anims';
 import { dirFromVelocity, DIRS_HERO, type Dir } from './dir';
 import { hitRect, rollDamage, playerDamageTaken, type Rect } from './combat';
-import { WORN_TORSO_DROP } from './items';
+import { WORN_TORSO_DROP, TUNIC_TONES, ARMOR_PALETTES, type ArmorTint } from './items';
+
+// Тип нужен и сцене: она собирает расцветки надетого. Реэкспорт, чтобы сцене
+// не пришлось знать, что данные переехали в items (их делит редактор ?helm).
+export type { ArmorTint };
 import { BARRIER_DURATION } from './barrier';
 import anchorData from './weapon-anchors.json';
 import { creatureDepth, DEPTH_ABOVE } from './depth';
@@ -96,15 +100,8 @@ const HELD_SCALE = 1.15;
  * пять серо-зелёных, волосы — шесть фиолетово-серых. Палитры комплектов идут
  * от тени к блику, той же длины.
  */
-export type ArmorTint = 'leather' | 'iron' | 'azure' | 'bronze' | 'gilded' | 'emerald' | 'crimson' | 'cloth';
-
 const rgb = (r: number, g: number, b: number): number => (r << 16) | (g << 8) | b;
 
-/** Тон туники -> индекс в палитре (по яркости). */
-const TUNIC_TONES = new Map<number, number>([
-  [rgb(45, 49, 43), 0], [rgb(63, 67, 61), 1], [rgb(94, 97, 90), 2],
-  [rgb(111, 115, 106), 3], [rgb(134, 139, 124), 4],
-]);
 /**
  * Все тона волос, включая контур (17,11,0), — это МАСКА для шлема.
  *
@@ -118,17 +115,6 @@ const HAIR_MASK = new Set<number>([
   rgb(17, 11, 0), rgb(33, 26, 28), rgb(43, 32, 35), rgb(59, 44, 51),
   rgb(77, 57, 69), rgb(104, 79, 90), rgb(135, 108, 125),
 ]);
-
-const ARMOR_PALETTES: Record<ArmorTint, [number, number, number][]> = {
-  leather: [[56, 34, 20], [88, 56, 32], [120, 80, 46], [150, 106, 62], [180, 136, 84]],
-  iron: [[48, 48, 56], [84, 86, 94], [120, 124, 133], [158, 162, 171], [196, 200, 208]],
-  azure: [[12, 66, 72], [23, 113, 120], [37, 152, 157], [58, 180, 183], [110, 220, 216]],
-  bronze: [[74, 46, 28], [110, 68, 40], [148, 94, 52], [180, 124, 70], [212, 160, 96]],
-  gilded: [[96, 52, 16], [150, 86, 24], [196, 124, 32], [228, 164, 52], [248, 206, 96]],
-  emerald: [[24, 64, 36], [36, 98, 50], [52, 134, 66], [84, 170, 88], [130, 208, 120]],
-  crimson: [[86, 24, 24], [130, 38, 34], [172, 56, 44], [206, 86, 58], [232, 128, 88]],
-  cloth: [[120, 112, 100], [158, 150, 136], [190, 182, 168], [214, 208, 196], [238, 234, 224]],
-};
 
 /**
  * Надевает на голову каждого кадра листа НАРИСОВАННУЮ каску-шапель.

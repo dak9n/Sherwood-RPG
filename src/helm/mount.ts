@@ -12,7 +12,7 @@
  * дев-сервере, в сборку не попадает (динамический импорт в main.ts).
  */
 
-import { ITEMS, WORN_TORSO_DROP } from '../game/items';
+import { ITEMS, WORN_TORSO_DROP, TUNIC_TONES, ARMOR_PALETTES } from '../game/items';
 
 const PARTS = 'assets/characters/PNG/Swordsman_lvl1/Parts/';
 const PREFIX = 'Swordsman_lvl1_';
@@ -323,6 +323,47 @@ export async function mountHelmEditor(): Promise<void> {
     note.className = 'note bad';
   }
 
+  /**
+   * Заготовка для нагрудника без спрайта: его ТЕКУЩИЙ вид в игре — туника
+   * idle-кадра, перекрашенная палитрой предмета и вырезанная вокруг якоря.
+   *
+   * Без неё выбор нагрудника показывал пустой слой на голом герое, и казалось,
+   * что «армор не отображается». Сохранишь заготовку как есть — в игре ничего
+   * не изменится (спрайт-копия ляжет на место перекраски), а дальше её можно
+   * дорисовывать в настоящую кирасу.
+   */
+  function seedChestLayers(id: string): boolean {
+    const tint = ITEMS[id]?.tint;
+    if (!tint) return false;
+    const pal = ARMOR_PALETTES[tint];
+    DIRS.forEach((_, di) => {
+      const hc = headCenter('Idle', 0, di);
+      const cy = hc.y + WORN_TORSO_DROP;
+      // Слой body idle-кадра — только туника, перекрашенная в палитру.
+      const src = document.createElement('canvas');
+      src.width = FRAME;
+      src.height = FRAME;
+      const sctx = src.getContext('2d', { willReadFrequently: true })!;
+      sctx.drawImage(sheets['Idle-body'], 0, di * FRAME, FRAME, FRAME, 0, 0, FRAME, FRAME);
+      const image = sctx.getImageData(0, 0, FRAME, FRAME);
+      const d = image.data;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] <= 24) { d[i + 3] = 0; continue; }
+        const to = TUNIC_TONES.get((d[i] << 16) | (d[i + 1] << 8) | d[i + 2]);
+        if (to === undefined) { d[i + 3] = 0; continue; } // не туника (кожа, штаны) — мимо
+        const c = pal[to];
+        d[i] = c[0];
+        d[i + 1] = c[1];
+        d[i + 2] = c[2];
+      }
+      sctx.putImageData(image, 0, 0);
+      const ctx = layers[di].getContext('2d')!;
+      ctx.clearRect(0, 0, CELL, CELL);
+      ctx.drawImage(src, Math.round(hc.x) - 16, Math.round(cy) - 16, CELL, CELL, 0, 0, CELL, CELL);
+    });
+    return true;
+  }
+
   async function loadHelm(id: string): Promise<void> {
     rebuildRefs(); // у шлема и нагрудника разные якоря — референс сдвигается
     layers.forEach((l) => l.getContext('2d')!.clearRect(0, 0, CELL, CELL));
@@ -332,8 +373,14 @@ export async function mountHelmEditor(): Promise<void> {
       note.textContent = 'loaded';
       note.className = 'note ok';
     } catch {
-      note.textContent = 'no sprite yet — draw one';
-      note.className = 'note';
+      // Спрайта нет: нагруднику подкладываем его текущий вид, шлему — чистый лист.
+      if (ITEMS[id]?.slot === 'body' && seedChestLayers(id)) {
+        note.textContent = 'current look loaded — repaint it and save';
+        note.className = 'note ok';
+      } else {
+        note.textContent = 'no sprite yet — draw one';
+        note.className = 'note';
+      }
     }
     undoStack.length = 0;
     isDirty = false;
