@@ -609,7 +609,7 @@ export async function mountHelmEditor(): Promise<void> {
     iconSheets[ico.sheet] ??= await load(ICON_SHEETS[ico.sheet]);
     // Те же ширины, что у генератора tools/worn-from-icons.py: фас/спина шире,
     // профиль уже — торс сбоку узкий.
-    const widths = def.slot === 'body' ? [14, 11, 11, 14] : [17, 14, 14, 17];
+    const widths = def.slot === 'body' ? [16, 12, 12, 16] : [17, 14, 14, 17];
     DIRS.forEach((_, di) => {
       const ctx = layers[di].getContext('2d')!;
       ctx.imageSmoothingEnabled = false;
