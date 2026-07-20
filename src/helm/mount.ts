@@ -628,14 +628,15 @@ export async function mountHelmEditor(): Promise<void> {
     iconSheets[ico.sheet] ??= await load(ICON_SHEETS[ico.sheet]);
     // Те же ширины, что у генератора tools/worn-from-icons.py: фас/спина шире,
     // профиль уже — торс сбоку узкий.
-    const widths = def.slot === 'body' ? [16, 12, 12, 16] : [17, 14, 14, 17];
+    const widths = def.slot === 'body' ? [16, 12, 12, 16] : [16, 13, 13, 16];
+    const lift = def.slot === 'body' ? 0 : -2; // шлем сидит на макушке
     DIRS.forEach((_, di) => {
       const ctx = layers[di].getContext('2d')!;
       ctx.imageSmoothingEnabled = false;
       ctx.clearRect(0, 0, CELL, CELL);
       const w = widths[di];
       const h = Math.max(1, Math.round((ico.h / ico.w) * w));
-      ctx.drawImage(iconSheets[ico.sheet], ico.x, ico.y, ico.w, ico.h, Math.round(16 - w / 2), Math.round(16 - h / 2), w, h);
+      ctx.drawImage(iconSheets[ico.sheet], ico.x, ico.y, ico.w, ico.h, Math.round(16 - w / 2), Math.round(16 - h / 2) + lift, w, h);
     });
     return true;
   }

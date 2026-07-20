@@ -35,6 +35,14 @@ CELL = 32
 W_FRONT = 16
 W_SIDE = 12
 
+# Шлемы уже нагрудников: голова у героя 15px. На 16 глухие шлемы (Crimson,
+# Gilded) честно закрывают лицо своим забралом с иконки, а открытые (Bronze,
+# Cloth) оставляют глаза видимыми — это решает сама иконка, а не размер.
+W_HELM_FRONT = 16
+W_HELM_SIDE = 13
+# Шлем сидит на макушке, а не по центру лица: поднимаем спрайт в ячейке.
+HELM_LIFT = -2
+
 # id предмета -> откуда взять иконку. ("atlas", N) — файл Icons_6_NN.png,
 # ("ui", x, y, w, h) — вырезка из листа интерфейса (у старой Plate Armor).
 CHESTS = {
@@ -47,6 +55,22 @@ CHESTS = {
     "crimson_chest": ("atlas", 20),
     "cloth_chest": ("atlas", 91),
     "armor": ("ui", 5 * 16, 6 * 16, 16, 16),
+}
+
+# Шлемы — те же номера иконок, что у предметов в items.ts. Раньше они были
+# нарисованы вручную по палитрам, и заказчик резонно заметил, что Cloth Hood
+# на герое (белый колпак) не имеет ничего общего со своей иконкой (коричневый
+# койф). Из иконки шлем получается похожим на себя же в лавке.
+HELMS = {
+    "leather_helm": ("atlas", 41),
+    "iron_helm": ("atlas", 4),
+    "azure_helm": ("atlas", 8),
+    "bronze_helm": ("atlas", 1),
+    "gilded_helm": ("atlas", 5),
+    "emerald_helm": ("atlas", 49),
+    "crimson_helm": ("atlas", 50),
+    "cloth_hood": ("atlas", 81),
+    "helm": ("ui", 4 * 16, 6 * 16, 16, 16),
 }
 
 
@@ -72,21 +96,24 @@ def scaled(core, width):
     return small
 
 
-def build(item_id, src):
+def build(item_id, src, widths, lift=0):
     core = icon_of(src)
     strip = Image.new("RGBA", (CELL * 4, CELL), (0, 0, 0, 0))
-    for i, width in enumerate([W_FRONT, W_SIDE, W_SIDE, W_FRONT]):
+    for i, width in enumerate(widths):
         piece = scaled(core, width)
         cell = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
-        cell.paste(piece, ((CELL - piece.width) // 2, (CELL - piece.height) // 2), piece)
+        cell.paste(piece, ((CELL - piece.width) // 2, (CELL - piece.height) // 2 + lift), piece)
         strip.paste(cell, (i * CELL, 0))
     strip.save(os.path.join(OUT, f"{item_id}.png"))
 
 
 os.makedirs(OUT, exist_ok=True)
 for item_id, src in CHESTS.items():
-    build(item_id, src)
-    print(f"  {item_id}: спрайт из иконки")
+    build(item_id, src, [W_FRONT, W_SIDE, W_SIDE, W_FRONT])
+    print(f"  {item_id}: нагрудник из иконки")
+for item_id, src in HELMS.items():
+    build(item_id, src, [W_HELM_FRONT, W_HELM_SIDE, W_HELM_SIDE, W_HELM_FRONT], HELM_LIFT)
+    print(f"  {item_id}: шлем из иконки")
 
 ids = sorted(f[:-4] for f in os.listdir(OUT) if f.endswith(".png"))
 with open(os.path.join(OUT, "manifest.json"), "w") as f:
