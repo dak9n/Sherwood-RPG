@@ -5,12 +5,17 @@ import { dirFromVelocity, DIRS_MOB, type Dir } from './dir';
 import { distSq, hitRect } from './combat';
 import { nextStep, UNREACHABLE } from './flow';
 import { decideChase } from './chase';
+import { decideFlinch } from './flinch';
 import type { MonsterStats } from './creatures';
 import type { Player } from './player';
 
+/** Сторона кадра по умолчанию. У големов свой размер — см. MonsterStats.frame. */
 const FRAME = 64;
-const sheetPath = (sheet: string, anim: string) =>
-  `assets/monster/PNG/${sheet}/With_shadow/${sheet}_${anim}_with_shadow.png`;
+const sheetPath = (stats: MonsterStats, anim: string) =>
+  `assets/${stats.root ?? 'monster'}/PNG/${stats.sheet}/With_shadow/${stats.sheet}_${anim}_with_shadow.png`;
+
+/** Сколько кадров в ряду у каждой анимации. У грибов и големов листы разной длины. */
+const COLS_DEFAULT = { idle: 4, run: 6, attack: 8, hurt: 4, death: 9 };
 
 type State = 'idle' | 'chase' | 'leash' | 'attack' | 'hurt' | 'dead';
 
@@ -47,6 +52,8 @@ export class Monster {
   /** Задели ударом — гонится за игроком даже издалека, пока поводок не уведёт домой. */
   private provoked = false;
   private nextAttackAt = 0;
+  /** Раньше этого момента монстр не вздрагивает от урона. См. flinch.ts. */
+  private nextFlinchAt = 0;
   private deadAt = 0;
   private bar: Phaser.GameObjects.Rectangle;
   private barBg: Phaser.GameObjects.Rectangle;
@@ -54,6 +61,10 @@ export class Monster {
   private nameTag: Phaser.GameObjects.Text;
   /** Во сколько уменьшён спрайт (1 — как есть). Метку и полоску сдвигаем в тот же масштаб, чтобы не висели над мелким грибом. */
   private readonly scale: number;
+  /** На сколько над ногами висит полоска — у голема голова выше, чем у гриба. */
+  private readonly barDy: number;
+  /** Ширина полоски: у босса вдвое шире, чтобы её было видно под его тушей. */
+  private readonly barW: number;
   /** Последний выставленный цвет метки — чтобы не дёргать setColor каждый кадр. */
   private tagColor = '';
 
@@ -84,10 +95,11 @@ export class Monster {
   }
 
   static preload(scene: Phaser.Scene, stats: MonsterStats): void {
+    const frame = stats.frame ?? FRAME;
     for (const anim of ['Idle', 'Walk', 'Run', 'Attack', 'Hurt', 'Death']) {
-      scene.load.spritesheet(`${stats.key}-${anim.toLowerCase()}`, sheetPath(stats.sheet, anim), {
-        frameWidth: FRAME,
-        frameHeight: FRAME,
+      scene.load.spritesheet(`${stats.key}-${anim.toLowerCase()}`, sheetPath(stats, anim), {
+        frameWidth: frame,
+        frameHeight: frame,
       });
     }
   }
@@ -99,18 +111,22 @@ export class Monster {
     readonly homeY: number,
   ) {
     const k = stats.key;
+    const frame = stats.frame ?? FRAME;
+    const cols = stats.cols ?? COLS_DEFAULT;
     createDirAnims(scene, k, DIRS_MOB, {
-      idle: { texture: `${k}-idle`, cols: 4, frameRate: 6, loop: true },
-      run: { texture: `${k}-run`, cols: 6, frameRate: 10, loop: true },
-      attack: { texture: `${k}-attack`, cols: 8, frameRate: 16, loop: false },
-      hurt: { texture: `${k}-hurt`, cols: 4, frameRate: 12, loop: false },
-      death: { texture: `${k}-death`, cols: 9, frameRate: 12, loop: false },
-    });
+      idle: { texture: `${k}-idle`, cols: cols.idle, frameRate: 6, loop: true },
+      run: { texture: `${k}-run`, cols: cols.run, frameRate: 10, loop: true },
+      attack: { texture: `${k}-attack`, cols: cols.attack, frameRate: 16, loop: false },
+      hurt: { texture: `${k}-hurt`, cols: cols.hurt, frameRate: 12, loop: false },
+      death: { texture: `${k}-death`, cols: cols.death, frameRate: 12, loop: false },
+    }, frame);
 
     this.hp = stats.hp;
     this.scale = stats.scale ?? 1;
     this.sprite = scene.physics.add.sprite(homeX, homeY, `${k}-idle`);
-    this.sprite.setOrigin(0.5, 0.75);
+    // Origin — по ногам, а не константой 0.75: художник ставит фигуру в кадре
+    // по-разному, и голем с чужим origin висел бы над собственной тенью.
+    this.sprite.setOrigin(0.5, stats.originY ?? 0.75);
     // Масштаб ДО setSize: тело считается от масштаба спрайта. Смещения (центр по
     // ширине и низ у ног) от масштаба не зависят — множитель в них сокращается,
     // так что тело просто ужимается пропорционально, оставаясь у ног.
@@ -118,20 +134,24 @@ export class Monster {
 
     const body = this.sprite.body as Phaser.Physics.Arcade.Body;
     body.setSize(stats.body[0], stats.body[1]);
-    body.setOffset(FRAME / 2 - stats.body[0] / 2, 40);
+    body.setOffset(frame / 2 - stats.body[0] / 2, stats.bodyDy ?? 40);
     // Пауки толкают друг друга (в сцене есть коллайдер группы) — трение гасит
     // толчок, чтобы толкнутый докатился и встал, а не скользил без конца.
     body.setDrag(600, 600);
 
-    this.barBg = scene.add.rectangle(homeX, homeY - BAR_DY * this.scale, 22, 3, 0x000000).setOrigin(0.5).setVisible(false);
-    this.bar = scene.add.rectangle(homeX - 10, homeY - BAR_DY * this.scale, 20, 2, 0x8ad46a).setOrigin(0, 0.5).setVisible(false);
+    this.barDy = stats.barDy ?? BAR_DY;
+    this.barW = stats.boss ? 40 : 20;
+    const barY = homeY - this.barDy * this.scale;
+    this.barBg = scene.add.rectangle(homeX, barY, this.barW + 2, 3, 0x000000).setOrigin(0.5).setVisible(false);
+    this.bar = scene.add.rectangle(homeX - this.barW / 2, barY, this.barW, 2, 0x8ad46a).setOrigin(0, 0.5).setVisible(false);
 
     // Метка с именем и уровнем — видна всегда, пока монстр жив (как в MMORPG).
     // Мелкая: камера увеличивает втрое, крупный текст закрыл бы полкарты.
     this.nameTag = scene.add
-      .text(homeX, homeY - NAME_DY * this.scale, `${stats.name} Lv.${stats.level}`, {
+      .text(homeX, homeY - (this.barDy + NAME_DY - BAR_DY) * this.scale, `${stats.name} Lv.${stats.level}`, {
         fontFamily: 'monospace',
-        fontSize: '4px',
+        // Имя босса крупнее: он и сам крупнее, мелкая подпись под ним теряется.
+        fontSize: stats.boss ? '6px' : '4px',
         color: threatColor(0),
         stroke: '#000000',
         strokeThickness: 1,
@@ -153,8 +173,12 @@ export class Monster {
     if (this.state !== 'attack' || this.didHit) return;
     if (!anim.key.startsWith(`${this.stats.key}-attack-`)) return;
 
+    // Ширина ряда — из листа этого монстра, а не восьмёрка на все случаи: у
+    // гриба в ряду атаки 8 кадров, у голема 9. С чужой шириной номер уезжает на
+    // ряд, и удар засчитывается в чужом направлении либо не засчитывается вовсе.
     const row = DIRS_MOB.indexOf(this.dir);
-    if (frame.textureFrame !== row * 8 + this.stats.hitFrame) return;
+    const attackCols = (this.stats.cols ?? COLS_DEFAULT).attack;
+    if (frame.textureFrame !== row * attackCols + this.stats.hitFrame) return;
 
     this.didHit = true;
     this.pendingHit = hitRect(this.sprite.x, this.sprite.y, this.dir, this.stats.reach, this.stats.hitW);
@@ -196,6 +220,16 @@ export class Monster {
     // включалась только по близости, а стрела бьёт дальше, чем паук замечает.
     this.provoked = true;
 
+    // Вздрогнуть или устоять — решает чистая функция, у неё же тесты. Урон уже
+    // засчитан выше и вспышка уже показана: гасится только реакция, не удар.
+    const now = this.scene.time.now;
+    const reaction = decideFlinch(
+      { attacking: this.state === 'attack', now, nextFlinchAt: this.nextFlinchAt },
+      this.stats,
+    );
+    if (reaction === 'steady') return;
+    this.nextFlinchAt = now + (this.stats.flinchMs ?? 0);
+
     // Отброса нет (так просил заказчик): монстр не отлетает от удара, а
     // останавливается на месте и вздрагивает. Скорость гасим, чтобы он не
     // проскальзывал по инерции от прежнего шага погони.
@@ -230,7 +264,7 @@ export class Monster {
   /** Метка идёт за монстром, сортируется вместе с ним и красится по угрозе. */
   private updateNameTag(playerLevel: number): void {
     const t = this.nameTag;
-    t.setPosition(this.sprite.x, this.sprite.y - NAME_DY * this.scale);
+    t.setPosition(this.sprite.x, this.sprite.y - (this.barDy + NAME_DY - BAR_DY) * this.scale);
     // Та же глубина, что у монстра (+чуть), чтобы уходила за крону вместе с ним.
     t.setDepth(this.sprite.depth + 0.03);
     const color = threatColor(this.stats.level - playerLevel);
@@ -243,12 +277,12 @@ export class Monster {
   private updateBar(): void {
     if (!this.bar.visible) return;
     const frac = Math.max(0, this.hp / this.stats.hp);
-    this.bar.width = 20 * frac;
+    this.bar.width = this.barW * frac;
     this.bar.setFillStyle(frac > 0.5 ? 0x8ad46a : frac > 0.25 ? 0xd8c05a : 0xe05c4a);
 
-    const y = this.sprite.y - BAR_DY * this.scale;
+    const y = this.sprite.y - this.barDy * this.scale;
     this.barBg.setPosition(this.sprite.x, y);
-    this.bar.setPosition(this.sprite.x - 10, y);
+    this.bar.setPosition(this.sprite.x - this.barW / 2, y);
     // Глубина каждый кадр: иначе паук уйдёт за крону, а полоска останется поверх дерева.
     this.barBg.setDepth(this.sprite.depth + 0.01);
     this.bar.setDepth(this.sprite.depth + 0.02);
@@ -256,7 +290,10 @@ export class Monster {
 
   /** Пора ли воскреснуть. Сцена спросит и позовёт reset. */
   shouldRespawn(now: number): boolean {
-    return this.state === 'dead' && now - this.deadAt > RESPAWN_MS;
+    // Босс возвращается не через полминуты, а через несколько минут: если он
+    // отрастает к тому времени, как игрок дошёл до края поляны, это уже не
+    // событие, а грядка.
+    return this.state === 'dead' && now - this.deadAt > (this.stats.respawnMs ?? RESPAWN_MS);
   }
 
   reset(): void {

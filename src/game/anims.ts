@@ -24,13 +24,14 @@ export function createDirAnims(
   prefix: string,
   dirs: Dir[],
   specs: Record<string, AnimSpec>,
+  frameSize = 64,
 ): void {
   for (const [name, spec] of Object.entries(specs)) {
     for (const [row, dir] of dirs.entries()) {
       const key = `${prefix}-${name}-${dir}`;
       if (scene.anims.exists(key)) continue;
 
-      const frames = usedFrames(scene, spec.texture, row, spec.cols);
+      const frames = usedFrames(scene, spec.texture, row, spec.cols, frameSize);
       scene.anims.create({
         key,
         frames: frames.map((frame) => ({ key: spec.texture, frame })),

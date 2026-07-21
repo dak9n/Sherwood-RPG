@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { landCells, largestArea, pickSpawns } from './spawn.ts';
+import { landCells, largestArea, pickSpawns, pickBossSpawns } from './spawn.ts';
 import { MapDoc } from '../map/doc.ts';
 import type { GameMap } from '../map/types.ts';
 
@@ -134,4 +134,90 @@ test('под деревьями не селим', () => {
 
   assert.equal(points.length, 1, 'свободна ровно одна клетка');
   assert.equal(points[0].x, 20 * 16 + 8);
+});
+
+// --- поляны под боссов ---
+
+const BOSS_ONE = [{ kind: 'golem1', count: 1 }];
+/** Ровное поле NxN земли — на нём проверяем сам отбор, а не рельеф. */
+const field = (n: number) =>
+  docFrom([{ name: 'g', rows: Array.from({ length: n }, () => 'L'.repeat(n)) }], { L: LAND_ID });
+
+test('босс встаёт только туда, где вокруг него поляна', () => {
+  // Голем нарисован шириной в три тайла. Клетка, проходимая сама по себе, но
+  // зажатая между стволами, — ловушка: поводок потянет его домой сквозь дерево,
+  // а тело не пролезет. Поэтому важна не клетка, а запас вокруг неё.
+  const doc = field(30);
+  const [p] = pickBossSpawns(doc, new Set(), BOSS_ONE, { x: 0, y: 0 }, 3);
+  assert.ok(p, 'на чистом поле место обязано найтись');
+
+  const cx = Math.floor(p.x / 16);
+  const cy = Math.floor(p.y / 16);
+  assert.ok(cx >= 3 && cy >= 3 && cx < 30 - 3 && cy < 30 - 3, `(${cx},${cy}): запас вылезает за край карты`);
+});
+
+test('дерево в запасе отменяет поляну целиком', () => {
+  const doc = field(30);
+  // Свободен ровно один квадрат 7x7 с центром в (10,10) — всё прочее в деревьях.
+  const blocked = new Set<number>();
+  for (let i = 0; i < 30 * 30; i++) {
+    const x = i % 30;
+    const y = Math.floor(i / 30);
+    if (Math.abs(x - 10) > 3 || Math.abs(y - 10) > 3) blocked.add(i);
+  }
+
+  const [p] = pickBossSpawns(doc, blocked, BOSS_ONE, { x: 0, y: 0 }, 3);
+  assert.ok(p, 'единственная поляна обязана найтись');
+  assert.equal(Math.floor(p.x / 16), 10, 'центр той самой поляны по x');
+  assert.equal(Math.floor(p.y / 16), 10, 'центр той самой поляны по y');
+});
+
+test('до босса надо дойти: берётся самая дальняя поляна', () => {
+  const doc = field(30);
+  const player = { x: 16 * 4, y: 16 * 4 };
+  const [p] = pickBossSpawns(doc, new Set(), BOSS_ONE, player, 3);
+
+  const d = Math.hypot(p.x - player.x, p.y - player.y);
+  assert.ok(d > 16 * 15, `босс в ${d.toFixed(0)} px — это соседняя поляна, а не поход`);
+});
+
+test('боссы не сбиваются в одну рощу', () => {
+  const doc = field(60);
+  const wanted = [
+    { kind: 'golem1', count: 1 },
+    { kind: 'golem2', count: 1 },
+    { kind: 'golem3', count: 1 },
+  ];
+  const pts = pickBossSpawns(doc, new Set(), wanted, { x: 0, y: 0 }, 3, 200);
+
+  assert.equal(pts.length, 3, 'на просторной карте размещаются все трое');
+  for (let i = 0; i < pts.length; i++) {
+    for (let j = i + 1; j < pts.length; j++) {
+      const d = Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y);
+      assert.ok(d >= 200, `${pts[i].kind} и ${pts[j].kind} в ${d.toFixed(0)} px друг от друга`);
+    }
+  }
+});
+
+test('нет просторных полян — запас ужимается, но босс появляется', () => {
+  // Стены сеткой через каждые четыре клетки: чистого квадрата 7x7 не существует
+  // вовсе. Лучше тесная поляна, чем молча оставить игру без боссов.
+  const doc = field(30);
+  const blocked = new Set<number>();
+  for (let i = 0; i < 30 * 30; i++) {
+    const x = i % 30;
+    const y = Math.floor(i / 30);
+    if (x % 4 === 0 || y % 4 === 0) blocked.add(i);
+  }
+
+  const pts = pickBossSpawns(doc, blocked, BOSS_ONE, { x: 0, y: 0 }, 3);
+  assert.equal(pts.length, 1, 'запас обязан ужаться, а босс — появиться');
+});
+
+test('места нет совсем — пустой список, а не падение', () => {
+  const doc = field(12);
+  const blocked = new Set<number>();
+  for (let i = 0; i < 12 * 12; i++) blocked.add(i);
+
+  assert.deepEqual(pickBossSpawns(doc, blocked, BOSS_ONE, { x: 0, y: 0 }, 3), []);
 });

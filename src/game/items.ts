@@ -373,6 +373,26 @@ export const ITEMS: Record<string, ItemDef> = {
     icon: aico(40), stack: 1, slot: 'boots', bonus: { def: 1, speed: 6 }, rarity: 'epic',
   },
 
+  /**
+   * Единственный шлем, у которого надетый вид нарисован на все четыре стороны
+   * отдельно (остальные повторяют свою иконку). Отсюда и иконка вне пака:
+   * aico(101) — 11-й ряд атласа, дописанный нами, а не купленный.
+   * Собирается tools/worn-from-views.py.
+   */
+  phoenix_helm: {
+    id: 'phoenix_helm', name: 'Phoenix Helm', tab: 'armor',
+    icon: aico(101), stack: 1, slot: 'helm', bonus: { def: 3, dmg: 2, hp: 15 }, rarity: 'epic',
+  },
+  /**
+   * Второй шлем с рисованными ракурсами. Иконка своя же, из пака: папка с
+   * ракурсами названа Icons_6_07 по номеру исходной иконки, и сверка показала
+   * ту же вещь — крупнее и подробнее. Значит атлас расширять не надо.
+   */
+  ember_helm: {
+    id: 'ember_helm', name: 'Ember Helm', tab: 'armor',
+    icon: aico(7), stack: 1, slot: 'helm', bonus: { def: 2, dmg: 2, mp: 10 }, rarity: 'epic',
+  },
+
   // Cloth — тканевая пара для магов: почти без брони, зато мана.
   cloth_hood: {
     id: 'cloth_hood', name: 'Cloth Hood', tab: 'armor',

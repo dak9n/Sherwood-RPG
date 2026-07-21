@@ -8,6 +8,7 @@
  "cloth_hood",
  "crimson_chest",
  "crimson_helm",
+ "ember_helm",
  "emerald_chest",
  "emerald_helm",
  "gilded_chest",
@@ -16,5 +17,6 @@
  "iron_chest",
  "iron_helm",
  "leather_chest",
- "leather_helm"
+ "leather_helm",
+ "phoenix_helm"
 ]

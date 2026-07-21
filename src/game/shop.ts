@@ -75,6 +75,10 @@ export const VALUE: Record<string, number> = Object.assign(Object.create(null), 
   crimson_boots: 250,
   cloth_hood: 20,
   cloth_chest: 35,
+  // Дороже кримсонового: статы выше, и падает только с последнего босса.
+  // В лавке не стоит (нет в SHOP_STOCK) — цена нужна, чтобы его можно было продать.
+  phoenix_helm: 340,
+  ember_helm: 300,
 });
 
 /** Что стоит на витрине и в каком порядке. Только эти предметы можно купить. */

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { MapScene } from './MapScene';
-import { Player, CHEST_OFFSET, type ArmorTint, type Strike, type Shot } from '../game/player';
+import { Player, CHEST_OFFSET, type ArmorTint, type FrameOffsets, type Strike, type Shot } from '../game/player';
 import { Monster } from '../game/monster';
 import { Arrow, ARROW_RANGE } from '../game/arrow';
 import { Fireball, FIREBALL_RANGE, FIREBALL_MP_COST, FIREBALL_COOLDOWN, FIREBALL_CAST_TIME } from '../game/fireball';
@@ -11,9 +11,9 @@ import {
 import { BARRIER_MP_COST, BARRIER_COOLDOWN, BARRIER_REDUCTION } from '../game/barrier';
 import { fireballDamage, arrowRainDamage } from '../game/combat';
 import { findTallObjects } from '../game/tall-objects';
-import { pickSpawns } from '../game/spawn';
+import { pickSpawns, pickBossSpawns } from '../game/spawn';
 import { buildFlow } from '../game/flow';
-import { HERO, MONSTERS, SPAWNS, xpToNext, rollDrop, rollGold } from '../game/creatures';
+import { HERO, ALL_CREATURES, SPAWNS, BOSS_SPAWNS, xpToNext, rollDrop, rollGold } from '../game/creatures';
 import { Hud } from '../game/hud';
 import { draftCollision, mergeCollision } from '../map/collision-draft';
 import { drawnBounds } from '../map/doc';
@@ -82,6 +82,8 @@ export class GameScene extends MapScene {
   private mkMine: Lot[] = [];
   private mkHistory: TradeRecord[] = [];
   private mkUnavailable = false;
+  /** Рынок закрыт на сервере (503) — текст объяснения от него же. См. server/flags.ts. */
+  private mkClosed: string | undefined = undefined;
   private mkLoading = false;
   private mkNotice: { text: string; ok: boolean } | undefined;
   private mkFilter: BrowseFilter = { category: 'all', search: '', rarity: 'any', sort: 'newest', page: 1 };
@@ -181,7 +183,7 @@ export class GameScene extends MapScene {
   preload(): void {
     super.preload();
     Player.preload(this);
-    for (const stats of Object.values(MONSTERS)) Monster.preload(this, stats);
+    for (const stats of Object.values(ALL_CREATURES)) Monster.preload(this, stats);
     // Иконки предметов. Тайлсеты карты (грибы) грузит MapScene вторым проходом.
     this.load.image('icons', 'assets/interface/PNG/Icons.png');
     // Наш дорисованный свиток — лист из одной иконки (см. items.ts про 'scroll').
@@ -204,6 +206,28 @@ export class GameScene extends MapScene {
         if (slot === 'helm' || slot === 'body') {
           this.load.image(`worn-${id}`, `assets/worn/${id}.png`);
         }
+      }
+    });
+
+    // Маски: у какого шлема из-под края торчат волосы, там нарисована полоса
+    // «здесь голову не рисовать» (см. Player.drawHeadMasked). Свой манифест, а
+    // не общий: маска есть далеко не у каждого шлема, и грузить их вслепую
+    // значило бы сыпать 404 — ровно то, от чего манифест выше и спасает.
+    this.load.json('worn-mask-manifest', 'assets/worn/mask/manifest.json');
+    this.load.on('filecomplete-json-worn-mask-manifest', (_k: string, _t: string, ids: unknown) => {
+      if (!Array.isArray(ids)) return;
+      for (const id of ids) {
+        if (typeof id === 'string') this.load.image(`worn-mask-${id}`, `assets/worn/mask/${id}.png`);
+      }
+    });
+
+    // Покадровые поправки посадки брони: у какого предмета они нарисованы,
+    // сказано в своём манифесте — по той же причине, что и у масок.
+    this.load.json('worn-offset-manifest', 'assets/worn/offset/manifest.json');
+    this.load.on('filecomplete-json-worn-offset-manifest', (_k: string, _t: string, ids: unknown) => {
+      if (!Array.isArray(ids)) return;
+      for (const id of ids) {
+        if (typeof id === 'string') this.load.json(`worn-offset-${id}`, `assets/worn/offset/${id}.json`);
       }
     });
   }
@@ -333,6 +357,7 @@ export class GameScene extends MapScene {
       gold: this.gold,
       bag: this.bag,
       unavailable: this.mkUnavailable,
+      closed: this.mkClosed,
       loading: this.mkLoading,
       browse: this.mkBrowse,
       mine: this.mkMine,
@@ -559,9 +584,13 @@ export class GameScene extends MapScene {
       if (!this.doc.canWalk(i % this.doc.width, Math.floor(i / this.doc.width))) blocked.add(i);
     }
 
-    const points = pickSpawns(this.doc, blocked, SPAWNS, { x: px, y: py });
+    // Боссы отдельным заходом: им нужна поляна, а не любая проходимая клетка.
+    const points = [
+      ...pickSpawns(this.doc, blocked, SPAWNS, { x: px, y: py }),
+      ...pickBossSpawns(this.doc, blocked, BOSS_SPAWNS, { x: px, y: py }),
+    ];
     for (const p of points) {
-      const m = new Monster(this, MONSTERS[p.kind], p.x, p.y);
+      const m = new Monster(this, ALL_CREATURES[p.kind], p.x, p.y);
       // Пауки прячутся за деревьями по тем же правилам, что игрок.
       m.setTallObjects(tall, this.doc.width, this.doc.height, this.doc.map.tileWidth, this.doc.map.tileHeight);
       this.monsters.push(m);
@@ -1371,9 +1400,16 @@ export class GameScene extends MapScene {
       (id && ITEMS[id]?.tint) || null;
     const wornTex = (id: string | undefined): string | null =>
       id && this.textures.exists(`worn-${id}`) ? `worn-${id}` : null;
+    const maskTex = (id: string | undefined): string | null =>
+      id && this.textures.exists(`worn-mask-${id}`) ? `worn-mask-${id}` : null;
+    const offsetsOf = (id: string | undefined): FrameOffsets | undefined =>
+      (id && (this.cache.json.get(`worn-offset-${id}`) as FrameOffsets | undefined)) || undefined;
     const helmId = this.equipped.helm;
     const bodyId = this.equipped.body;
-    Player.retintArmor(this, tintOf(bodyId), tintOf(helmId), wornTex(helmId), wornTex(bodyId));
+    Player.retintArmor(
+      this, tintOf(bodyId), tintOf(helmId), wornTex(helmId), wornTex(bodyId), maskTex(helmId),
+      offsetsOf(helmId), offsetsOf(bodyId),
+    );
   }
 
   /** Вложить ранг навыка (дерево L). Проверки — в чистой allocate; окно только шлёт намерение. */
@@ -1479,6 +1515,7 @@ export class GameScene extends MapScene {
     this.market.render();
     const r = await marketBrowse(filter);
     this.mkUnavailable = !!r.unavailable;
+    this.mkClosed = r.closed;
     this.mkBrowse = r.result ?? null;
     this.mkLoading = false;
     this.market.render();
@@ -1495,6 +1532,7 @@ export class GameScene extends MapScene {
     await this.collectMarketMail();
     const [mine, hist] = await Promise.all([marketMine(), marketHistory()]);
     this.mkUnavailable = !!mine.unavailable;
+    this.mkClosed = mine.closed;
     this.mkMine = mine.lots;
     this.mkHistory = hist.history;
     this.market.render();
@@ -1605,6 +1643,7 @@ export class GameScene extends MapScene {
   private async doCollectMail(): Promise<void> {
     const r = await marketMail();
     this.mkUnavailable = !!r.unavailable;
+    this.mkClosed = r.closed;
     if (!r.ok || !r.mail.length) return;
 
     const accepted: string[] = [];

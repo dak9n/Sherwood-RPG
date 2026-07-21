@@ -108,6 +108,89 @@ export interface SpawnPoint {
  * @param near ближе этого к игроку не селим — первые секунды без драки
  * @param far дальше этого не селим, иначе их никто не найдёт
  */
+/**
+ * Где поставить боссов.
+ *
+ * Отдельно от pickSpawns по двум причинам.
+ *
+ * Первая — размер. Голем нарисован шириной в три тайла. Поставить его в
+ * случайную проходимую клетку между двух деревьев значит запереть его там
+ * навсегда: поводок будет тянуть домой сквозь ствол, а тело не пролезет.
+ * Поэтому клетка обязана иметь ЗАПАС чистой земли вокруг (clearance клеток во
+ * все стороны), а не просто быть проходимой сама по себе.
+ *
+ * Вторая — встреча должна быть событием. Боссов трое на всю карту, и случай
+ * слишком охотно ставил бы их всех в одну рощу у самого старта. Поэтому не
+ * случайно: берём самые дальние подходящие поляны, разнесённые между собой.
+ * До босса надо дойти.
+ *
+ * Если полян с запрошенным запасом на карте не набирается, запас ужимается
+ * шаг за шагом: лучше поставить босса на тесную поляну, чем не поставить.
+ */
+export function pickBossSpawns(
+  doc: MapDoc,
+  blocked: Set<number>,
+  wanted: { kind: string; count: number }[],
+  player: { x: number; y: number },
+  clearance = 3,
+  minApart = 200,
+): SpawnPoint[] {
+  const land = largestArea(landCells(doc), doc.width);
+  const tw = doc.map.tileWidth;
+  const th = doc.map.tileHeight;
+  const total = wanted.reduce((n, w) => n + w.count, 0);
+
+  /** Свободен ли квадрат (2r+1)x(2r+1) вокруг клетки. */
+  const isClear = (i: number, r: number): boolean => {
+    const cx = i % doc.width;
+    const cy = Math.floor(i / doc.width);
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= doc.width || ny >= doc.height) return false;
+        const ni = ny * doc.width + nx;
+        if (blocked.has(ni) || !land.has(ni)) return false;
+      }
+    }
+    return true;
+  };
+
+  let spots: { x: number; y: number }[] = [];
+  for (let r = clearance; r >= 1; r--) {
+    spots = [];
+    for (const i of land) {
+      if (blocked.has(i) || !isClear(i, r)) continue;
+      spots.push({
+        x: (i % doc.width) * tw + tw / 2,
+        y: Math.floor(i / doc.width) * th + th / 2,
+      });
+    }
+    if (spots.length >= total) break;
+  }
+
+  // Самые дальние от игрока — первыми: до босса надо идти.
+  spots.sort(
+    (a, b) => Math.hypot(b.x - player.x, b.y - player.y) - Math.hypot(a.x - player.x, a.y - player.y),
+  );
+
+  const points: SpawnPoint[] = [];
+  const taken: { x: number; y: number }[] = [];
+
+  for (const { kind, count } of wanted) {
+    for (let n = 0; n < count; n++) {
+      // Первая поляна, до которой от уже занятых не меньше minApart. Сама точка
+      // от себя на нуле, поэтому дважды одна и та же не возьмётся.
+      const spot = spots.find((s) => taken.every((t) => Math.hypot(t.x - s.x, t.y - s.y) >= minApart));
+      if (!spot) return points;
+      taken.push(spot);
+      points.push({ kind, x: spot.x, y: spot.y });
+    }
+  }
+
+  return points;
+}
+
 export function pickSpawns(
   doc: MapDoc,
   blocked: Set<number>,

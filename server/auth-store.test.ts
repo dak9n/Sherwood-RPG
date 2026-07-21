@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { AuthStore, type UserRecord } from './auth-store.ts';
+import { AuthStore, type UserRecord, type SessionRecord } from './auth-store.ts';
 
 /** Хранилище с болванкой persist: проверяем логику, а не диск. */
 const make = async (initial: UserRecord[] = []) => {
@@ -83,8 +83,41 @@ test('выход гасит токен', async () => {
   const { store } = await make();
   const r = await store.register('Ден', 'secret123', T0);
 
-  store.logout(r.token);
+  store.logout(r.token, T0);
   assert.equal(store.whoami(r.token, T0), null, 'после выхода токен мёртв');
+});
+
+test('сессии переживают перезапуск процесса', async () => {
+  // Ради этого сервер и стал отдельным процессом: игрок не должен вылетать из
+  // игры оттого, что автор поправил файл и дев-сервер перечитал конфиг.
+  const saved: SessionRecord[][] = [];
+  const sessions = { initial: [] as SessionRecord[], persist: (s: SessionRecord[]) => saved.push(s) };
+
+  const first = await AuthStore.create([], () => {}, sessions);
+  const r = await first.register('Ден', 'secret123', T0);
+  assert.equal(saved.at(-1)!.length, 1, 'выдачу токена записали');
+
+  // Новый процесс: те же пользователи, те же сессии с диска.
+  const users: UserRecord[] = [
+    { name: 'Ден', nameKey: 'ден', hash: 'неважно', createdAt: T0 },
+  ];
+  const second = await AuthStore.create(users, () => {}, { initial: saved.at(-1)!, persist: () => {} });
+  assert.equal(second.whoami(r.token, T0), 'Ден', 'старый токен всё ещё пускает');
+});
+
+test('протухшие сессии на диск не уезжают', async () => {
+  const saved: SessionRecord[][] = [];
+  const store = await AuthStore.create([], () => {}, {
+    initial: [{ token: 'старый', nameKey: 'кто-то', expiresAt: T0 - 1 }],
+    persist: (s) => saved.push(s),
+  });
+
+  await store.register('Ден', 'secret123', T0);
+  assert.equal(
+    saved.at(-1)!.some((s) => s.token === 'старый'),
+    false,
+    'мёртвая сессия не воскресает при следующей записи',
+  );
 });
 
 test('перебор пароля запирает имя, верный пароль до запирания — впускает', async () => {

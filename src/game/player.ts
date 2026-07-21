@@ -17,6 +17,19 @@ const PARTS = 'assets/characters/PNG/Swordsman_lvl1/Parts/';
 const PREFIX = 'Swordsman_lvl1_';
 
 /** Ключ анимации в игре -> как названа она в файлах набора. */
+/**
+ * Ручные поправки посадки брони по кадрам: sheet -> номер кадра -> [dx, dy].
+ *
+ * Зачем, если броня и так едет за головой: якорем служит центр bbox головы, а
+ * он не знает про наклон. В кадрах атаки герой ведёт головой, bbox почти не
+ * меняется — и шлем «плавает» относительно черепа. Поправка на кадр это
+ * дочищает; рисуется руками в ?helm (там же и видно, куда двигать).
+ *
+ * Кадр нумеруется как в stampWorn: fr = row * cols + col, ряд — направление.
+ * Хранится разреженно: у ровных кадров записи нет, их большинство.
+ */
+export type FrameOffsets = Record<string, Record<number, [number, number]>>;
+
 const ANIM_SHEETS: Record<string, string> = {
   idle: 'Idle',
   walk: 'Walk',
@@ -406,7 +419,15 @@ export class Player {
     hair: ArmorTint | null,
     helmTex: string | null,
     chestTex: string | null,
+    helmMaskTex: string | null = null,
+    helmOffsets?: FrameOffsets,
+    chestOffsets?: FrameOffsets,
   ): void {
+    // Поправки заданы по ИМЕНИ листа ('Idle', 'attack'), как их видит редактор
+    // и как лежат файлы; здесь на руках ключ анимации ('idle', 'attack').
+    const sheet = ANIM_SHEETS[key];
+    const helmOff = helmOffsets?.[sheet];
+    const chestOff = chestOffsets?.[sheet];
     const ctx = tex.context;
     ctx.clearRect(0, 0, tex.width, tex.height);
     for (const part of BODY_PARTS) {
@@ -414,9 +435,17 @@ export class Player {
       // Спрайт брони сильнее фолбэка-перекраски: слой не трогаем, спрайт ляжет поверх.
       const tint = part === 'body' && !chestTex ? tunic : part === 'head' && !helmTex ? hair : null;
       if (!tint) {
-        ctx.drawImage(img, 0, 0);
+        // Шлем с маской: из слоя головы вырезаны пиксели, которые он не
+        // закрывает своим рисунком, — иначе из-под него торчат волосы.
+        //
+        // Вырезаем ТОЛЬКО когда есть чем накрыть. Маска и спрайт лежат в разных
+        // файлах, и спрайт может пропасть (удалён, не догрузился) при живой
+        // маске: тогда вырез остался бы, а закрывать его нечем — у героя дыра
+        // в черепе во всех кадрах, и виноват на вид кто угодно, только не маска.
+        if (part === 'head' && helmMaskTex && helmTex) Player.drawHeadMasked(scene, key, ctx, tex.width, img, helmMaskTex, helmOff);
+        else ctx.drawImage(img, 0, 0);
         // Нагрудник — МЕЖДУ телом и головой: подбородок остаётся поверх воротника.
-        if (part === 'body' && chestTex) Player.stampWorn(scene, key, ctx, tex.width, chestTex, WORN_TORSO_DROP);
+        if (part === 'body' && chestTex) Player.stampWorn(scene, key, ctx, tex.width, chestTex, WORN_TORSO_DROP, chestOff);
         continue;
       }
       // Слой через offscreen: красим его отдельно и только потом кладём в лист.
@@ -445,7 +474,7 @@ export class Player {
       octx.putImageData(image, 0, 0);
       ctx.drawImage(off, 0, 0);
     }
-    if (helmTex) Player.stampWorn(scene, key, ctx, tex.width, helmTex, 0);
+    if (helmTex) Player.stampWorn(scene, key, ctx, tex.width, helmTex, 0, helmOff);
     tex.refresh(); // канвас уехал в GPU — иначе WebGL показывал бы старый лист
   }
 
@@ -459,6 +488,57 @@ export class Player {
    * дёргают шагающие ноги, а голова кивает плавно — броня едет вместе с ней,
    * потому что читает те же кадры.
    */
+  /**
+   * Слой головы с вырезом под шлем.
+   *
+   * Зачем: шлем — это спрайт ПОВЕРХ головы, и всё, что он не накрыл своими
+   * пикселями, остаётся торчать. У закрытых шлемов вроде спартанского силуэт
+   * уже головы на пиксель-другой, и по краям видны волосы — в статике почти
+   * незаметно, в движении мерцает.
+   *
+   * Раздувать шлем под голову — плохой ответ: он станет больше всех остальных
+   * и герой получит несоразмерную башку. Вместо этого у шлема есть МАСКА:
+   * полоса 128x32 в той же геометрии, что и сам шлем, где закрашенные пиксели
+   * означают «здесь голову не рисовать». Рисуется руками в ?helm.
+   *
+   * Вырезаем на отдельном канвасе, а не поверх готового листа: вырез в общий
+   * контекст съел бы и тело под головой (плечи, воротник нагрудника).
+   */
+  private static drawHeadMasked(
+    scene: Phaser.Scene,
+    key: string,
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    img: HTMLImageElement,
+    maskKey: string,
+    offs: Record<number, [number, number]> | undefined,
+  ): void {
+    const off = document.createElement('canvas');
+    off.width = img.width;
+    off.height = img.height;
+    const octx = off.getContext('2d')!;
+    octx.drawImage(img, 0, 0);
+
+    const strip = scene.textures.get(maskKey).getSourceImage() as HTMLImageElement;
+    const centers = Player.headCenters.get(key) ?? [];
+    const cols = width / FRAME;
+    // destination-out: непрозрачный пиксель маски стирает то, что под ним.
+    octx.globalCompositeOperation = 'destination-out';
+    for (let fr = 0; fr < centers.length; fr++) {
+      const c = centers[fr];
+      if (!c) continue;
+      const row = Math.floor(fr / cols);
+      const fx = (fr % cols) * FRAME;
+      const fy = row * FRAME;
+      const o = offs?.[fr];
+      octx.drawImage(strip, row * 32, 0, 32, 32,
+        Math.round(fx + c.x - 16) + (o?.[0] ?? 0), Math.round(fy + c.y - 16) + (o?.[1] ?? 0), 32, 32);
+    }
+    octx.globalCompositeOperation = 'source-over';
+
+    ctx.drawImage(off, 0, 0);
+  }
+
   private static stampWorn(
     scene: Phaser.Scene,
     key: string,
@@ -466,6 +546,7 @@ export class Player {
     width: number,
     texKey: string,
     drop: number,
+    offs: Record<number, [number, number]> | undefined,
   ): void {
     const strip = scene.textures.get(texKey).getSourceImage() as HTMLImageElement;
     const centers = Player.headCenters.get(key) ?? [];
@@ -476,7 +557,11 @@ export class Player {
       const row = Math.floor(fr / cols); // ряд = направление (DIRS_HERO)
       const fx = (fr % cols) * FRAME;
       const fy = row * FRAME;
-      ctx.drawImage(strip, row * 32, 0, 32, 32, Math.round(fx + c.x - 16), Math.round(fy + c.y - 16 + drop), 32, 32);
+      // Поправка кадра — ПОСЛЕ округления: она задана в целых пикселях и не
+      // должна попадать под округление вместе с дробным центром головы.
+      const o = offs?.[fr];
+      ctx.drawImage(strip, row * 32, 0, 32, 32,
+        Math.round(fx + c.x - 16) + (o?.[0] ?? 0), Math.round(fy + c.y - 16 + drop) + (o?.[1] ?? 0), 32, 32);
     }
   }
 
@@ -497,13 +582,19 @@ export class Player {
     hair: ArmorTint | null,
     helmTex: string | null = null,
     chestTex: string | null = null,
+    helmMaskTex: string | null = null,
+    helmOffsets?: FrameOffsets,
+    chestOffsets?: FrameOffsets,
   ): void {
-    const want = `${tunic ?? 'none'}/${hair ?? 'none'}/${helmTex ?? 'none'}/${chestTex ?? 'none'}`;
+    // Поправки входят в ключ: правка кадра меняет картинку, не меняя набора
+    // надетого, и без этого лист не перерисовался бы.
+    const want = `${tunic ?? 'none'}/${hair ?? 'none'}/${helmTex ?? 'none'}/${chestTex ?? 'none'}/${helmMaskTex ?? 'none'}`
+      + `/${JSON.stringify(helmOffsets ?? null)}/${JSON.stringify(chestOffsets ?? null)}`;
     if (Player.currentTint === want) return;
     Player.currentTint = want;
     for (const key of Object.keys(ANIM_SHEETS)) {
       const tex = scene.textures.get(`sw-${key}`) as Phaser.Textures.CanvasTexture;
-      Player.drawSheet(scene, key, tex, tunic, hair, helmTex, chestTex);
+      Player.drawSheet(scene, key, tex, tunic, hair, helmTex, chestTex, helmMaskTex, helmOffsets, chestOffsets);
     }
   }
 

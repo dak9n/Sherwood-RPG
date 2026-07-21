@@ -40,6 +40,8 @@ export interface MarketView {
   bag: (Stack | null)[];
   /** Рынка нет: собранная игра без сервера или он не запущен. */
   unavailable: boolean;
+  /** Сервер есть, но рынок на нём закрыт — текст объяснения от сервера. */
+  closed?: string;
   /** Идёт запрос витрины. */
   loading: boolean;
   /** Текущая витрина под активным фильтром (чужие лоты). */
@@ -498,12 +500,29 @@ export class MarketUi {
     return el;
   }
 
+  /**
+   * Сообщение «рынок закрыт» от сервера. Текст ставим через textContent, а не
+   * innerHTML: он приходит по сети, и хотя сейчас его пишет наш же сервер,
+   * подставлять сетевую строку в разметку — привычка, за которую расплачиваются
+   * позже. Остальные пустые состояния в этом окне статичны, им innerHTML можно.
+   */
+  private showClosed(box: HTMLElement, text: string): void {
+    const div = document.createElement('div');
+    div.className = 'empty';
+    div.textContent = text;
+    box.innerHTML = '';
+    box.append(div);
+  }
+
   private renderMarket(v: MarketView): void {
     const box = this.q('.lots');
     const pager = this.q('.pager');
     box.innerHTML = '';
     pager.innerHTML = '';
 
+    // Раньше unavailable: закрытый рынок — это определённый ответ сервера, а не
+    // отсутствие связи, и говорить о нём надо точнее.
+    if (v.closed) return this.showClosed(box, v.closed);
     if (v.unavailable) {
       box.innerHTML = '<div class="empty">Market is available only when connected to the server.<br>Run the game via the dev server (npm run dev).</div>';
       return;
@@ -562,6 +581,7 @@ export class MarketUi {
     const box = this.q('.lots');
     this.q('.pager').innerHTML = '';
     box.innerHTML = '';
+    if (v.closed) return this.showClosed(box, v.closed);
     if (v.unavailable) { box.innerHTML = '<div class="empty">Market is unavailable without a server.</div>'; return; }
     if (!v.mine.length) { box.innerHTML = '<div class="empty">You have no active listings.<br>Click "Create Listing" on the right.</div>'; return; }
 
@@ -590,6 +610,7 @@ export class MarketUi {
     const box = this.q('.lots');
     this.q('.pager').innerHTML = '';
     box.innerHTML = '';
+    if (v.closed) return this.showClosed(box, v.closed);
     if (v.unavailable) { box.innerHTML = '<div class="empty">Market is unavailable without a server.</div>'; return; }
     if (!v.history.length) { box.innerHTML = '<div class="empty">No trades yet.</div>'; return; }
 

@@ -23,6 +23,22 @@ export interface UserRecord {
   createdAt: number;
 }
 
+/**
+ * Выданная сессия в виде, пригодном для записи на диск.
+ *
+ * Сессии живут месяц, а процесс сервера — до первой правки кода. Пока сервером
+ * был дев-сервер Vite, это означало разлогин обеих тестовых вкладок при каждом
+ * сохранении файла: правка чего угодно в цепочке зависимостей vite.config
+ * перезапускает конфиг, и Map сессий начинается заново. Терпимо, когда игрок
+ * один и он же автор; невыносимо, когда игроков двое и один из них не понимает,
+ * почему его выкинуло.
+ */
+export interface SessionRecord {
+  token: string;
+  nameKey: string;
+  expiresAt: number;
+}
+
 /** Сколько живёт сессия. Месяц: не входить же заново каждый запуск. */
 const SESSION_TTL = 30 * 24 * 60 * 60 * 1000;
 /** После стольких неверных попыток имя запирается на LOCK_MS — против перебора. */
@@ -73,6 +89,12 @@ export class AuthStore {
     return run;
   }
 
+  /**
+   * Куда складывать сессии, чтобы пережить перезапуск. По умолчанию — никуда:
+   * тестам диск не нужен, и переживать им нечего.
+   */
+  private persistSessions: (sessions: SessionRecord[]) => void = () => {};
+
   private constructor(
     users: Map<string, UserRecord>,
     persist: (users: UserRecord[]) => void,
@@ -87,10 +109,33 @@ export class AuthStore {
   static async create(
     initial: UserRecord[],
     persist: (users: UserRecord[]) => void,
+    sessions?: {
+      initial: SessionRecord[];
+      persist: (sessions: SessionRecord[]) => void;
+    },
   ): Promise<AuthStore> {
     const users = new Map(initial.map((u) => [u.nameKey, u]));
     const dummy = await hashPassword(newToken());
-    return new AuthStore(users, persist, dummy);
+    const store = new AuthStore(users, persist, dummy);
+
+    if (sessions) {
+      for (const s of sessions.initial) {
+        store.sessions.set(s.token, { nameKey: s.nameKey, expiresAt: s.expiresAt });
+      }
+      // Ставим обработчик ПОСЛЕ загрузки: иначе восстановление само бы вызвало
+      // запись, и каждый старт сервера переписывал бы файл сессий без нужды.
+      store.persistSessions = sessions.persist;
+    }
+    return store;
+  }
+
+  /** Живые сессии для записи на диск. Протухшие не отдаём — незачем их воскрешать. */
+  private liveSessions(now: number): SessionRecord[] {
+    const out: SessionRecord[] = [];
+    for (const [token, s] of this.sessions) {
+      if (s.expiresAt > now) out.push({ token, nameKey: s.nameKey, expiresAt: s.expiresAt });
+    }
+    return out;
   }
 
   /** Зарегистрировать нового. Имя должно быть свободно. По одному за раз. */
@@ -175,13 +220,20 @@ export class AuthStore {
     return this.users.get(s.nameKey)?.name ?? null;
   }
 
-  logout(token: unknown): void {
-    if (typeof token === 'string') this.sessions.delete(token);
+  /**
+   * Погасить сессию. now нужен, чтобы записать на диск только живые сессии —
+   * как и у всех остальных методов, время сюда передают, а не берут из часов:
+   * тогда поведение проверяется тестами без ожидания.
+   */
+  logout(token: unknown, now: number): void {
+    if (typeof token !== 'string') return;
+    if (this.sessions.delete(token)) this.persistSessions(this.liveSessions(now));
   }
 
   private issue(nameKey: string, now: number): string {
     const token = newToken();
     this.sessions.set(token, { nameKey, expiresAt: now + SESSION_TTL });
+    this.persistSessions(this.liveSessions(now));
     return token;
   }
 

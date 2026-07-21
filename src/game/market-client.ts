@@ -16,6 +16,15 @@ export interface ApiReply {
   ok: boolean;
   /** Сервера/ручки нет (собранная игра или он не запущен). */
   unavailable?: boolean;
+  /**
+   * Сервер есть, но рынок на нём намеренно закрыт (503) — текст объяснения от него же.
+   *
+   * Это не то же самое, что unavailable, и разница видна игроку. «Связи нет» —
+   * повод перезагрузить страницу; «закрыт» — повод не ждать и заняться другим.
+   * Закрыт он потому, что сервер пока не проверяет ни владение предметом, ни
+   * золото (см. server/flags.ts): открытый рынок в таком виде печатает вещи.
+   */
+  closed?: string;
   error?: string;
   data: Record<string, unknown>;
 }
@@ -45,6 +54,9 @@ async function api(path: string, init: RequestInit & { json?: unknown } = {}): P
     return { ok: false, unavailable: true, error: UNAVAILABLE, data: {} };
   }
   const err = typeof data.error === 'string' ? data.error : res.ok ? undefined : `Error (${res.status})`;
+  // 503 — рынок закрыт на самом сервере. Без этой ветки витрина рисовала бы
+  // «Nothing found», то есть врала: будто рынок работает и просто пуст.
+  if (res.status === 503) return { ok: false, closed: err ?? 'Market is closed', error: err, data };
   return { ok: res.ok && data.ok !== false, unavailable: false, error: err, data };
 }
 

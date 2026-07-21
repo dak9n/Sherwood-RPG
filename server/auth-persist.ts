@@ -8,7 +8,7 @@
 
 import { readFileSync, existsSync, mkdirSync, openSync, writeSync, fsyncSync, closeSync, renameSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
-import type { UserRecord } from './auth-store.ts';
+import type { UserRecord, SessionRecord } from './auth-store.ts';
 
 /** Прочитать пользователей. Нет файла или он битый — начинаем с пустого списка. */
 export function loadUsers(path: string): UserRecord[] {
@@ -33,6 +33,36 @@ export function loadUsers(path: string): UserRecord[] {
  */
 export function saveUsers(path: string, users: UserRecord[]): void {
   writeAtomic(path, JSON.stringify(users, null, 2), 'users');
+}
+
+/**
+ * Выданные сессии. Отдельным файлом от users.json, потому что пишутся они на
+ * порядок чаще (каждый вход) и живут по-другому: потерять их не страшно —
+ * в худшем случае игроки войдут заново, — а потерять users.json значит потерять
+ * аккаунты. Смешивать в одном файле разное по ценности не стоит.
+ *
+ * Рядом с users.json в .auth/ — то есть ВНЕ public/. Токен сессии равнозначен
+ * паролю, пока не протух; отдать этот файл браузеру нельзя даже случайно.
+ */
+export function loadSessions(path: string): SessionRecord[] {
+  if (!existsSync(path)) return [];
+  try {
+    const data = JSON.parse(readFileSync(path, 'utf8'));
+    if (!Array.isArray(data)) return [];
+    return data.filter(
+      (s): s is SessionRecord =>
+        s &&
+        typeof s.token === 'string' &&
+        typeof s.nameKey === 'string' &&
+        typeof s.expiresAt === 'number',
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function saveSessions(path: string, sessions: SessionRecord[]): void {
+  writeAtomic(path, JSON.stringify(sessions), 'sessions');
 }
 
 /**
