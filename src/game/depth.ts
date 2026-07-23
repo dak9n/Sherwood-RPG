@@ -8,17 +8,36 @@
  * больше 300. А паук южнее 16-го ряда тайлов (y > 260) перекрывал ещё и слои
  * карты — заходя за ствол, полз по кроне.
  *
- * DEPTH_ABOVE — поверх всей карты: так ходят по траве, камням, пням и тростнику,
- * не ныряя за них.
- * DEPTH_BEHIND — под слоями объектов: включается, только когда существо зашло за
- * большое дерево.
- *
- * Числа привязаны к текущему порядку слоёв (шаг 10, в лесу 27 слоёв -> 0..260):
- * переставят слои — пересчитать.
+ * «Поверх карты» и «за деревом» считаются ОТ ВЕРХА стопки слоёв, а не константой.
+ * Слои рисуются на глубине index*10 (map/view.ts), значит верх — (N-1)*10, где
+ * N — число слоёв. У леса N=27 (верх 260), и старые константы 300/215 были
+ * подогнаны под него. Но у macos слоёв 42 (верх 410) — константа 300 оставляла
+ * игрока ПОД верхними слоями, и в городе он прятался под плиткой дороги. Привязка
+ * к числу слоёв держит существ поверх любой карты и сохраняет поведение леса
+ * (depthAbove(27)=300, depthBehind(27)=215) без изменений.
  */
 
-export const DEPTH_ABOVE = 300;
-export const DEPTH_BEHIND = 215;
+/** Верх стопки слоёв в единицах глубины: слой index рисуется на index*10. */
+export function layerTopDepth(layerCount: number): number {
+  return Math.max(0, layerCount - 1) * 10;
+}
+
+/** Поверх всей карты: ходим по траве, камням, плитке, пням — не ныряя за них. */
+export function depthAbove(layerCount: number): number {
+  return layerTopDepth(layerCount) + 40;
+}
+
+/** Под слоями-объектами: включается, только когда существо зашло за дерево. */
+export function depthBehind(layerCount: number): number {
+  return layerTopDepth(layerCount) - 45;
+}
+
+/**
+ * Стартовая глубина спрайта до того, как известно число слоёв карты (в
+ * конструкторе, до setTallObjects). На первом же кадре её перезапишет
+ * updateDepth уже с настоящим значением — это лишь заглушка на нулевой кадр.
+ */
+export const DEPTH_ABOVE = depthAbove(27);
 
 /**
  * Глубина существа в точке (x, y) мира.
@@ -35,6 +54,7 @@ export function creatureDepth(
   mapWidth: number,
   tileW: number,
   tileH: number,
+  layerCount: number,
 ): number {
   const tx = Math.floor(x / tileW);
   const ty = Math.floor(y / tileH);
@@ -42,5 +62,5 @@ export function creatureDepth(
 
   // За деревом — если ноги существа выше его основания: тогда крона его накроет.
   const behind = baseY !== undefined && y < baseY;
-  return (behind ? DEPTH_BEHIND : DEPTH_ABOVE) + y / 10000;
+  return (behind ? depthBehind(layerCount) : depthAbove(layerCount)) + y / 10000;
 }

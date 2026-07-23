@@ -11,7 +11,6 @@ import type { Icon } from './items';
  * держит. Появится окно — появится кнопка, это одна строка в GameScene.
  */
 
-const UI = 'assets/interface/ui';
 const ICONS = 'assets/interface/PNG/Icons.png';
 
 /** Кнопка меню. Открытость спрашиваем у окна, а не помним у себя: окно закрывают и крестиком, и клавишей. */
@@ -29,17 +28,17 @@ const TOP = 12 + 150 + 8;
 
 const CSS = `
   #menu {
-    position: absolute; right: 12px; top: ${TOP}px; z-index: 10;
+    position: absolute; right: 12px; top: ${TOP}px; z-index: var(--z-hud);
     display: flex; flex-direction: column; gap: 4px;
-    font: 11px/1 'MedievalSharp', system-ui, sans-serif;
+    font: var(--fs-small)/1 var(--font-family);
   }
   #menu .mi {
     display: flex; align-items: center; gap: 5px; cursor: pointer;
     padding: 3px 8px 3px 5px; min-width: 96px;
-    border-image: url(${UI}/button.png) 4 3 3 3 fill / 8px 6px 6px 6px repeat;
-    border-width: 8px 6px 6px 6px; border-style: solid;
+    border-width: var(--frame-button-sm-w); border-image: var(--frame-button-sm);
+    border-style: solid;
     image-rendering: pixelated;
-    color: #eaf6f0; text-shadow: 1px 1px 0 #294040;
+    color: var(--ink-bright); text-shadow: var(--text-shadow-teal);
   }
   #menu .mi:hover { filter: brightness(1.15); }
   #menu .mi:active { transform: translateY(1px); }

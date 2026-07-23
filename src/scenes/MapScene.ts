@@ -68,10 +68,17 @@ export abstract class MapScene extends Phaser.Scene {
     // строится. Каталог дорос до 39 тайлсетов (добавили деревню) и упёрся в это.
     // Поднимаем предел выше числа тайлсетов: тогда в очереди ничего не оседает и
     // глохнуть нечему. Браузер всё равно сам держит настоящих соединений 6 на хост.
-    this.load.maxParallelDownloads = Math.max(this.load.maxParallelDownloads, data.tilesets.length + 8);
     for (const ts of data.tilesets) {
       this.load.image(ts.name, TILESET_URL + ts.image);
     }
+
+    // Наследник докидывает своё во второй проход ЗДЕСЬ — до start и до
+    // пересчёта предела. Добавлять из колбэков первого прохода нельзя (см.
+    // выше — молча встанет), и GameScene со спрайтами брони на этом ловился.
+    this.queueSecondPass();
+
+    // Предел — по фактической очереди: worn-спрайтов может быть больше запаса.
+    this.load.maxParallelDownloads = Math.max(this.load.maxParallelDownloads, this.load.list.size + 8);
 
     this.load.once(Phaser.Loader.Events.COMPLETE, () => {
       this.doc = new MapDoc(data);
@@ -85,6 +92,13 @@ export abstract class MapScene extends Phaser.Scene {
     });
     this.load.start();
   }
+
+  /**
+   * Досыпать файлы во ВТОРОЙ проход загрузчика (create), когда результаты
+   * первого — манифесты, карта — уже в кеше. Единственное безопасное место
+   * для «файлов, о которых узнаёшь из других файлов».
+   */
+  protected queueSecondPass(): void {}
 
   /** Карта готова. Здесь наследник добавляет своё: игрока, панораму, что угодно. */
   protected onReady(): void {}

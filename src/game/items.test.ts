@@ -190,7 +190,7 @@ test('раскладка ничего не теряет и не плодит', (
   // Кнопка, которая может размножить или съесть добычу, хуже отсутствия кнопки.
   const b = bag(20);
   const put = [['mush_red', 40], ['mush_red', 70], ['apple', 15], ['apple', 12],
-               ['sword', 1], ['helm', 1], ['crystal', 5]] as const;
+               ['sword', 1], ['helm1', 1], ['crystal', 5]] as const;
   for (const [id, qty] of put) addToBag(b, id, qty);
 
   const before = new Map<string, number>();
@@ -240,15 +240,16 @@ test('перекраска на герое (tint) — только у шлемо
   }
 });
 
-test('у каждого комплекта брони все четыре части и общая редкость', () => {
-  // Комплект без сапога — это дыра в магазине: «кожаный» ряд продаётся не целиком.
-  // Тканевая пара (cloth) сюда не входит: это намеренная двойка для магов.
-  for (const set of ['leather', 'iron', 'azure', 'bronze', 'gilded', 'emerald', 'crimson']) {
-    const parts = Object.values(ITEMS).filter((d) => d.id.startsWith(`${set}_`));
-    assert.equal(parts.length, 4, `${set}: частей ${parts.length}, а не 4`);
-    const rarities = new Set(parts.map((d) => d.rarity));
-    assert.equal(rarities.size, 1, `${set}: редкость частей разная — рамки врут про комплект`);
-    const slots = new Set(parts.map((d) => d.slot));
-    assert.deepEqual([...slots].sort(), ['body', 'boots', 'gloves', 'helm'], `${set}: слоты не полные`);
+test('в игре ровно шесть шлемов helm1..helm6, все со слотом helm', () => {
+  // Именные комплекты брони убраны: остались только эти шесть рисованных шлемов.
+  // Больше шлемов появится позже — тогда список здесь и вырастет.
+  for (let n = 1; n <= 6; n++) {
+    const def = ITEMS[`helm${n}`];
+    assert.ok(def, `helm${n} есть в игре`);
+    assert.equal(def.slot, 'helm', `helm${n}: слот не helm`);
+    assert.ok(def.icon, `helm${n}: нет иконки`);
+    assert.ok(def.bonus?.def, `helm${n}: не даёт защиты`);
   }
+  const helms = Object.values(ITEMS).filter((d) => d.slot === 'helm').map((d) => d.id).sort();
+  assert.deepEqual(helms, ['helm1', 'helm2', 'helm3', 'helm4', 'helm5', 'helm6'], 'других шлемов быть не должно');
 });

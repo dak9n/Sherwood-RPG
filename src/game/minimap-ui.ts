@@ -27,17 +27,17 @@ const DOT = { player: '#f4e4c1', monster: '#e05c4a', loot: '#e0c48a' } as const;
 
 const CSS = `
   #mm {
-    position: absolute; right: 12px; top: 12px; z-index: 10;
+    position: absolute; right: 12px; top: 12px; z-index: var(--z-hud);
     width: ${FRAME}px; height: ${FRAME}px;
     /* Мини-карта — табло, а не кнопка: клики должны уходить в игру. */
     pointer-events: none;
-    font: 10px/1 'MedievalSharp', system-ui, sans-serif;
+    font: var(--fs-tiny)/1 var(--font-family);
   }
   /* Дырка кольца: всё, что вылезает за круг, срезается. */
   #mm .hole {
     position: absolute; left: ${HOLE_AT}px; top: ${HOLE_AT}px;
     width: ${HOLE}px; height: ${HOLE}px;
-    border-radius: 50%; overflow: hidden;
+    border-radius: var(--radius-pill); overflow: hidden;
     background: #1b2a17;
   }
   #mm .hole canvas {
@@ -50,37 +50,37 @@ const CSS = `
     image-rendering: pixelated;
   }
   #mm .dot {
-    position: absolute; width: 4px; height: 4px; border-radius: 50%;
+    position: absolute; width: 4px; height: 4px; border-radius: var(--radius-pill);
     margin: -2px 0 0 -2px; pointer-events: none;
   }
   #mm .dot.me {
     width: 6px; height: 6px; margin: -3px 0 0 -3px;
-    background: ${DOT.player}; box-shadow: 0 0 0 1px #2b1d12;
+    background: ${DOT.player}; box-shadow: 0 0 0 1px var(--ink-dark);
   }
 
   /* --- Полная карта (M) --- */
   #mmfull {
     position: absolute; inset: 0; z-index: 21; display: none;
     align-items: center; justify-content: center;
-    background: rgba(12, 16, 20, .72);
-    font: 12px/1 'MedievalSharp', system-ui, sans-serif; color: #e5d6a1;
+    background: var(--backdrop-scrim);
+    font: var(--fs-body)/1 var(--font-family); color: var(--parchment);
     /* Игра не на паузе — мимо карты клики уходят в неё. */
     pointer-events: none;
   }
   #mmfull.open { display: flex; }
   #mmfull .win {
     pointer-events: auto; position: relative;
-    border-image: url(assets/interface/ui/panel_dark.png) 2 3 4 3 fill / 6px 9px 12px 9px repeat;
-    border-width: 6px 9px 12px 9px; border-style: solid;
+    border-width: var(--frame-dark-w); border-image: var(--frame-dark);
+    border-style: solid;
     image-rendering: pixelated;
   }
   #mmfull .plate { position: relative; display: block; background: #1b2a17; }
   #mmfull canvas { display: block; transform-origin: 0 0; image-rendering: pixelated; }
-  #mmfull .dot { position: absolute; width: 5px; height: 5px; border-radius: 50%; margin: -2.5px 0 0 -2.5px; }
-  #mmfull .dot.me { width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; background: ${DOT.player}; box-shadow: 0 0 0 2px #2b1d12; }
+  #mmfull .dot { position: absolute; width: 5px; height: 5px; border-radius: var(--radius-pill); margin: -2.5px 0 0 -2.5px; }
+  #mmfull .dot.me { width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; background: ${DOT.player}; box-shadow: 0 0 0 2px var(--ink-dark); }
   #mmfull .tip {
     position: absolute; left: 0; right: 0; bottom: -22px; text-align: center;
-    text-shadow: 1px 1px 0 #000;
+    text-shadow: 1px 1px 0 var(--black);
   }
 `;
 

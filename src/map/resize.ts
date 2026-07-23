@@ -12,6 +12,13 @@ export interface ResizeResult {
   /** Сколько непустых тайлов не влезло в новые границы. */
   dropped: number;
   droppedByLayer: Record<string, number>;
+  /**
+   * Сколько маркеров спавна не влезло в новые границы. Считаем отдельно от
+   * тайлов: маркер может вылезти за край даже там, где тайлов не терялось (срез
+   * пустой полосы), а потеря точки старта или босса невосстановима — история
+   * после ресайза очищается. Диалог обязан предупредить именно об этом.
+   */
+  droppedSpawns: number;
 }
 
 /**
@@ -89,9 +96,19 @@ export function resizeMap(map: GameMap, deltas: Deltas): ResizeResult {
   // прежней длины, и карта разъехалась бы с разметкой.
   const collision = remapGrid(map.collision, map.width, width, height, left, top).data;
 
+  // Маркеры спавна тоже сдвигаем на дельту: без этого `...map` унёс бы их со
+  // старыми координатами — при срезе слева/сверху точка старта уехала бы в
+  // сторону, а при обрезке вылезла бы за край и завалила валидацию. Что не
+  // влезло в новые границы — отбрасываем, как и тайлы.
+  const spawns = map.spawns
+    ?.map((s) => ({ ...s, x: s.x + left, y: s.y + top }))
+    .filter((s) => s.x >= 0 && s.x < width && s.y >= 0 && s.y < height);
+  const droppedSpawns = (map.spawns?.length ?? 0) - (spawns?.length ?? 0);
+
   return {
-    map: { ...map, width, height, layers, collision },
+    map: { ...map, width, height, layers, collision, spawns: spawns?.length ? spawns : undefined },
     dropped,
     droppedByLayer,
+    droppedSpawns,
   };
 }

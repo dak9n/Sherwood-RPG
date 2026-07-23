@@ -221,3 +221,50 @@ test('места нет совсем — пустой список, а не па
 
   assert.deepEqual(pickBossSpawns(doc, blocked, BOSS_ONE, { x: 0, y: 0 }, 3), []);
 });
+
+// --- маркеры спавна из карты ---
+
+import { mapPlayerStart, mapMobSpawns, PLAYER_KIND } from './spawn.ts';
+
+/** Карта из травы с маркерами: проверяем чтение, а не рельеф. */
+function docWithSpawns(spawns: { kind: string; x: number; y: number }[]): MapDoc {
+  const doc = field(10);
+  doc.map.spawns = spawns;
+  return doc;
+}
+
+test('нет маркеров — старт игрока null (игра встанет по-старому)', () => {
+  assert.equal(mapPlayerStart(field(10)), null);
+});
+
+test('маркер игрока читается в пиксельный центр клетки', () => {
+  const doc = docWithSpawns([{ kind: PLAYER_KIND, x: 3, y: 5 }]);
+  // тайл 16 px: центр клетки (3,5) = (3*16+8, 5*16+8)
+  assert.deepEqual(mapPlayerStart(doc), { x: 56, y: 88 });
+});
+
+test('игрок берётся первым: в карте он осмыслен один', () => {
+  const doc = docWithSpawns([
+    { kind: PLAYER_KIND, x: 1, y: 1 },
+    { kind: PLAYER_KIND, x: 9, y: 9 },
+  ]);
+  assert.deepEqual(mapPlayerStart(doc), { x: 24, y: 24 });
+});
+
+test('монстры-маркеры: игрок в них не попадает, координаты в пикселях', () => {
+  const doc = docWithSpawns([
+    { kind: PLAYER_KIND, x: 0, y: 0 },
+    { kind: 'spider1', x: 2, y: 2 },
+    { kind: 'golem3', x: 4, y: 6 },
+  ]);
+  const mobs = mapMobSpawns(doc);
+  assert.equal(mobs.length, 2, 'игрок отфильтрован');
+  assert.deepEqual(mobs[0], { kind: 'spider1', x: 40, y: 40 });
+  assert.deepEqual(mobs[1], { kind: 'golem3', x: 72, y: 104 });
+});
+
+test('пустая карта без поля spawns — оба чтения не падают', () => {
+  const doc = field(10);
+  assert.equal(mapPlayerStart(doc), null);
+  assert.deepEqual(mapMobSpawns(doc), []);
+});

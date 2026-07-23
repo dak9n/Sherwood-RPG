@@ -20,6 +20,26 @@ const animMode = import.meta.env.DEV && new URLSearchParams(location.search).has
 /** ?helm — пиксельный редактор шлемов. Как ?anim: без игры и без сборки. */
 const helmMode = import.meta.env.DEV && new URLSearchParams(location.search).has('helm');
 
+/**
+ * ?guest — дев-вход в игру без аккаунта: сразу в игру, минуя окно входа.
+ *
+ * Нужен, чтобы проверять игру (надетую броню, покадровые поправки из ?helm)
+ * не трогая настоящие аккаунты. Сейв при этом только локальный: без токена
+ * pushProgress на сервер не шлёт ни байта (см. auth/progress.ts). В сборку не
+ * попадает, как и остальные дев-режимы.
+ */
+const guestMode = import.meta.env.DEV && new URLSearchParams(location.search).has('guest');
+
+/**
+ * ?map=<имя> — сыграть на другой карте (assets/maps/<имя>.json), а не на forest.
+ *
+ * Только в разработке и только как выбор игрока: MapScene и так читает
+ * registry.mapName (его ставит редактор), но игра сама этот ключ не трогала и
+ * всегда падала на forest. Здесь мы его задаём из адреса — например ?map=macos.
+ * Нет параметра — поведение прежнее, forest.
+ */
+const mapChoice = import.meta.env.DEV ? new URLSearchParams(location.search).get('map') : null;
+
 function bootGame(): void {
   const game = new Phaser.Game({
     type: Phaser.AUTO,
@@ -40,6 +60,14 @@ function bootGame(): void {
     // того, как пользователь выберет карту на стартовом экране. Её добавит и
     // запустит start.ts — уже после выбора.
     scene: editMode ? [] : [GameScene],
+    callbacks: {
+      // Ставим карту ДО загрузки сцены: MapScene.preload читает registry.mapName,
+      // а preBoot успевает раньше — здесь registry уже есть, а сцены ещё не
+      // тронуты. Пустой/отсутствующий выбор ключ не создаёт — остаётся forest.
+      preBoot: (game) => {
+        if (mapChoice) game.registry.set('mapName', mapChoice);
+      },
+    },
   });
 
   if (import.meta.env.DEV) {
@@ -73,6 +101,19 @@ async function main(): Promise<void> {
 
   // Редактор — дев-инструмент для правки карт, за окном входа не прячем.
   if (editMode) {
+    bootGame();
+    return;
+  }
+
+  // Гость: та же цепочка, что у вошедшего, только без сервера — аккаунт
+  // фиктивный, сейв локальный. Новый гость проходит создание героя как все.
+  if (guestMode) {
+    setAccount('guest');
+    const save = await fetchProgress();
+    const savedName = cleanName((save as { charName?: unknown } | null)?.charName);
+    const charName = savedName || (await showCharacterCreate()).name;
+    setPendingChar(charName);
+    setPendingSave(save);
     bootGame();
     return;
   }

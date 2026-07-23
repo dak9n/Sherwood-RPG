@@ -55,7 +55,7 @@ const CSS = `
   #skilltree {
     position: absolute; inset: 0; z-index: 21; display: none;
     align-items: center; justify-content: center;
-    font: 12px/1.4 'MedievalSharp', system-ui, sans-serif; color: #f0e0c8;
+    font: var(--fs-body)/1.4 var(--font-family); color: var(--ink);
     pointer-events: none;
   }
   #skilltree.open { display: flex; }
@@ -63,15 +63,14 @@ const CSS = `
 
   #skilltree .win {
     pointer-events: auto; position: relative; width: 500px; max-width: 95vw;
-    border-image: url(${UI}/window.png) 16 5 5 5 fill / ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px repeat;
-    border-width: ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px; border-style: solid;
+    border-width: var(--frame-window-w); border-image: var(--frame-window); border-style: solid;
     padding: 2px 14px 10px;
-    filter: drop-shadow(0 14px 40px rgba(0,0,0,.6));
+    filter: drop-shadow(0 14px 40px var(--shadow-drop));
   }
   #skilltree .title {
     position: absolute; top: -${13 * S}px; left: 0; right: 0; text-align: center;
-    font-weight: 700; font-size: 14px; letter-spacing: .1em; text-transform: uppercase;
-    color: #eaf6f0; text-shadow: 1px 1px 0 #294040;
+    font-weight: var(--fw-bold); font-size: var(--fs-lg); letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-bright); text-shadow: var(--text-shadow-teal);
   }
   #skilltree .close {
     position: absolute; top: -${13 * S}px; right: 0;
@@ -81,50 +80,49 @@ const CSS = `
   #skilltree .close:hover { filter: brightness(1.25); }
 
   #skilltree .free {
-    text-align: center; font-size: 13px; margin: 2px 0 9px; color: #d8c0a0;
+    text-align: center; font-size: var(--fs-md); margin: 2px 0 9px; color: var(--tan);
   }
-  #skilltree .free b { font-size: 16px; color: #ffcf5a; }
+  #skilltree .free b { font-size: var(--fs-xl); color: var(--gold); }
   #skilltree .free.none b { color: #8a6a3a; }
 
   #skilltree .cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
   #skilltree .col { display: flex; flex-direction: column; gap: 8px; }
   #skilltree .bhead {
-    text-align: center; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+    text-align: center; font-size: var(--fs-body); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: .05em;
     padding-bottom: 3px; border-bottom: 2px solid currentColor;
   }
 
   /* Узел на светлой странице набора. */
   #skilltree .node {
     position: relative; padding: 6px 7px;
-    border-image: url(${UI}/panel_beige.png) 2 5 5 5 fill / ${2 * S}px ${5 * S}px ${5 * S}px ${5 * S}px repeat;
-    border-width: ${2 * S}px ${5 * S}px ${5 * S}px ${5 * S}px; border-style: solid;
-    color: #2b1d12;
+    border-width: var(--frame-beige-w); border-image: var(--frame-beige); border-style: solid;
+    color: var(--ink-dark);
   }
   #skilltree .node.locked { filter: grayscale(.7) brightness(.92); opacity: .8; }
-  #skilltree .node .nm { font-size: 12px; font-weight: 700; display: flex; justify-content: space-between; gap: 6px; }
+  #skilltree .node .nm { font-size: var(--fs-body); font-weight: var(--fw-bold); display: flex; justify-content: space-between; gap: 6px; }
   #skilltree .node .nm .rk { font-variant-numeric: tabular-nums; color: #6b4f2a; }
   #skilltree .node .pips { display: flex; gap: 3px; margin: 4px 0 3px; }
-  #skilltree .node .pip { width: 8px; height: 8px; border-radius: 2px; background: #b79b74; box-shadow: inset 0 0 0 1px rgba(0,0,0,.25); }
-  #skilltree .node .pip.on { background: #ffcf5a; box-shadow: inset 0 0 0 1px #8a6a2a; }
-  #skilltree .node .desc { font-size: 10px; color: #5a4020; line-height: 1.35; min-height: 26px; }
-  #skilltree .node .desc .tot { color: #2f7a2f; font-weight: 700; }
-  #skilltree .node .req { font-size: 10px; color: #a33b2e; margin-top: 2px; }
+  #skilltree .node .pip { width: 8px; height: 8px; border-radius: var(--radius-1); background: var(--disabled-bg); box-shadow: inset 0 0 0 1px rgba(0,0,0,.25); }
+  #skilltree .node .pip.on { background: var(--gold); box-shadow: inset 0 0 0 1px #8a6a2a; }
+  #skilltree .node .desc { font-size: var(--fs-tiny); color: var(--brown-text); line-height: 1.35; min-height: 26px; }
+  #skilltree .node .desc .tot { color: #2f7a2f; font-weight: var(--fw-bold); }
+  #skilltree .node .req { font-size: var(--fs-tiny); color: var(--danger); margin-top: 2px; }
 
   /* Кнопка «+» — своя CSS-кнопка с рамкой, как в других окнах. */
   #skilltree .node .add {
     width: 100%; margin-top: 5px; cursor: pointer; text-align: center;
-    padding: 5px 6px; font-size: 12px; font-weight: 700; color: #eaf6f0; text-shadow: 1px 1px 0 #294040;
-    background: #50a978; border: 2px solid #294040; border-radius: 3px;
-    box-shadow: inset 0 2px 0 #74cf8d, inset 0 -2px 0 #3f7168;
+    padding: 5px 6px; font-size: var(--fs-body); font-weight: var(--fw-bold); color: var(--ink-bright); text-shadow: var(--text-shadow-teal);
+    background: var(--green); border: 2px solid var(--shadow-teal); border-radius: var(--radius-2);
+    box-shadow: inset 0 2px 0 var(--green-hi), inset 0 -2px 0 var(--green-lo);
   }
   #skilltree .node .add:hover { filter: brightness(1.1); }
   #skilltree .node .add:active { box-shadow: inset 0 2px 4px rgba(0,0,0,.4); }
   #skilltree .node .add.off {
-    cursor: default; color: #a08a6a; background: #b79b74; border-color: #6b5433;
+    cursor: default; color: var(--disabled-text); background: var(--disabled-bg); border-color: var(--disabled-border);
     box-shadow: none; filter: none;
   }
 
-  #skilltree .hint { margin-top: 9px; font-size: 11px; color: #6b5433; text-align: center; }
+  #skilltree .hint { margin-top: 9px; font-size: var(--fs-small); color: var(--disabled-border); text-align: center; }
 `;
 
 /** Что окно знает о герое. Сцена отдаёт живые данные, окно только рисует. */
@@ -237,7 +235,7 @@ export class SkillTreeUi {
       : '';
 
     el.innerHTML =
-      `<div class="nm" style="color:#2b1d12"><span>${node.name}</span><span class="rk">${rank}/${node.maxRank}</span></div>` +
+      `<div class="nm" style="color:var(--ink-dark)"><span>${node.name}</span><span class="rk">${rank}/${node.maxRank}</span></div>` +
       `<div class="pips">${pips}</div>` +
       `<div class="desc">${node.desc} per rank${total}</div>` +
       req;

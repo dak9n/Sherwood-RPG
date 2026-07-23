@@ -1,4 +1,8 @@
 [
- "ember_helm",
- "phoenix_helm"
+ "helm1",
+ "helm2",
+ "helm3",
+ "helm4",
+ "helm5",
+ "helm6"
 ]

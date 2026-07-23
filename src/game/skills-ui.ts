@@ -30,7 +30,7 @@ const CSS = `
   #skills {
     position: absolute; inset: 0; z-index: 21; display: none;
     align-items: center; justify-content: center;
-    font: 12px/1.4 'MedievalSharp', system-ui, sans-serif; color: #f0e0c8;
+    font: var(--fs-body)/1.4 var(--font-family); color: var(--ink);
     pointer-events: none;
   }
   #skills.open { display: flex; }
@@ -38,15 +38,14 @@ const CSS = `
 
   #skills .win {
     pointer-events: auto; position: relative; width: 260px;
-    border-image: url(${UI}/window.png) 16 5 5 5 fill / ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px repeat;
-    border-width: ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px; border-style: solid;
+    border-width: var(--frame-window-w); border-image: var(--frame-window); border-style: solid;
     padding: 2px 14px 8px;
     filter: drop-shadow(0 12px 34px rgba(0,0,0,.55));
   }
   #skills .title {
     position: absolute; top: -${13 * S}px; left: 0; right: 0; text-align: center;
-    font-weight: 700; font-size: 14px; letter-spacing: .1em; text-transform: uppercase;
-    color: #eaf6f0; text-shadow: 1px 1px 0 #294040;
+    font-weight: var(--fw-bold); font-size: var(--fs-lg); letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-bright); text-shadow: var(--text-shadow-teal);
   }
   #skills .close {
     position: absolute; top: -${13 * S}px; right: 0;
@@ -56,37 +55,36 @@ const CSS = `
   #skills .close:hover { filter: brightness(1.25); }
 
   #skills .page {
-    border-image: url(${UI}/panel_beige.png) 2 5 5 5 fill / ${2 * S}px ${5 * S}px ${5 * S}px ${5 * S}px repeat;
-    border-width: ${2 * S}px ${5 * S}px ${5 * S}px ${5 * S}px; border-style: solid;
-    padding: ${2 * S}px; color: #2b1d12;
+    border-width: var(--frame-beige-w); border-image: var(--frame-beige); border-style: solid;
+    padding: ${2 * S}px; color: var(--ink-dark);
   }
 
-  #skills .free { text-align: center; font-size: 12px; margin-bottom: 8px; color: #5a4020; }
-  #skills .free b { font-size: 15px; color: #2f7a2f; }
+  #skills .free { text-align: center; font-size: var(--fs-body); margin-bottom: 8px; color: var(--brown-text); }
+  #skills .free b { font-size: var(--fs-title); color: #2f7a2f; }
   #skills .free.none b { color: #8a6a3a; }
 
   #skills .row { display: flex; align-items: center; gap: 8px; padding: 4px 2px; }
   #skills .row + .row { border-top: 1px solid #cdb488; }
   #skills .row > i { width: 16px; height: 16px; flex: none; background: url(${ICONS}); }
-  #skills .row .nm { flex: 1; font-size: 12px; }
-  #skills .row .val { font-variant-numeric: tabular-nums; font-weight: 700; color: #3a2a18; }
-  #skills .row .per { color: #7a6244; font-size: 11px; }
+  #skills .row .nm { flex: 1; font-size: var(--fs-body); }
+  #skills .row .val { font-variant-numeric: tabular-nums; font-weight: var(--fw-bold); color: #3a2a18; }
+  #skills .row .per { color: #7a6244; font-size: var(--fs-small); }
 
   /* Кнопка «+» — своя CSS-кнопка, как вкладки окна входа: рамка со всех сторон. */
   #skills .add {
     flex: none; width: 22px; height: 22px; line-height: 18px; text-align: center; cursor: pointer;
-    font-size: 15px; font-weight: 700; color: #eaf6f0; text-shadow: 1px 1px 0 #294040;
-    background: #50a978; border: 2px solid #294040; border-radius: 3px;
-    box-shadow: inset 0 2px 0 #74cf8d, inset 0 -2px 0 #3f7168;
+    font-size: var(--fs-title); font-weight: var(--fw-bold); color: var(--ink-bright); text-shadow: var(--text-shadow-teal);
+    background: var(--green); border: 2px solid var(--shadow-teal); border-radius: var(--radius-2);
+    box-shadow: inset 0 2px 0 var(--green-hi), inset 0 -2px 0 var(--green-lo);
   }
   #skills .add:hover { filter: brightness(1.1); }
   #skills .add:active { box-shadow: inset 0 2px 4px rgba(0,0,0,.4); }
   #skills .add.off {
-    cursor: default; color: #a08a6a; background: #b79b74; border-color: #6b5433;
+    cursor: default; color: var(--disabled-text); background: var(--disabled-bg); border-color: var(--disabled-border);
     box-shadow: none; filter: none;
   }
 
-  #skills .hint { margin-top: 8px; font-size: 11px; color: #6b5433; text-align: center; line-height: 1.4; }
+  #skills .hint { margin-top: 8px; font-size: var(--fs-small); color: var(--disabled-border); text-align: center; line-height: 1.4; }
 `;
 
 export interface SkillsHero {

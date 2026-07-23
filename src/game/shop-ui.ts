@@ -47,9 +47,9 @@ const RARITY_COLOR: Record<Rarity, string> = {
 
 const CSS = `
   #shop {
-    position: absolute; inset: 0; z-index: 22; display: none;
+    position: absolute; inset: 0; z-index: var(--z-window-raised); display: none;
     align-items: center; justify-content: center;
-    font: 12px/1.4 'MedievalSharp', system-ui, sans-serif; color: #f0e0c8;
+    font: var(--fs-body)/1.4 var(--font-family); color: var(--ink);
     pointer-events: none;
   }
   #shop.open { display: flex; }
@@ -58,15 +58,15 @@ const CSS = `
 
   #shop .win {
     pointer-events: auto; position: relative; width: 640px; max-width: 96vw;
-    border-image: url(${UI}/window.png) 16 5 5 5 fill / ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px repeat;
-    border-width: ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px; border-style: solid;
+    border-width: var(--frame-window-w); border-image: var(--frame-window);
+    border-style: solid;
     padding: 4px 14px 10px;
     filter: drop-shadow(0 16px 44px rgba(0,0,0,.62));
   }
   #shop .title {
     position: absolute; top: -${13 * S}px; left: 0; right: 0; text-align: center;
-    font-weight: 700; font-size: 15px; letter-spacing: .12em; text-transform: uppercase;
-    color: #eaf6f0; text-shadow: 1px 1px 0 #294040;
+    font-weight: var(--fw-bold); font-size: var(--fs-title); letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-bright); text-shadow: var(--text-shadow-teal);
   }
   #shop .close {
     position: absolute; top: -${13 * S}px; right: 0;
@@ -82,16 +82,16 @@ const CSS = `
   /* Шапка панели: подпись слева, золото справа. */
   #shop .phead {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    margin: 0 2px 6px; font-size: 11px; font-weight: 700; color: #e0c48a;
-    text-shadow: 1px 1px 0 #3e1f1d; text-transform: uppercase; letter-spacing: .05em;
+    margin: 0 2px 6px; font-size: var(--fs-small); font-weight: var(--fw-bold); color: var(--gold-soft);
+    text-shadow: var(--text-shadow-maroon); text-transform: uppercase; letter-spacing: .05em;
   }
-  #shop .gold { display: flex; align-items: center; gap: 5px; font-size: 14px; color: #ffe08a; text-transform: none; }
+  #shop .gold { display: flex; align-items: center; gap: 5px; font-size: var(--fs-lg); color: var(--gold-pale); text-transform: none; }
   #shop .gold i { width: 16px; height: 16px; background: url(${ICONS}) -${COIN.x}px -${COIN.y}px; }
 
   /* Светлая страница набора под сетками. */
   #shop .page {
-    border-image: url(${UI}/panel_beige.png) 2 5 5 5 fill / ${2 * S}px ${5 * S}px ${5 * S}px ${5 * S}px repeat;
-    border-width: ${2 * S}px ${5 * S}px ${5 * S}px ${5 * S}px; border-style: solid;
+    border-width: var(--frame-beige-w); border-image: var(--frame-beige);
+    border-style: solid;
     padding: ${S}px;
   }
 
@@ -102,9 +102,9 @@ const CSS = `
   /* Ячейка товара/предмета. */
   #shop .slot {
     position: relative; cursor: pointer;
-    background: #cda677; border: 2px solid ${RARITY_COLOR.common}; border-radius: 3px;
+    background: var(--slot-bg); border: 2px solid ${RARITY_COLOR.common}; border-radius: var(--radius-2);
     display: flex; align-items: center; justify-content: center;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.18);
+    box-shadow: inset 0 1px 0 var(--edge-hi);
   }
   #shop .shopgrid .slot { height: 56px; }
   #shop .invgrid .slot { height: 44px; }
@@ -115,14 +115,14 @@ const CSS = `
   #shop .slot.has:hover { filter: brightness(1.09); }
   #shop .slot.off { filter: grayscale(.65) brightness(.82); }
   #shop .slot.picked {
-    outline: 3px solid #ffcf5a; outline-offset: -1px;
-    box-shadow: inset 0 0 0 2px rgba(255,207,90,.45), 0 0 8px rgba(255,207,90,.4);
+    outline: 3px solid var(--gold); outline-offset: -1px;
+    box-shadow: inset 0 0 0 2px rgba(255,207,90,.45), 0 0 8px var(--gold-glow);
   }
   #shop .slot .ico { transform: scale(1.9); transform-origin: center; }
   #shop .shopgrid .slot .ico { margin-bottom: 8px; }
   #shop .slot .qty {
-    position: absolute; bottom: 1px; right: 3px; font-size: 11px; font-weight: 700; color: #fff;
-    text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000;
+    position: absolute; bottom: 1px; right: 3px; font-size: var(--fs-small); font-weight: var(--fw-bold); color: var(--white);
+    text-shadow: var(--text-outline-4way);
     font-variant-numeric: tabular-nums; pointer-events: none;
   }
   /* Ценник товара — плашка внизу ячейки. */
@@ -130,57 +130,57 @@ const CSS = `
     position: absolute; left: 0; right: 0; bottom: 0; height: 15px;
     display: flex; align-items: center; justify-content: center; gap: 3px;
     background: rgba(30,20,12,.62);
-    font-size: 11px; font-weight: 700; color: #ffe08a; font-variant-numeric: tabular-nums;
+    font-size: var(--fs-small); font-weight: var(--fw-bold); color: var(--gold-pale); font-variant-numeric: tabular-nums;
     pointer-events: none;
   }
-  #shop .slot.off .cost { color: #e2705f; }
+  #shop .slot.off .cost { color: var(--error); }
   #shop .slot .cost i, #shop .slot .tag i {
     width: 10px; height: 10px; background: url(${ICONS}) -${COIN.x}px -${COIN.y}px; background-size: 16px 16px;
   }
   /* Значок заточки оружия — «+N», как в MMORPG. */
   #shop .plusb {
-    position: absolute; bottom: 1px; right: 3px; font-size: 11px; font-weight: 700; color: #ffcf5a;
-    text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000;
+    position: absolute; bottom: 1px; right: 3px; font-size: var(--fs-small); font-weight: var(--fw-bold); color: var(--gold);
+    text-shadow: var(--text-outline-4way);
     pointer-events: none;
   }
   /* Цена продажи в углу вещи инвентаря — маленькой монеткой. */
   #shop .slot .tag {
     position: absolute; top: 1px; left: 2px; display: flex; align-items: center; gap: 2px;
-    font-size: 9px; font-weight: 700; color: #ffe08a; text-shadow: 1px 1px 0 #000;
-    background: rgba(30,20,12,.5); padding: 0 2px; border-radius: 3px; pointer-events: none;
+    font-size: var(--fs-micro); font-weight: var(--fw-bold); color: var(--gold-pale); text-shadow: 1px 1px 0 #000;
+    background: rgba(30,20,12,.5); padding: 0 2px; border-radius: var(--radius-2); pointer-events: none;
   }
 
   /* Корзина продажи. */
   #shop .basket { margin-top: 10px; }
   #shop .bhead {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    margin: 0 2px 6px; font-size: 11px; font-weight: 700; color: #e0c48a;
-    text-shadow: 1px 1px 0 #3e1f1d; text-transform: uppercase; letter-spacing: .05em;
+    margin: 0 2px 6px; font-size: var(--fs-small); font-weight: var(--fw-bold); color: var(--gold-soft);
+    text-shadow: var(--text-shadow-maroon); text-transform: uppercase; letter-spacing: .05em;
   }
   #shop .bhead .clear {
-    cursor: pointer; font-size: 10px; color: #d8b088; border: 1px solid #6b5433; border-radius: 3px;
+    cursor: pointer; font-size: var(--fs-tiny); color: #d8b088; border: 1px solid var(--disabled-border); border-radius: var(--radius-2);
     padding: 2px 7px; background: rgba(60,40,22,.5); text-transform: none; letter-spacing: 0;
   }
   #shop .bhead .clear:hover { color: #ff9c8a; border-color: #8a4a3a; }
   #shop .bcells { display: grid; grid-template-columns: repeat(${BAG_COLS}, 1fr); gap: 5px; }
   #shop .bcells .slot { height: 44px; }
   #shop .foot { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
-  #shop .total { flex: none; display: flex; align-items: center; gap: 5px; font-size: 15px; font-weight: 700; color: #ffe08a; }
+  #shop .total { flex: none; display: flex; align-items: center; gap: 5px; font-size: var(--fs-title); font-weight: var(--fw-bold); color: var(--gold-pale); }
   #shop .total i { width: 16px; height: 16px; background: url(${ICONS}) -${COIN.x}px -${COIN.y}px; }
   #shop .sellbtn {
-    flex: 1; cursor: pointer; font: inherit; font-weight: 700; font-size: 13px;
-    padding: 9px 8px; color: #eaf6f0; text-shadow: 1px 1px 0 #294040;
-    background: #c98a2f; border: 2px solid #5a3d18; border-radius: 4px;
+    flex: 1; cursor: pointer; font: inherit; font-weight: var(--fw-bold); font-size: var(--fs-md);
+    padding: 9px 8px; color: var(--ink-bright); text-shadow: var(--text-shadow-teal);
+    background: var(--amber); border: 2px solid #5a3d18; border-radius: var(--radius-3);
     box-shadow: inset 0 2px 0 #e6b45c, inset 0 -3px 0 #97621f;
   }
   #shop .sellbtn:hover:not(:disabled) { filter: brightness(1.1); }
   #shop .sellbtn:active:not(:disabled) { transform: translateY(1px); }
   #shop .sellbtn:disabled {
-    cursor: default; color: #a08a6a; background: #b79b74; border-color: #6b5433;
+    cursor: default; color: var(--disabled-text); background: var(--disabled-bg); border-color: var(--disabled-border);
     box-shadow: none; text-shadow: none;
   }
 
-  #shop .hint { margin: 8px 2px 0; min-height: 15px; font-size: 12px; text-align: center; color: #9a835f; }
+  #shop .hint { margin: 8px 2px 0; min-height: 15px; font-size: var(--fs-body); text-align: center; color: var(--tan-dim); }
 `;
 
 export class ShopUi {

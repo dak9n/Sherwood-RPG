@@ -11,6 +11,155 @@
         src: url('/fonts/medievalsharp.woff2') format('woff2');
         font-display: swap;
       }
+
+      /* ============================================================
+         Общий слой темы UI. Один источник для ~40 семантических
+         токенов вместо ~84 близких цветов, раскиданных по 13 модулям
+         интерфейса. Живёт здесь, а не в отдельном модуле: :root нужен
+         любому окну, а этот <style> всегда в документе. Ноль JS.
+
+         Это КОНСОЛИДАЦИЯ, не редизайн: идентичность прежняя —
+         тёплое дерево, зелёные акценты, золотые цифры, MedievalSharp.
+
+         Пути к ассетам ОТНОСИТЕЛЬНЫЕ (как во всём коде). Множитель
+         рамок S=3 во всех окнах, поэтому пиксели в --frame-*-w
+         фиксированные. Рамку задают ПАРОЙ: border-width + border-image
+         (см. пример внизу) — иначе 9-slice схлопнется.
+         ============================================================ */
+      :root {
+        /* ---- Шрифт / типографика ---- */
+        --font-family: 'MedievalSharp', system-ui, sans-serif;
+        --fs-micro: 9px;   --fs-tiny: 10px;  --fs-small: 11px; --fs-body: 12px;
+        --fs-md: 13px;     --fs-lg: 14px;    --fs-title: 15px; --fs-xl: 16px;
+        --fs-display: 20px; --fs-death: 28px;
+        --fw-bold: 700;    --lh-1: 1;        --lh-normal: 1.4;
+        --ls-title: 0.1em; --ls-heading: 0.05em;
+        --font-title:   var(--fw-bold) var(--fs-title)/var(--lh-1) var(--font-family);
+        --font-heading: var(--fw-bold) var(--fs-small)/var(--lh-1) var(--font-family);
+        --font-num:     var(--fw-bold) var(--fs-lg)/var(--lh-1) var(--font-family);
+
+        /* ---- Текст / нейтрали ---- */
+        --ink: #f0e0c8;        /* базовый тёплый кремовый текст на дереве */
+        --ink-bright: #eaf6f0; /* заголовки окон, надписи кнопок */
+        --ink-dark: #2b1d12;   /* тёмный текст на бежевой панели, контур точек */
+        --parchment: #e5d6a1;  /* тон страницы / подсказки */
+        --tan: #d8c0a0;        /* приглушённый вторичный текст, подзаголовки */
+        --tan-dim: #9a835f;    /* тусклый текст: hint, placeholder */
+        --brown-text: #5a4020; /* коричневые подписи на бежевом */
+        --white: #ffffff;      --black: #000000;
+
+        /* ---- Дерево / рамки ---- */
+        --shadow-teal: #294040; /* тень текста / бордюр активной вкладки */
+        --wood-shadow: #3e1f1d; /* тёмная марун-рамка, тень под золотом */
+        --wood-mid: #70492a;    /* средний коричневый: кольца, бордюры слотов */
+        --wood-deep: #241811;   /* почти чёрный фон полей ввода */
+        --slot-bg: #cda677;     /* песочный фон ячейки предмета */
+        --forest: #2a3a2c;      /* тёмно-зелёный: центр фона окна / карта */
+
+        /* ---- Зелёные акценты (кнопки) ---- */
+        --green: #50a978;    /* основной зелёный: кнопки, активные вкладки */
+        --green-hi: #74cf8d; /* верхняя фаска кнопки */
+        --green-lo: #3f7168; /* нижняя фаска кнопки */
+        --grass: #7aad55;    /* трава за портретом героя */
+
+        /* ---- Золото / янтарь (цифры, цены) ---- */
+        --gold: #ffcf5a;      /* яркое золото: выделение, цены, значки +N */
+        --gold-pale: #ffe08a; /* бледное золото: счётчик монет, урон */
+        --gold-soft: #e0c48a; /* мягкое золото: заголовки панелей */
+        --gold-dark: #a07f2d; /* тёмное золото/олива: дно xp-бара, пипсы */
+        --amber: #c98a2f;     /* янтарь: стрелки, кнопка продажи */
+
+        /* ---- Статусы ---- */
+        --danger: #a33b2e; /* красный: нехватка, минус, отмена */
+        --error: #e2705f;  /* мягкая ошибка: сообщения, «ВЫ ПОГИБЛИ» */
+        --salmon: #e08a6a; /* лосось/оранж: плохой дельта, провал */
+
+        /* ---- Редкость: один источник для рамок и для текста ---- */
+        --rarity-common: #8a6a48;
+        --rarity-uncommon: #2f7a35;
+        --rarity-rare: #2b5ea8;
+        --rarity-epic: #7b3ca8;
+        --rarity-common-text: var(--tan);
+        --rarity-uncommon-text: #8ad46a;
+        --rarity-rare-text: #7ab0e8;
+        --rarity-epic-text: #c58ae8;
+        --success: var(--rarity-uncommon-text); /* положительный дельта = светло-зелёный */
+
+        /* ---- Ветки дерева навыков (переиспользуют статус-палитру) ---- */
+        --branch-power: var(--danger);
+        --branch-agility: var(--rarity-uncommon);
+        --branch-survival: var(--rarity-rare);
+
+        /* ---- Отключённые контролы ---- */
+        --disabled-bg: #b79b74;
+        --disabled-text: #a08a6a;
+        --disabled-border: #6b5433;
+
+        /* ---- Эффект огненного шара (скилл) ---- */
+        --fire-core: #fff2a8; --fire-hot: #ffb02e;
+        --fire-orange: #e8641a; --fire-ember: #7a2a08;
+
+        /* ---- Полупрозрачные слои (тени, кромки, плашки) ---- */
+        --shadow-drop: rgba(0, 0, 0, 0.6);      /* тень окна (drop-shadow) */
+        --border-dark: rgba(0, 0, 0, 0.5);      /* 1px тёмный бордюр */
+        --edge-hi: rgba(255, 255, 255, 0.18);   /* верхний блик слота */
+        --edge-faint: rgba(255, 255, 255, 0.05);/* еле заметная кромка/строка */
+        --gold-glow: rgba(255, 207, 90, 0.4);   /* золотое свечение выделения */
+        --panel-scrim: rgba(16, 13, 10, 0.56);  /* тёмная полупрозрачная панель */
+        --plaque: rgba(30, 20, 12, 0.6);        /* плашка цены */
+        --backdrop-scrim: rgba(12, 16, 20, 0.72);/* затемнение за полной картой */
+
+        /* ---- Готовые рецепты теней/контуров (снимают копипаст по файлам) ---- */
+        --text-shadow-teal: 1px 1px 0 var(--shadow-teal);
+        --text-shadow-maroon: 1px 1px 0 var(--wood-shadow);
+        --text-outline-4way: 1px 1px 0 var(--black), -1px 1px 0 var(--black),
+          1px -1px 0 var(--black), -1px -1px 0 var(--black);
+        --bevel-green: inset 0 2px 0 var(--green-hi), inset 0 -3px 0 var(--green-lo);
+        --ring-selected: inset 0 0 0 2px var(--gold-glow), 0 0 8px var(--gold-glow);
+        --drop-window: drop-shadow(0 16px 44px var(--shadow-drop));
+
+        /* ---- Шкала отступов (S=3: 3/6/9/12/15; сетка предметов ×4: 4/8) ---- */
+        --sp-1: 2px;   --sp-2: 3px;  --sp-3: 4px;  --sp-4: 5px;  --sp-5: 6px;
+        --sp-6: 8px;   --sp-7: 9px;  --sp-8: 10px; --sp-9: 12px; --sp-10: 14px;
+        --sp-11: 15px; --sp-12: 16px; --sp-13: 18px;
+
+        /* ---- Радиусы ---- */
+        --radius-hair: 1px; --radius-1: 2px; --radius-2: 3px;
+        --radius-3: 4px;    --radius-4: 5px; --radius-pill: 50%;
+
+        /* ---- 9-slice рамки: источник + ширина бордюра ПАРОЙ ---- */
+        --frame-window: url(assets/interface/ui/window.png) 16 5 5 5 fill / 48px 15px 15px 15px repeat;
+        --frame-window-w: 48px 15px 15px 15px;
+        --frame-beige: url(assets/interface/ui/panel_beige.png) 2 5 5 5 fill / 6px 15px 15px 15px repeat;
+        --frame-beige-w: 6px 15px 15px 15px;
+        --frame-dark: url(assets/interface/ui/panel_dark.png) 2 3 4 3 fill / 6px 9px 12px 9px repeat;
+        --frame-dark-w: 6px 9px 12px 9px;
+        --frame-button: url(assets/interface/ui/button.png) 4 3 3 3 fill / 12px 9px 9px 9px repeat;
+        --frame-button-w: 12px 9px 9px 9px;
+        --frame-button-sm: url(assets/interface/ui/button.png) 4 3 3 3 fill / 8px 6px 6px 6px repeat;
+        --frame-button-sm-w: 8px 6px 6px 6px;
+        --frame-tab-off: url(assets/interface/ui/tab_off.png) 4 5 1 5 fill / 8px 10px 2px 10px repeat;
+        --frame-tab-on: url(assets/interface/ui/tab_on.png) 4 5 1 5 fill / 8px 10px 2px 10px repeat;
+        --frame-tab-w: 8px 10px 2px 10px;
+        --titlebar-offset: -39px; /* -13*S: заголовок/крест на нарисованном колпаке рамки */
+
+        /* ---- Шкала z-index (порядок слоёв вместо магических чисел) ---- */
+        --z-hud: 10;           /* HUD, миникарта, меню-стрип */
+        --z-hud-bar: 15;       /* хотбар, аккаунт-бейдж */
+        --z-chat: 16;          /* панель чата */
+        --z-window: 20;        /* базовый слой окна (инвентарь) */
+        --z-window-raised: 22; /* приоритетные окна (магазин/кузница) */
+        --z-overlay: 24;       /* рынок / полная карта поверх окон */
+        --z-tooltip: 40;       /* плавающая подсказка предмета */
+        --z-modal: 100;        /* модалка логина / выбора класса */
+      }
+      /* Как применять рамку:
+         .win { border-style: solid; border-width: var(--frame-window-w);
+                border-image: var(--frame-window); image-rendering: pixelated; }
+         .btn { border-style: solid; border-width: var(--frame-button-w);
+                border-image: var(--frame-button); box-shadow: var(--bevel-green);
+                color: var(--ink-bright); text-shadow: var(--text-shadow-teal); } */
+
       html,
       body {
         margin: 0;

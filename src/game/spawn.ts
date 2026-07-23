@@ -102,6 +102,37 @@ export interface SpawnPoint {
   y: number;
 }
 
+/** kind у маркера точки старта игрока. Совпадает с редактором. */
+export const PLAYER_KIND = 'player';
+
+/**
+ * Точка старта игрока из маркеров карты — в ПИКСЕЛЯХ (центр клетки), или null,
+ * если маркера нет. Тогда игра ставит игрока по-старому, в центр нарисованного.
+ * Берём первый: player-маркер в карте осмыслен один (за этим следит редактор).
+ */
+export function mapPlayerStart(doc: MapDoc): { x: number; y: number } | null {
+  const sp = doc.map.spawns?.find((s) => s.kind === PLAYER_KIND);
+  if (!sp) return null;
+  const tw = doc.map.tileWidth;
+  const th = doc.map.tileHeight;
+  return { x: sp.x * tw + tw / 2, y: sp.y * th + th / 2 };
+}
+
+/**
+ * Точки спавна монстров и боссов из маркеров карты — в ПИКСЕЛЯХ (центр клетки).
+ *
+ * Player-маркер сюда не попадает, это не существо. Пустой список означает «в
+ * карте маркеров монстров нет» — тогда сцена расселяет их по-старому, случайно
+ * вокруг игрока. Так карта без разметки играется как раньше.
+ */
+export function mapMobSpawns(doc: MapDoc): SpawnPoint[] {
+  const tw = doc.map.tileWidth;
+  const th = doc.map.tileHeight;
+  return (doc.map.spawns ?? [])
+    .filter((s) => s.kind !== PLAYER_KIND)
+    .map((s) => ({ kind: s.kind, x: s.x * tw + tw / 2, y: s.y * th + th / 2 }));
+}
+
 /**
  * Расселяет монстров по суше вокруг игрока.
  *

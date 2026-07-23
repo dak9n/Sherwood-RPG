@@ -162,3 +162,44 @@ test('карта, нарисованная целиком, даёт границ
   m.layers[0].data.fill(1);
   assert.deepEqual(drawnBounds(m), { minX: 0, minY: 0, maxX: 4, maxY: 3 });
 });
+
+// --- маркеры спавна ---
+
+test('setMarker кладёт один маркер в клетку, markerAt его находит', () => {
+  const doc = makeDoc();
+  assert.equal(doc.markerAt(1, 1), null, 'пусто до постановки');
+
+  doc.setMarker(1, 1, { kind: 'golem2', x: 1, y: 1 });
+  assert.deepEqual(doc.markerAt(1, 1), { kind: 'golem2', x: 1, y: 1 });
+  assert.deepEqual(doc.spawns, [{ kind: 'golem2', x: 1, y: 1 }]);
+});
+
+test('в клетке маркер один: повторный setMarker заменяет прежний', () => {
+  const doc = makeDoc();
+  doc.setMarker(0, 0, { kind: 'spider1', x: 0, y: 0 });
+  doc.setMarker(0, 0, { kind: 'spider2', x: 0, y: 0 });
+  assert.equal(doc.spawns.length, 1, 'не два маркера в одной клетке');
+  assert.equal(doc.markerAt(0, 0)?.kind, 'spider2');
+});
+
+test('setMarker(null) снимает маркер, пустое поле spawns не держим', () => {
+  const doc = makeDoc();
+  doc.setMarker(0, 0, { kind: 'spider1', x: 0, y: 0 });
+  doc.setMarker(0, 0, null);
+  assert.equal(doc.markerAt(0, 0), null);
+  assert.equal(doc.map.spawns, undefined, 'опустевшее поле убрано, а не оставлено []');
+});
+
+test('setMarker не трогает соседние маркеры', () => {
+  const doc = makeDoc();
+  doc.setMarker(0, 0, { kind: 'player', x: 0, y: 0 });
+  doc.setMarker(1, 1, { kind: 'golem1', x: 1, y: 1 });
+  doc.setMarker(0, 0, null);
+  assert.deepEqual(doc.spawns, [{ kind: 'golem1', x: 1, y: 1 }], 'снятие одного не задело другой');
+});
+
+test('setMarker за границами карты ничего не делает', () => {
+  const doc = makeDoc();
+  doc.setMarker(5, 5, { kind: 'player', x: 5, y: 5 });
+  assert.equal(doc.spawns.length, 0);
+});

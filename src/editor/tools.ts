@@ -3,8 +3,9 @@ import { selectObject, extractRect, rectBetween, type Rect } from '../map/region
 import type { EditorState } from './state';
 import type { CellEdit } from './edit';
 import { WALK, BLOCK } from '../map/doc';
+import { PLAYER_KIND } from '../game/spawn';
 
-export type Tool = 'brush' | 'eraser' | 'select' | 'wall';
+export type Tool = 'brush' | 'eraser' | 'select' | 'wall' | 'marker';
 
 export type { Rect };
 
@@ -14,6 +15,13 @@ export const setWallSize = (n: number): void => {
   wallSize = Math.max(1, Math.min(16, Math.round(n)));
 };
 export const getWallSize = (): number => wallSize;
+
+/** Что кладёт инструмент маркеров: 'player' или id существа. Ставит палитра. */
+let markerKind = PLAYER_KIND;
+export const setMarkerKind = (kind: string): void => {
+  markerKind = kind;
+};
+export const getMarkerKind = (): string => markerKind;
 
 export interface ToolHandlers {
   onPick?: (note?: string) => void;
@@ -139,9 +147,47 @@ export function installTools(
     return true;
   };
 
+  /**
+   * Поставить/снять маркер спавна в клетке. ЛКМ — поставить выбранный вид,
+   * ПКМ — снять то, что там есть. Один клик — одна отменяемая правка, поэтому
+   * идёт через apply (record:true), а не через механизм штриха: маркеры ставят
+   * точками, а не мазками, размазать их протяжкой незачем.
+   */
+  const placeMarker = (x: number, y: number, erase: boolean): void => {
+    const existing = state.doc.markerAt(x, y);
+    const edits: CellEdit[] = [];
+
+    if (erase) {
+      if (existing) edits.push({ kind: 'marker', x, y, before: existing, after: null });
+    } else {
+      const kind = getMarkerKind();
+      if (existing && existing.kind === kind) return; // тот же вид в той же клетке — не плодим историю
+      // Игрок в карте один: ставя нового, снимаем прежнего с другой клетки. В
+      // том же пакете — Ctrl+Z вернёт разом и снятие, и постановку.
+      if (kind === PLAYER_KIND) {
+        const prev = state.doc.spawns.find((s) => s.kind === PLAYER_KIND);
+        if (prev && (prev.x !== x || prev.y !== y)) {
+          edits.push({ kind: 'marker', x: prev.x, y: prev.y, before: prev, after: null });
+        }
+      }
+      edits.push({ kind: 'marker', x, y, before: existing, after: { kind, x, y } });
+    }
+
+    if (edits.length) state.apply(edits);
+  };
+
   scene.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
     const { x, y } = cellUnder(p);
     if (!state.doc.inBounds(x, y)) return;
+
+    // Маркеры — раньше рисующих проверок: в этом режиме клик всегда про маркер,
+    // а не про тайл или пипетку. Пробел с ЛКМ по-прежнему панорама.
+    if (getTool() === 'marker') {
+      if (p.leftButtonDown() && scene.input.keyboard?.checkDown(scene.input.keyboard.addKey('SPACE'), 0)) return;
+      if (!p.leftButtonDown() && !p.rightButtonDown()) return;
+      placeMarker(x, y, p.rightButtonDown());
+      return;
+    }
 
     // Стены рисуются раньше всех проверок, кроме панорамы: ни пипетка, ни
     // выделение, ни ластик тут не при чём — правится не слой, а проходимость.

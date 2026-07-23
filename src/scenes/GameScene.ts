@@ -11,7 +11,7 @@ import {
 import { BARRIER_MP_COST, BARRIER_COOLDOWN, BARRIER_REDUCTION } from '../game/barrier';
 import { fireballDamage, arrowRainDamage } from '../game/combat';
 import { findTallObjects } from '../game/tall-objects';
-import { pickSpawns, pickBossSpawns } from '../game/spawn';
+import { pickSpawns, pickBossSpawns, mapPlayerStart, mapMobSpawns } from '../game/spawn';
 import { buildFlow } from '../game/flow';
 import { HERO, ALL_CREATURES, SPAWNS, BOSS_SPAWNS, xpToNext, rollDrop, rollGold } from '../game/creatures';
 import { Hud } from '../game/hud';
@@ -20,6 +20,9 @@ import { drawnBounds } from '../map/doc';
 import { Loot, registerItemFrames } from '../game/loot';
 import { addToBag, takeOne, sortBag, isRanged, countOf, rarityOf, roomFor, ITEMS, type Stack, type EquipSlot } from '../game/items';
 import { MarketUi } from '../game/market-ui';
+import { OnlineClient } from '../net/online';
+import { RemotePlayers } from '../game/remote-players';
+import { getToken } from '../auth/client';
 import { marketBrowse, marketBuy, marketList, marketCancel, marketMine, marketHistory, marketMail, marketMailAck } from '../game/market-client';
 import type { BrowseFilter, BrowseResult, Lot, TradeItem, TradeRecord } from '../game/market-types';
 import { InventoryUi } from '../game/inventory-ui';
@@ -142,6 +145,17 @@ export class GameScene extends MapScene {
   private chatBubbleUntil = 0;
   /** Чат слева: системные события и сообщения игрока. */
   private chat!: ChatUi;
+  /** Онлайн: канал до сервера и спрайты чужих героев. Нет входа — нет онлайна. */
+  private online?: OnlineClient;
+  private remotes?: RemotePlayers;
+  /** Когда в последний раз рассказывали серверу, где мы. */
+  private lastPosAt = 0;
+  /** Общие мобы с сервера: id -> марионетка. Пуст в оффлайне. */
+  private netMobs = new Map<number, Monster>();
+  /** Чей лес: ждём сервер, сервер прислал, или спавним своих (оффлайн/фолбэк). */
+  private mobsMode: 'pending' | 'server' | 'local' = 'pending';
+  /** Деревья — марионеткам они нужны при создании из снимка. */
+  private mobTall: Map<number, number> = new Map();
   /** Сумка игрока. */
   bag: (Stack | null)[] = new Array(BAG_SIZE).fill(null);
   /** Надетое. Новый герой начинает с мечом в руке — у каждого героя он есть. */
@@ -195,41 +209,31 @@ export class GameScene extends MapScene {
 
     // Спрайты брони НА герое: полосы 128x32 из assets/worn (рисуются в
     // редакторе ?helm) — шлемы на голову, нагрудники на корпус. Каких спрайтов
-    // нарисовано — говорит манифест: грузить вслепую по каждому предмету
-    // значило бы сыпать 404 в консоль. Пока манифест не дочитан, докидываем
-    // картинки прямо в работающий загрузчик — Phaser так умеет.
+    // нарисовано — говорят манифесты: грузить вслепую по каждому предмету
+    // значило бы сыпать 404 в консоль. Здесь — ТОЛЬКО манифесты; сами файлы
+    // докидывает queueSecondPass. Раньше они добавлялись из обработчиков
+    // filecomplete прямо в работающий загрузчик — и это те же грабли, что у
+    // тайлсетов (см. MapScene.create): опустела очередь раньше, чем пришёл
+    // манифест, — и загрузка молча встала навсегда, чёрный экран.
     this.load.json('worn-manifest', 'assets/worn/manifest.json');
-    this.load.on('filecomplete-json-worn-manifest', (_k: string, _t: string, ids: unknown) => {
-      if (!Array.isArray(ids)) return;
-      for (const id of ids) {
-        const slot = typeof id === 'string' ? ITEMS[id]?.slot : undefined;
-        if (slot === 'helm' || slot === 'body') {
-          this.load.image(`worn-${id}`, `assets/worn/${id}.png`);
-        }
-      }
-    });
-
-    // Маски: у какого шлема из-под края торчат волосы, там нарисована полоса
-    // «здесь голову не рисовать» (см. Player.drawHeadMasked). Свой манифест, а
-    // не общий: маска есть далеко не у каждого шлема, и грузить их вслепую
-    // значило бы сыпать 404 — ровно то, от чего манифест выше и спасает.
     this.load.json('worn-mask-manifest', 'assets/worn/mask/manifest.json');
-    this.load.on('filecomplete-json-worn-mask-manifest', (_k: string, _t: string, ids: unknown) => {
-      if (!Array.isArray(ids)) return;
-      for (const id of ids) {
-        if (typeof id === 'string') this.load.image(`worn-mask-${id}`, `assets/worn/mask/${id}.png`);
-      }
-    });
-
-    // Покадровые поправки посадки брони: у какого предмета они нарисованы,
-    // сказано в своём манифесте — по той же причине, что и у масок.
     this.load.json('worn-offset-manifest', 'assets/worn/offset/manifest.json');
-    this.load.on('filecomplete-json-worn-offset-manifest', (_k: string, _t: string, ids: unknown) => {
-      if (!Array.isArray(ids)) return;
-      for (const id of ids) {
-        if (typeof id === 'string') this.load.json(`worn-offset-${id}`, `assets/worn/offset/${id}.json`);
-      }
-    });
+  }
+
+  /** Спрайты, маски и поправки брони — вторым проходом, по манифестам из кеша. */
+  protected override queueSecondPass(): void {
+    const ids = (key: string): string[] => {
+      const raw = this.cache.json.get(key) as unknown;
+      return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === 'string') : [];
+    };
+    for (const id of ids('worn-manifest')) {
+      const slot = ITEMS[id]?.slot;
+      if (slot === 'helm' || slot === 'body') this.load.image(`worn-${id}`, `assets/worn/${id}.png`);
+    }
+    // Маски есть не у каждого шлема, поправки — не у каждой вещи: у обоих свои
+    // манифесты, чтобы не выпрашивать несуществующие файлы.
+    for (const id of ids('worn-mask-manifest')) this.load.image(`worn-mask-${id}`, `assets/worn/mask/${id}.png`);
+    for (const id of ids('worn-offset-manifest')) this.load.json(`worn-offset-${id}`, `assets/worn/offset/${id}.json`);
   }
 
   protected onReady(): void {
@@ -253,10 +257,9 @@ export class GameScene extends MapScene {
 
     // Большие деревья ищем один раз: карта в игре не меняется.
     const tall = findTallObjects(this.doc);
-    this.player.setTallObjects(tall, this.doc.width, this.doc.map.tileWidth, this.doc.map.tileHeight);
+    this.player.setTallObjects(tall, this.doc.width, this.doc.map.tileWidth, this.doc.map.tileHeight, this.doc.layers.length);
 
     const walls = this.buildCollision(tall);
-    this.spawnMonsters(tall, x, y, walls);
 
     this.hud = new Hud();
 
@@ -266,10 +269,17 @@ export class GameScene extends MapScene {
     this.chat.onSend = (text) => {
       this.chat.local(this.charName, text);
       this.showChatBubble(text); // и облачком над головой — видно, кто написал
+      this.online?.sendChat(text); // и всем, кто сейчас на этой карте
     };
     this.chat.onFocusChange = (typing) => {
       if (this.input.keyboard) this.input.keyboard.enabled = !typing;
     };
+
+    // Онлайн — после чата: статус соединения пишется туда.
+    this.setupOnline(tall);
+
+    // Мобы — после онлайна: от него зависит, серверные они или свои.
+    this.setupMonsters(tall, x, y, walls);
 
     this.inventory = new InventoryUi();
     this.inventory.setBag(this.bag);
@@ -477,7 +487,10 @@ export class GameScene extends MapScene {
     if (pendingName) this.charName = pendingName;
     if (!this.charName) this.charName = 'Hero';
     this.buildNameTag();
-    this.chat.system(`Welcome to the forest, ${this.charName}!`);
+    // Приветствие называет карту, а не всегда «forest»: игрок мог зайти на
+    // другую через ?map=. Ключ ставит main.ts; нет его — по-прежнему forest.
+    const mapName = (this.registry.get('mapName') as string | undefined) ?? 'forest';
+    this.chat.system(`Welcome to ${mapName}, ${this.charName}!`);
 
     // Сохраняемся, когда вкладку прячут или закрывают — не только по таймеру.
     // keepalive у запроса (см. pushProgress) даёт ему дожить после закрытия.
@@ -494,6 +507,8 @@ export class GameScene extends MapScene {
       window.removeEventListener('pagehide', this.onLeave);
       this.hud.destroy();
       this.chat.destroy();
+      this.online?.destroy();
+      this.remotes?.destroy();
       this.nameTag?.destroy();
       this.chatBubble?.destroy();
       this.inventory.destroy();
@@ -577,6 +592,78 @@ export class GameScene extends MapScene {
     return layer;
   }
 
+  /**
+   * Мобы. Онлайн — с сервера (общие на всех, см. server/world.ts): здесь
+   * только ждём их снимков, а не спавним. Оффлайн — по-старому, свои. Если
+   * онлайн задуман, но так и не ожил, через несколько секунд честно падаем в
+   * оффлайн-режим — пустой лес хуже несинхронного.
+   */
+  private setupMonsters(tall: Map<number, number>, px: number, py: number, walls: Phaser.Tilemaps.TilemapLayer): void {
+    // В стены упирается игрок ВСЕГДА, при любом источнике мобов.
+    this.physics.add.collider(this.player.sprite, walls);
+
+    if (!this.online) {
+      this.spawnMonsters(tall, px, py, walls);
+      return;
+    }
+
+    this.mobTall = tall;
+    this.online.onMobs = (ms) => this.applyMobs(ms);
+    this.online.onKill = (id) => {
+      const m = this.netMobs.get(id);
+      if (m) this.awardKill(m);
+    };
+    this.online.onMobHit = (id, dmg) => {
+      const m = this.netMobs.get(id);
+      const p = this.player.sprite;
+      // Броню и барьер считает жертва: сервер знает только силу укуса.
+      const taken = this.player.takeDamage(dmg, this.time.now);
+      if (taken > 0) {
+        this.damageNumber(p.x, p.y - 40, taken, '#ff6b5c');
+        this.cameras.main.shake(120, 0.005);
+      }
+      void m; // сам моб уже играет анимацию атаки по серверному снимку
+    };
+
+    this.time.delayedCall(6000, () => {
+      if (this.mobsMode === 'pending') {
+        this.mobsMode = 'local';
+        this.spawnMonsters(tall, px, py, walls);
+        this.chat.system('Server mobs unavailable — spawning local ones.');
+      }
+    });
+  }
+
+  /** Свежий снимок общих мобов: создать новых, обновить живых, убрать пропавших. */
+  private applyMobs(ms: import('../net/online').MobRow[]): void {
+    if (this.mobsMode === 'local') return; // фолбэк уже случился — серверу поздно
+    this.mobsMode = 'server';
+
+    const seen = new Set<number>();
+    for (const row of ms) {
+      seen.add(row.id);
+      let m = this.netMobs.get(row.id);
+      if (!m) {
+        const stats = ALL_CREATURES[row.k];
+        if (!stats) continue; // сервер новее клиента — вид неизвестен, пропускаем
+        m = new Monster(this, stats, row.x, row.y);
+        m.setTallObjects(this.mobTall, this.doc.width, this.doc.height, this.doc.map.tileWidth, this.doc.map.tileHeight, this.doc.layers.length);
+        const id = row.id;
+        m.makePuppet((dmg) => this.online?.sendHit(id, dmg));
+        this.netMobs.set(id, m);
+        this.monsters.push(m); // меч, стрелы и шары находят их как раньше
+      }
+      m.netSync(row);
+    }
+    // Пропавшие из снимка (мир пересобрали) — убираем совсем.
+    for (const [id, m] of this.netMobs) {
+      if (seen.has(id)) continue;
+      this.netMobs.delete(id);
+      this.monsters.splice(this.monsters.indexOf(m), 1);
+      m.destroy();
+    }
+  }
+
   private spawnMonsters(tall: Map<number, number>, px: number, py: number, walls: Phaser.Tilemaps.TilemapLayer): void {
     const blocked = new Set(tall.keys());
     // Не селим на стенах: паук, замурованный в воде, будет вечно биться о берег.
@@ -584,15 +671,19 @@ export class GameScene extends MapScene {
       if (!this.doc.canWalk(i % this.doc.width, Math.floor(i / this.doc.width))) blocked.add(i);
     }
 
-    // Боссы отдельным заходом: им нужна поляна, а не любая проходимая клетка.
-    const points = [
-      ...pickSpawns(this.doc, blocked, SPAWNS, { x: px, y: py }),
-      ...pickBossSpawns(this.doc, blocked, BOSS_SPAWNS, { x: px, y: py }),
-    ];
+    // Расставлены руками в редакторе — берём ровно их. Пусто — прежнее
+    // поведение: пауки случайно вокруг игрока, боссы на дальних полянах.
+    const marked = mapMobSpawns(this.doc);
+    const points = marked.length
+      ? marked.filter((p) => ALL_CREATURES[p.kind]) // чужой id из старой карты молча пропускаем
+      : [
+          ...pickSpawns(this.doc, blocked, SPAWNS, { x: px, y: py }),
+          ...pickBossSpawns(this.doc, blocked, BOSS_SPAWNS, { x: px, y: py }),
+        ];
     for (const p of points) {
       const m = new Monster(this, ALL_CREATURES[p.kind], p.x, p.y);
       // Пауки прячутся за деревьями по тем же правилам, что игрок.
-      m.setTallObjects(tall, this.doc.width, this.doc.height, this.doc.map.tileWidth, this.doc.map.tileHeight);
+      m.setTallObjects(tall, this.doc.width, this.doc.height, this.doc.map.tileWidth, this.doc.map.tileHeight, this.doc.layers.length);
       this.monsters.push(m);
     }
 
@@ -602,8 +693,7 @@ export class GameScene extends MapScene {
     this.physics.add.collider(group, group);
     this.physics.add.collider(this.player.sprite, group);
 
-    // В стены упираются и игрок, и пауки — иначе погоня пойдёт через пруд.
-    this.physics.add.collider(this.player.sprite, walls);
+    // Пауки тоже упираются в стены (игрок — всегда, см. setupMonsters).
     this.physics.add.collider(group, walls);
   }
 
@@ -689,14 +779,21 @@ export class GameScene extends MapScene {
     this.damageNumber(m.sprite.x, m.sprite.y - 30, damage, color, crit ? `${damage}!` : undefined);
     // Вампиризм (навык): часть нанесённого урона возвращается здоровьем.
     this.healFromLifesteal(damage);
-    if (m.isDead) {
-      this.gainXp(m.stats.xp);
-      this.dropLoot(m);
-      const gold = this.awardGold(m);
-      // Одна строка в чат на убийство: опыт и золото вместе.
-      const goldPart = gold > 0 ? `, +${gold} gold` : '';
-      this.chat.system(`Defeated ${m.stats.name} (Lv.${m.stats.level}) — +${m.stats.xp} XP${goldPart}.`);
-    }
+    if (m.isDead) this.awardKill(m);
+  }
+
+  /**
+   * Награда за убийство: опыт, добыча, золото, строка в чате. В оффлайне
+   * зовётся сразу из hitMonster; в онлайне — по событию kill от сервера
+   * (марионетка от локального удара не умирает, решает сервер).
+   */
+  private awardKill(m: Monster): void {
+    this.gainXp(m.stats.xp);
+    this.dropLoot(m);
+    const gold = this.awardGold(m);
+    // Одна строка в чат на убийство: опыт и золото вместе.
+    const goldPart = gold > 0 ? `, +${gold} gold` : '';
+    this.chat.system(`Defeated ${m.stats.name} (Lv.${m.stats.level}) — +${m.stats.xp} XP${goldPart}.`);
   }
 
   /** Вампиризм: вернуть здоровьем долю нанесённого урона. Тихо, но с зелёной цифрой. */
@@ -1807,6 +1904,59 @@ export class GameScene extends MapScene {
     });
   }
 
+  /**
+   * Онлайн: другие игроки на этой карте — их спрайты, ники и чат.
+   *
+   * Кто мы, серверу говорит токен сессии. Без токена (?guest) в разработке
+   * входим гостем по имени героя — дев-сервер таких пускает, боевой нет. В
+   * собранной игре без входа онлайна просто нет: играется как раньше, одному.
+   */
+  private setupOnline(tall: Map<number, number>): void {
+    // Без токена и вне разработки онлайна нет — и клиент не заводится вовсе.
+    if (!getToken() && !import.meta.env.DEV) return;
+
+    this.remotes = new RemotePlayers(this, ZOOM + 3);
+    this.remotes.setDepthParams({
+      tall,
+      mapWidth: this.doc.width,
+      tileW: this.doc.map.tileWidth,
+      tileH: this.doc.map.tileHeight,
+      layerCount: this.doc.layers.length,
+    });
+
+    // Имя героя сцена узнаёт из сейва ПОЗЖЕ этого места — потому auth лямбдой:
+    // клиент спросит его в момент рукопожатия, когда оно уже есть.
+    this.online = new OnlineClient(() => {
+      const token = getToken();
+      if (token) return { token };
+      if (import.meta.env.DEV && this.charName) return { guest: this.charName };
+      return null;
+    });
+    this.online.onRoster = (ps) => this.remotes?.applyRoster(ps);
+    this.online.onChat = (from, text) => {
+      this.chat.local(from, text);
+      this.remotes?.bubble(from, text);
+    };
+    this.online.onStatus = (on) =>
+      this.chat.system(on ? 'Online: other players on this map can see you.' : 'Online lost — reconnecting…');
+  }
+
+  /** Рассказать серверу, где мы, — 10 раз в секунду: чаще ростер всё равно не ходит. */
+  private pushPresence(now: number): void {
+    if (!this.online?.online || now - this.lastPosAt < 100) return;
+    this.lastPosAt = now;
+    this.online.sendPos({
+      map: (this.registry.get('mapName') as string | undefined) ?? 'forest',
+      x: Math.round(this.player.sprite.x),
+      y: Math.round(this.player.sprite.y),
+      // Ключ анимации целиком: чужой клиент его просто проигрывает.
+      anim: this.player.sprite.anims.currentAnim?.key ?? '',
+      helm: this.equipped.helm ?? null,
+      body: this.equipped.body ?? null,
+      dead: this.player.isDead, // мёртвых серверные мобы не трогают
+    });
+  }
+
   /** Метка с ником над героем: идёт за ним и сортируется вместе с ним. */
   private buildNameTag(): void {
     this.nameTag = this.add
@@ -1852,6 +2002,8 @@ export class GameScene extends MapScene {
   protected onUpdate(delta: number): void {
     const now = this.time.now;
     this.player.update(now, delta);
+    this.pushPresence(now);
+    this.remotes?.update(delta);
     this.updateFlow();
 
     // Ник идёт за героем; глубина как у него — уходит за крону вместе с ним.
@@ -1970,6 +2122,11 @@ export class GameScene extends MapScene {
 
   /** Центр области, где вообще что-то нарисовано. */
   private drawnCenter(): { x: number; y: number } {
+    // Есть маркер старта (поставлен в редакторе — например в городе) — стартуем
+    // там. Нет — прежнее поведение: центр нарисованного.
+    const marked = mapPlayerStart(this.doc);
+    if (marked) return marked;
+
     const b = drawnBounds(this.doc.map);
     const tw = this.doc.map.tileWidth;
     const th = this.doc.map.tileHeight;

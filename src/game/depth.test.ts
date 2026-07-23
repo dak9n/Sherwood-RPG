@@ -1,13 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { creatureDepth, DEPTH_ABOVE, DEPTH_BEHIND } from './depth.ts';
+import { creatureDepth, depthAbove, depthBehind, layerTopDepth, DEPTH_ABOVE } from './depth.ts';
 
 const W = 90;
 const T = 16;
+/** Число слоёв леса — под него подогнаны DEPTH_ABOVE/DEPTH_BEHIND. */
+const L = 27;
+/** Полоса «за деревом» на лесной карте — та же, что была константой (215). */
+const DEPTH_BEHIND = depthBehind(L);
 /** Большое дерево в клетке (5,5) с основанием на y = 96. */
 const tall = new Map<number, number>([[5 * W + 5, 96]]);
 
-const depth = (x: number, y: number): number => creatureDepth(x, y, tall, W, T, T);
+const depth = (x: number, y: number): number => creatureDepth(x, y, tall, W, T, T, L);
 
 test('на открытом месте существо поверх карты', () => {
   // Слои леса занимают глубины 0..260 — существо обязано быть выше всех.
@@ -53,6 +57,29 @@ test('дробная добавка не выносит существо в чу
 });
 
 test('без больших деревьев всё поверх карты', () => {
-  const d = creatureDepth(88, 88, new Map(), W, T, T);
+  const d = creatureDepth(88, 88, new Map(), W, T, T, L);
   assert.ok(d >= DEPTH_ABOVE, 'пустая карта деревьев — прятаться не за что');
+});
+
+// --- глубина масштабируется по числу слоёв ---
+
+test('лес (27 слоёв) даёт прежние 300/215 — поведение не изменилось', () => {
+  assert.equal(depthAbove(27), 300, 'DEPTH_ABOVE леса');
+  assert.equal(depthBehind(27), 215, 'DEPTH_BEHIND леса');
+  assert.equal(DEPTH_ABOVE, 300, 'экспорт-заглушка совпадает с лесом');
+});
+
+test('на карте с 42 слоями существо поверх ВЕРХНЕГО слоя (баг города macos)', () => {
+  // macos: 42 слоя -> глубины 0..410. Слой village-road на 320, забор на 340.
+  // При старой константе 300 игрок прятался под плиткой; теперь он выше 410.
+  const top = layerTopDepth(42);
+  assert.equal(top, 410);
+  const d = creatureDepth(88, 88, new Map(), W, T, T, 42);
+  assert.ok(d > top, `существо (${d}) обязано быть выше верхнего слоя (${top})`);
+  assert.ok(d > 340, 'иначе забор/дорога деревни нарисуются поверх героя');
+});
+
+test('чем больше слоёв, тем выше «поверх всего» — константа не отстаёт', () => {
+  assert.ok(depthAbove(42) > depthAbove(27), 'большая карта поднимает потолок');
+  assert.ok(depthAbove(42) > layerTopDepth(42), 'потолок над верхним слоём');
 });

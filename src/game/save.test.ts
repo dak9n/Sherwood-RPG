@@ -28,7 +28,7 @@ test('туда-обратно: нормальный сейв читается к
     level: 5,
     xp: 12,
     bag: [{ id: 'mush_red', qty: 7 }, null, { id: 'sword', qty: 1 }, ...new Array(BAG - 3).fill(null)],
-    equipped: { weapon: 'sword_blue', helm: 'helm' },
+    equipped: { weapon: 'sword_blue', helm: 'helm1' },
     spent: { dmg: 2, hp: 1, mp: 0, def: 0 },
   });
   const round = parseSave(serializeProgress(p), BAG);
@@ -80,7 +80,7 @@ test('надетое: вещь не в своё гнездо и несущест
   const p = parseSave(
     serializeProgress(base({
       equipped: {
-        weapon: 'helm' as never,       // шлем не оружие
+        weapon: 'helm1' as never,      // шлем не оружие
         helm: 'НЕТ_ТАКОГО' as never,   // предмета нет
         boots: 'boots',                 // а это верно
         плащ: 'sword' as never,         // такого гнезда нет

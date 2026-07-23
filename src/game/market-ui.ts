@@ -92,9 +92,9 @@ function fmtLeft(ms: number): string {
 
 const CSS = `
   #market {
-    position: absolute; inset: 0; z-index: 24; display: none;
+    position: absolute; inset: 0; z-index: var(--z-overlay); display: none;
     align-items: center; justify-content: center;
-    font: 12px/1.4 'MedievalSharp', system-ui, sans-serif; color: #f0e0c8; pointer-events: none;
+    font: var(--fs-body)/1.4 var(--font-family); color: var(--ink); pointer-events: none;
   }
   #market.open { display: flex; }
   #market * { image-rendering: pixelated; box-sizing: border-box; }
@@ -103,18 +103,17 @@ const CSS = `
   #market .win {
     pointer-events: auto; position: relative; width: 1000px; max-width: 98vw; height: 88vh; max-height: 760px;
     display: flex; flex-direction: column;
-    border-image: url(${UI}/window.png) 16 5 5 5 fill / ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px repeat;
-    border-width: ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px; border-style: solid;
+    border-width: var(--frame-window-w); border-image: var(--frame-window); border-style: solid;
     padding: 2px 12px 8px; filter: drop-shadow(0 16px 44px rgba(0,0,0,.62));
   }
   #market .title {
     position: absolute; top: -${13 * S}px; left: 0; right: 0; text-align: center;
-    font-weight: 700; font-size: 15px; letter-spacing: .12em; text-transform: uppercase;
-    color: #eaf6f0; text-shadow: 1px 1px 0 #294040;
+    font-weight: var(--fw-bold); font-size: var(--fs-title); letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-bright); text-shadow: var(--text-shadow-teal);
   }
   #market .gold {
     position: absolute; top: -${12 * S}px; left: 6px; display: flex; align-items: center; gap: 6px;
-    font-weight: 700; color: #ffcf5a; font-variant-numeric: tabular-nums; text-shadow: 1px 1px 0 #000;
+    font-weight: var(--fw-bold); color: var(--gold); font-variant-numeric: tabular-nums; text-shadow: 1px 1px 0 #000;
   }
   #market .close {
     position: absolute; top: -${13 * S}px; right: 0; width: ${9 * S}px; height: ${9 * S}px; cursor: pointer;
@@ -124,10 +123,10 @@ const CSS = `
 
   #market .tabs { display: flex; gap: 6px; margin: 2px 0 6px; }
   #market .tab {
-    cursor: pointer; padding: 5px 14px; font-weight: 700; font-size: 12px; color: #b8a284;
-    border: 2px solid #3a2c1c; border-radius: 4px 4px 0 0; background: rgba(20,14,8,.4);
+    cursor: pointer; padding: 5px 14px; font-weight: var(--fw-bold); font-size: var(--fs-body); color: #b8a284;
+    border: 2px solid #3a2c1c; border-radius: var(--radius-3) var(--radius-3) 0 0; background: rgba(20,14,8,.4);
   }
-  #market .tab.on { color: #eaf6f0; background: #50a978; border-color: #294040; }
+  #market .tab.on { color: var(--ink-bright); background: var(--green); border-color: var(--shadow-teal); }
 
   #market .body { display: flex; gap: 10px; flex: 1; min-height: 0; }
   #market .colL { width: 180px; flex: none; display: flex; flex-direction: column; gap: 8px; }
@@ -135,25 +134,24 @@ const CSS = `
   #market .colR { width: 250px; flex: none; display: flex; flex-direction: column; gap: 8px; }
 
   #market .panel {
-    border-image: url(${UI}/panel_dark.png) 2 3 4 3 fill / ${2 * S}px ${3 * S}px ${4 * S}px ${3 * S}px repeat;
-    border-width: ${2 * S}px ${3 * S}px ${4 * S}px ${3 * S}px; border-style: solid; padding: ${2 * S}px;
+    border-width: var(--frame-dark-w); border-image: var(--frame-dark); border-style: solid; padding: ${2 * S}px;
   }
-  #market .phead { font-size: 11px; font-weight: 700; color: #e0c48a; text-transform: uppercase; letter-spacing: .05em; margin: 0 0 6px; }
+  #market .phead { font-size: var(--fs-small); font-weight: var(--fw-bold); color: var(--gold-soft); text-transform: uppercase; letter-spacing: .05em; margin: 0 0 6px; }
 
   #market .cats { display: flex; flex-direction: column; gap: 2px; }
-  #market .cat { cursor: pointer; padding: 6px 8px; border-radius: 4px; color: #d8c0a0; font-size: 12px; }
+  #market .cat { cursor: pointer; padding: 6px 8px; border-radius: var(--radius-3); color: var(--tan); font-size: var(--fs-body); }
   #market .cat:hover { background: rgba(255,255,255,.06); }
-  #market .cat.on { background: #50a978; color: #eaf6f0; font-weight: 700; }
+  #market .cat.on { background: var(--green); color: var(--ink-bright); font-weight: var(--fw-bold); }
 
-  #market label.f { display: block; font-size: 10px; color: #b8a284; margin: 8px 2px 2px; text-transform: uppercase; }
+  #market label.f { display: block; font-size: var(--fs-tiny); color: #b8a284; margin: 8px 2px 2px; text-transform: uppercase; }
   #market select, #market input.txt {
-    width: 100%; font: inherit; font-size: 12px; padding: 5px 6px; color: #f0e0c8;
-    background: #2b1d12; border: 2px solid #5a4224; border-radius: 4px;
+    width: 100%; font: inherit; font-size: var(--fs-body); padding: 5px 6px; color: var(--ink);
+    background: var(--ink-dark); border: 2px solid #5a4224; border-radius: var(--radius-3);
   }
-  #market .chk { display: flex; align-items: center; gap: 6px; margin: 8px 2px 0; font-size: 12px; color: #d8c0a0; cursor: pointer; }
+  #market .chk { display: flex; align-items: center; gap: 6px; margin: 8px 2px 0; font-size: var(--fs-body); color: var(--tan); cursor: pointer; }
   #market .reset {
-    margin-top: auto; cursor: pointer; font: inherit; font-weight: 700; padding: 8px; color: #eaf6f0;
-    background: #7a4a2a; border: 2px solid #294040; border-radius: 4px;
+    margin-top: auto; cursor: pointer; font: inherit; font-weight: var(--fw-bold); padding: 8px; color: var(--ink-bright);
+    background: #7a4a2a; border: 2px solid var(--shadow-teal); border-radius: var(--radius-3);
   }
   #market .reset:hover { filter: brightness(1.1); }
 
@@ -161,77 +159,76 @@ const CSS = `
   #market .searchrow .txt { flex: 1; }
   #market .searchrow select { width: 160px; }
   #market .btn {
-    cursor: pointer; font: inherit; font-weight: 700; padding: 5px 10px; color: #eaf6f0;
-    background: #50a978; border: 2px solid #294040; border-radius: 4px; white-space: nowrap;
+    cursor: pointer; font: inherit; font-weight: var(--fw-bold); padding: 5px 10px; color: var(--ink-bright);
+    background: var(--green); border: 2px solid var(--shadow-teal); border-radius: var(--radius-3); white-space: nowrap;
   }
   #market .btn:hover:not(:disabled) { filter: brightness(1.1); }
-  #market .btn:disabled { cursor: default; color: #a08a6a; background: #b79b74; border-color: #6b5433; }
-  #market .btn.sm { padding: 4px 9px; font-size: 11px; }
+  #market .btn:disabled { cursor: default; color: var(--disabled-text); background: var(--disabled-bg); border-color: var(--disabled-border); }
+  #market .btn.sm { padding: 4px 9px; font-size: var(--fs-small); }
   #market .btn.danger { background: #a4402f; }
 
   #market .lots { flex: 1; overflow-y: auto; }
   #market table { width: 100%; border-collapse: collapse; }
-  #market th { text-align: left; font-size: 10px; color: #b8a284; text-transform: uppercase; padding: 4px 6px; position: sticky; top: 0; background: #241811; }
-  #market td { padding: 5px 6px; border-top: 1px solid rgba(255,255,255,.05); vertical-align: middle; }
+  #market th { text-align: left; font-size: var(--fs-tiny); color: #b8a284; text-transform: uppercase; padding: 4px 6px; position: sticky; top: 0; background: var(--wood-deep); }
+  #market td { padding: 5px 6px; border-top: 1px solid var(--edge-faint); vertical-align: middle; }
   #market tr:hover td { background: rgba(255,255,255,.04); }
   #market .itemcell { display: flex; align-items: center; gap: 8px; }
   #market .ico-wrap { width: 34px; height: 34px; flex: none; display: flex; align-items: center; justify-content: center;
-    background: #cda677; border: 2px solid ${RARITY_COLOR.common}; border-radius: 3px; position: relative; }
+    background: var(--slot-bg); border: 2px solid ${RARITY_COLOR.common}; border-radius: var(--radius-2); position: relative; }
   #market .ico-wrap.r-uncommon { border-color: ${RARITY_COLOR.uncommon}; }
   #market .ico-wrap.r-rare { border-color: ${RARITY_COLOR.rare}; }
   #market .ico-wrap.r-epic { border-color: ${RARITY_COLOR.epic}; }
   #market .ico-wrap .ico { transform: scale(1.5); }
-  #market .ico-wrap .plus { position: absolute; bottom: -1px; right: 0; font-size: 9px; font-weight: 700; color: #fff; text-shadow: 1px 1px 0 #000,-1px 1px 0 #000,1px -1px 0 #000,-1px -1px 0 #000; }
-  #market .nm { font-weight: 700; }
-  #market .nm.r-common { color: #e8dcc0; } #market .nm.r-uncommon { color: #8ad46a; }
-  #market .nm.r-rare { color: #7ab0e8; } #market .nm.r-epic { color: #c58ae8; }
-  #market .sub { font-size: 10px; color: #9a835f; }
-  #market .price { color: #ffcf5a; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  #market .empty { text-align: center; color: #9a835f; padding: 30px 10px; }
+  #market .ico-wrap .plus { position: absolute; bottom: -1px; right: 0; font-size: var(--fs-micro); font-weight: var(--fw-bold); color: #fff; text-shadow: var(--text-outline-4way); }
+  #market .nm { font-weight: var(--fw-bold); }
+  #market .nm.r-common { color: #e8dcc0; } #market .nm.r-uncommon { color: var(--rarity-uncommon-text); }
+  #market .nm.r-rare { color: var(--rarity-rare-text); } #market .nm.r-epic { color: var(--rarity-epic-text); }
+  #market .sub { font-size: var(--fs-tiny); color: var(--tan-dim); }
+  #market .price { color: var(--gold); font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #market .empty { text-align: center; color: var(--tan-dim); padding: 30px 10px; }
 
-  #market .pager { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 0 0; font-size: 12px; }
-  #market .pager .pg { cursor: pointer; padding: 3px 8px; border: 1px solid #5a4224; border-radius: 3px; color: #d8c0a0; }
-  #market .pager .pg.on { background: #50a978; color: #eaf6f0; border-color: #294040; }
-  #market .found { margin-left: auto; color: #9a835f; font-size: 11px; }
+  #market .pager { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 0 0; font-size: var(--fs-body); }
+  #market .pager .pg { cursor: pointer; padding: 3px 8px; border: 1px solid #5a4224; border-radius: var(--radius-2); color: var(--tan); }
+  #market .pager .pg.on { background: var(--green); color: var(--ink-bright); border-color: var(--shadow-teal); }
+  #market .found { margin-left: auto; color: var(--tan-dim); font-size: var(--fs-small); }
 
   #market .bag { display: grid; grid-template-columns: repeat(${BAG_COLS}, 1fr); gap: 4px; }
-  #market .cell { position: relative; aspect-ratio: 1; background: #cda677; border: 2px solid ${RARITY_COLOR.common}; border-radius: 3px;
+  #market .cell { position: relative; aspect-ratio: 1; background: var(--slot-bg); border: 2px solid ${RARITY_COLOR.common}; border-radius: var(--radius-2);
     display: flex; align-items: center; justify-content: center; cursor: default; }
   #market .cell.pick { cursor: pointer; }
-  #market .cell.pick:hover { filter: brightness(1.1); outline: 2px solid #ffcf5a; }
-  #market .cell.sel { outline: 3px solid #ffcf5a; }
+  #market .cell.pick:hover { filter: brightness(1.1); outline: 2px solid var(--gold); }
+  #market .cell.sel { outline: 3px solid var(--gold); }
   #market .cell.r-uncommon { border-color: ${RARITY_COLOR.uncommon}; } #market .cell.r-rare { border-color: ${RARITY_COLOR.rare}; } #market .cell.r-epic { border-color: ${RARITY_COLOR.epic}; }
   #market .cell .ico { transform: scale(1.6); }
-  #market .cell .qty { position: absolute; right: 1px; bottom: 0; font-size: 10px; font-weight: 700; color: #fff; text-shadow: 1px 1px 0 #000,-1px 1px 0 #000,1px -1px 0 #000,-1px -1px 0 #000; }
-  #market .cell .plus { position: absolute; left: 1px; bottom: 0; font-size: 9px; font-weight: 700; color: #ffcf5a; text-shadow: 1px 1px 0 #000; }
+  #market .cell .qty { position: absolute; right: 1px; bottom: 0; font-size: var(--fs-tiny); font-weight: var(--fw-bold); color: #fff; text-shadow: var(--text-outline-4way); }
+  #market .cell .plus { position: absolute; left: 1px; bottom: 0; font-size: var(--fs-micro); font-weight: var(--fw-bold); color: var(--gold); text-shadow: 1px 1px 0 #000; }
 
-  #market .notice { min-height: 16px; font-size: 12px; text-align: center; margin: 4px 0 0; }
-  #market .notice.ok { color: #8ad46a; } #market .notice.bad { color: #e0885a; }
-  #market .footer { display: flex; gap: 18px; justify-content: center; font-size: 11px; color: #b8a284; padding-top: 6px; border-top: 1px solid rgba(255,255,255,.06); margin-top: 4px; }
+  #market .notice { min-height: 16px; font-size: var(--fs-body); text-align: center; margin: 4px 0 0; }
+  #market .notice.ok { color: var(--rarity-uncommon-text); } #market .notice.bad { color: #e0885a; }
+  #market .footer { display: flex; gap: 18px; justify-content: center; font-size: var(--fs-small); color: #b8a284; padding-top: 6px; border-top: 1px solid rgba(255,255,255,.06); margin-top: 4px; }
 
   /* Диалог создания лота. Предмет выбирается ДО открытия (кликом по сумке), поэтому
      диалог честно модальный: фон ловит клики (pointer-events:auto обязателен — .dlg
      сосед .win, а #market клики выключил) и закрывается кликом мимо карточки.
      Закрыть также можно кнопкой Cancel или Esc. */
-  #market .dlg { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.5); z-index: 2; pointer-events: auto; }
+  #market .dlg { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: var(--border-dark); z-index: 2; pointer-events: auto; }
   #market .dlg.open { display: flex; }
-  #market .dlg .card { pointer-events: auto; width: 380px; padding: 14px; border-image: url(${UI}/window.png) 16 5 5 5 fill / ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px repeat;
-    border-width: ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px; border-style: solid; }
-  #market .dlgerr { color: #e0885a; font-size: 11px; text-align: center; min-height: 14px; margin-top: 6px; }
+  #market .dlg .card { pointer-events: auto; width: 380px; padding: 14px; border-width: var(--frame-window-w); border-image: var(--frame-window); border-style: solid; }
+  #market .dlgerr { color: #e0885a; font-size: var(--fs-small); text-align: center; min-height: 14px; margin-top: 6px; }
 
   /* Панель характеристик выбранного предмета — под сумкой, над «Create Listing».
      Показывает то же, что тултип инвентаря: игрок должен видеть, ЧТО продаёт. */
   #market .details { display: flex; flex-direction: column; gap: 4px; }
   #market .details .head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-  #market .details .kind { font-size: 10px; color: #9a835f; text-transform: uppercase; letter-spacing: .05em; }
-  #market .details .ln { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: #d8c0a0; }
+  #market .details .kind { font-size: var(--fs-tiny); color: var(--tan-dim); text-transform: uppercase; letter-spacing: .05em; }
+  #market .details .ln { display: flex; justify-content: space-between; gap: 8px; font-size: var(--fs-small); color: var(--tan); }
   #market .details .ln b { color: #e8dcc0; font-variant-numeric: tabular-nums; }
-  #market .details .ln b.plus { color: #8ad46a; }
+  #market .details .ln b.plus { color: var(--rarity-uncommon-text); }
   #market .details .ln b.minus { color: #e0885a; }
-  #market .details .none { font-size: 11px; color: #9a835f; text-align: center; padding: 6px 4px; line-height: 1.4; }
-  #market .dlg h3 { margin: 0 0 8px; text-align: center; color: #eaf6f0; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
+  #market .details .none { font-size: var(--fs-small); color: var(--tan-dim); text-align: center; padding: 6px 4px; line-height: 1.4; }
+  #market .dlg h3 { margin: 0 0 8px; text-align: center; color: var(--ink-bright); font-size: var(--fs-md); text-transform: uppercase; letter-spacing: .08em; }
   #market .dlg .row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
-  #market .dlg .row label { width: 90px; font-size: 12px; color: #d8c0a0; }
+  #market .dlg .row label { width: 90px; font-size: var(--fs-body); color: var(--tan); }
   #market .dlg .row input { flex: 1; }
   #market .dlg .acts { display: flex; gap: 8px; margin-top: 12px; }
   #market .dlg .acts .btn { flex: 1; text-align: center; }

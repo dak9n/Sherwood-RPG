@@ -7,9 +7,12 @@ import {
 } from '../map/layers';
 import { EditorState } from './state';
 import type { CellEdit } from './edit';
-import { installTools, type Tool } from './tools';
+import { installTools, setMarkerKind, getMarkerKind, type Tool } from './tools';
 import { Overlay } from './overlay';
 import { PassOverlay } from './pass-overlay';
+import { MarkerOverlay, markerCode, markerName, PLAYER_COLOR, MOB_COLOR, BOSS_COLOR } from './marker-overlay';
+import { SPAWNS, BOSS_SPAWNS } from '../game/creatures';
+import { PLAYER_KIND } from '../game/spawn';
 import { draftCollision } from '../map/collision-draft';
 import { findTallObjects } from '../game/tall-objects';
 import { saveMap, saveMapAs, fetchRevision, fetchMaps } from './save';
@@ -56,6 +59,10 @@ export function mountEditor(game: Phaser.Game): void {
   const passOverlay = new PassOverlay(scene, state.doc, scene.view);
   // Правку проходимости в apply рисуем точечно: O(1) на клетку вместо обхода 9800.
   state.onPass = (x, y, pass) => passOverlay.paint(x, y, pass);
+
+  const markerOverlay = new MarkerOverlay(scene, state);
+  // Маркеров немного — перерисовываем все разом при любой их правке.
+  state.onMarker = () => markerOverlay.invalidate();
 
   /**
    * Залить проходимость черновиком по картинке.
@@ -116,6 +123,11 @@ export function mountEditor(game: Phaser.Game): void {
     'Fill collision automatically from the picture (water, edges, trunks) — so you do not mark the whole map from scratch',
     () => seedDraft(),
   );
+  const markerBtn = btn(
+    'Spawns',
+    'Place spawn points: player start (green), monsters (amber), bosses (red). LMB — place the picked kind, RMB — remove',
+    () => setTool('marker'),
+  );
   const gridBtn = btn('Grid', 'Show the grid (at 2x zoom and above)', () => {
     gridOn = !gridOn;
     overlay.setGrid(gridOn);
@@ -139,15 +151,52 @@ export function mountEditor(game: Phaser.Game): void {
   let dimInactive = false;
   dimBtn.setAttribute('aria-pressed', 'false');
 
+  // Палитра видов для инструмента «Spawns»: кого класть кликом. Маленькая панель
+  // под кнопками, видна только в режиме маркеров. Порядок — игрок, монстры,
+  // боссы: тот же список, по которому игра расселяет их случайно.
+  const MARKER_KINDS = [PLAYER_KIND, ...SPAWNS.map((s) => s.kind), ...BOSS_SPAWNS.map((s) => s.kind)];
+  const isBoss = (kind: string): boolean => BOSS_SPAWNS.some((s) => s.kind === kind);
+  const hex = (n: number): string => '#' + n.toString(16).padStart(6, '0');
+  const markerPalette = document.createElement('div');
+  markerPalette.id = 'ed-markers';
+  markerPalette.style.cssText =
+    'display:none; gap:4px; flex-wrap:wrap; width:100%; padding-top:6px; margin-top:2px; border-top:1px solid #0d1114;';
+  const markerBtns = new Map<string, HTMLButtonElement>();
+  for (const kind of MARKER_KINDS) {
+    const color = kind === PLAYER_KIND ? PLAYER_COLOR : isBoss(kind) ? BOSS_COLOR : MOB_COLOR;
+    const b = document.createElement('button');
+    b.innerHTML = `<b style="color:${hex(color)}">${markerCode(kind)}</b> ${markerName(kind)}`;
+    b.title = `Place: ${markerName(kind)}`;
+    b.style.borderLeft = `3px solid ${hex(color)}`;
+    b.onclick = () => {
+      pickMarkerKind(kind);
+      if (tool !== 'marker') setTool('marker');
+    };
+    markerPalette.append(b);
+    markerBtns.set(kind, b);
+  }
+  shell.tools.append(markerPalette);
+
+  // Подсветить выбранный вид (aria-pressed зеленит кнопку) и запомнить его в
+  // инструменте — дальше клик по карте кладёт именно его.
+  function pickMarkerKind(kind: string): void {
+    setMarkerKind(kind);
+    for (const [k, b] of markerBtns) b.setAttribute('aria-pressed', String(k === kind));
+  }
+  pickMarkerKind(getMarkerKind());
+
   function setTool(next: Tool): void {
     tool = next;
     brushBtn.setAttribute('aria-pressed', String(next === 'brush'));
     eraserBtn.setAttribute('aria-pressed', String(next === 'eraser'));
     selectBtn.setAttribute('aria-pressed', String(next === 'select'));
     wallBtn.setAttribute('aria-pressed', String(next === 'wall'));
+    markerBtn.setAttribute('aria-pressed', String(next === 'marker'));
     // Накладку показываем только в своём режиме: поверх карты она мешает рисовать.
     passOverlay.setVisible(next === 'wall');
     draftBtn.disabled = next !== 'wall';
+    // Палитру видов — только в режиме маркеров: в остальных она сбивала бы с толку.
+    markerPalette.style.display = next === 'marker' ? 'flex' : 'none';
   }
   setTool('brush');
 
@@ -177,7 +226,10 @@ export function mountEditor(game: Phaser.Game): void {
     },
   });
 
-  scene.events.on('postupdate', () => overlay.draw());
+  scene.events.on('postupdate', () => {
+    overlay.draw();
+    markerOverlay.draw();
+  });
 
   // Статус
   let saveNote = '';
@@ -324,11 +376,22 @@ export function mountEditor(game: Phaser.Game): void {
     const req = await askResize(state.doc);
     if (!req) return;
 
-    if (req.dropped > 0) {
-      const where = Object.entries(req.droppedByLayer)
-        .map(([n, c]) => `  ${n}: ${c}`)
-        .join('\n');
-      if (!confirm(`${req.dropped} tiles will be lost for good:\n${where}\n\nContinue?`)) return;
+    // Подтверждаем, если теряются тайлы ЛИБО маркеры спавна. Маркеры — отдельным
+    // условием: их может срезать и там, где ни один тайл не потерян (пустая
+    // полоса), а откатить нечем — ресайз чистит историю. Без этого точка старта
+    // или босс исчезали бы молча.
+    if (req.dropped > 0 || req.droppedSpawns > 0) {
+      const lines: string[] = [];
+      if (req.dropped > 0) {
+        const where = Object.entries(req.droppedByLayer)
+          .map(([n, c]) => `  ${n}: ${c}`)
+          .join('\n');
+        lines.push(`${req.dropped} tiles will be lost for good:\n${where}`);
+      }
+      if (req.droppedSpawns > 0) {
+        lines.push(`${req.droppedSpawns} spawn ${req.droppedSpawns === 1 ? 'marker' : 'markers'} will be lost (undo will not bring them back).`);
+      }
+      if (!confirm(`${lines.join('\n\n')}\n\nContinue?`)) return;
     }
 
     const { map } = resizeMap(state.doc.map, req.deltas);
@@ -338,6 +401,7 @@ export function mountEditor(game: Phaser.Game): void {
     scene.rebuild(doc);
     state.resetAfterResize(doc, scene.view);
     passOverlay.relayer(doc, scene.view); // rebuild уничтожил тайлмапу вместе с накладкой
+    markerOverlay.invalidate(); // маркеры сдвинулись на дельту — перерисовать
 
     // Камера сдвигается вслед за картой, иначе она прыгнет под курсором.
     scene.cameras.main.scrollX += req.deltas.left * map.tileWidth;
@@ -446,6 +510,7 @@ export function mountEditor(game: Phaser.Game): void {
     }
     if (e.key === 'e') setTool(tool === 'eraser' ? 'brush' : 'eraser');
     if (e.key === 'g') gridBtn.click();
+    if (e.key === 'm') setTool(tool === 'marker' ? 'brush' : 'marker');
   });
 
   window.addEventListener('beforeunload', (e) => {

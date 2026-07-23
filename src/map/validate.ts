@@ -107,5 +107,29 @@ export function validateMap(map: unknown): string[] {
     }
   }
 
+  // Маркеры спавна — поле опциональное, но раз есть, то массив точек в границах
+  // карты. Мусор здесь молча сдвинул бы старт игрока за край или уронил бы
+  // спавн монстра в никуда — проверяем каждую точку.
+  if (m.spawns !== undefined) {
+    if (!Array.isArray(m.spawns)) {
+      errors.push('spawns must be an array');
+    } else {
+      for (let i = 0; i < m.spawns.length; i++) {
+        const sp = m.spawns[i] as Record<string, unknown>;
+        if (!sp || typeof sp !== 'object') {
+          errors.push(`spawn ${i}: not an object`);
+          continue;
+        }
+        if (typeof sp.kind !== 'string' || !sp.kind) errors.push(`spawn ${i}: kind must be a non-empty string`);
+        if (!Number.isInteger(sp.x) || (sp.x as number) < 0 || (sp.x as number) >= width) {
+          errors.push(`spawn ${i}: x ${JSON.stringify(sp.x)} out of 0..${width - 1}`);
+        }
+        if (!Number.isInteger(sp.y) || (sp.y as number) < 0 || (sp.y as number) >= height) {
+          errors.push(`spawn ${i}: y ${JSON.stringify(sp.y)} out of 0..${height - 1}`);
+        }
+      }
+    }
+  }
+
   return errors;
 }

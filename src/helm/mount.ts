@@ -234,7 +234,7 @@ export async function mountHelmEditor(): Promise<void> {
         <button id="h-next" title="Next frame">▶</button>
       </div>
       <div class="row">
-        <button id="h-nudgeframe" aria-pressed="false" title="Arrows move the armour on THIS frame only, instead of moving the drawing">🎯 Fit this frame</button>
+        <button id="h-nudgeframe" aria-pressed="false" title="Drag with the mouse (or press arrows) to move the armour on THIS frame only — step through frames and fit each one to animate the item">🎯 Fit this frame</button>
       </div>
       <div class="row">
         <span id="h-offset" class="dim"></span>
@@ -246,13 +246,12 @@ export async function mountHelmEditor(): Promise<void> {
         <button id="h-copy">Front to sides</button>
         <button id="h-clear">Clear</button>
       </div>
-      <h2>Insert item icon</h2>
-      <div class="row">
-        <button id="h-icon100">100%</button>
-        <button id="h-icon75">75%</button>
-        <button id="h-icon50">50%</button>
-      </div>
       <h2>Resize drawing</h2>
+      <div class="row">
+        <button id="h-icon100" title="Keep the current size">100%</button>
+        <button id="h-icon75" title="Shrink all four sides to 75%">75%</button>
+        <button id="h-icon50" title="Shrink all four sides to 50%">50%</button>
+      </div>
       <div class="row">
         <button id="h-shrink">− Smaller</button>
         <button id="h-grow">+ Bigger</button>
@@ -288,6 +287,13 @@ export async function mountHelmEditor(): Promise<void> {
         <b>Alt+click</b> pick a colour (from your pixels, or the hero under
         them), <b>Shift+drag</b> grab the cell's drawing and move it,
         <b>arrows</b> nudge it by a pixel.
+      </p>
+      <p class="hint">
+        <b>Animating the item:</b> the drawing is ONE picture shared by every
+        frame, but each frame keeps its own fit. Turn on <b>🎯 Fit this
+        frame</b>, step through frames with ◀ ▶ and drag the armour where it
+        should sit on each one, then press Play. The fits are saved with the
+        item and the game applies them too.
       </p>
       <p class="hint">
         <b>Hair rubber</b> deletes the hero's hair, not your helmet — for the
@@ -341,6 +347,23 @@ export async function mountHelmEditor(): Promise<void> {
    * рисунок — что стёр, там дырка.
    */
   let showHero = true;
+  /**
+   * Метка текущей загрузки предмета. loadHelm асинхронный: он тянет worn/mask с
+   * диска (каждый раз заново, ?t=) и дорисовывает их в слои уже после await. Если
+   * за это время игрок успел ПРАВИТЬ (вставил иконку, порисовал), пришедший
+   * спрайт затирал его работу — заказчик поймал это, нажав «50%» пока helm1 ещё
+   * грузился. Любая правка увеличивает метку (см. pushUndo); loadHelm сверяет её
+   * после каждого await и, если она сменилась, свои поздние отрисовки бросает.
+   */
+  let loadToken = 0;
+  /**
+   * Собранный спрайт текущего предмета (полоса 128x32), как он лежит на диске.
+   * Держим его, чтобы кнопки процентов рисовали шлем ЗАНОВО из исходника в
+   * нужном масштабе, а не мельчили то, что уже в ячейке. Иначе 100% после Clear
+   * не возвращал шлем (в ячейке пусто — мельчить нечего), а повторные нажатия
+   * корёжили уже сжатые пиксели. null — у предмета своего спрайта ещё нет.
+   */
+  let wornSource: HTMLImageElement | null = null;
   // Undo хранит и шлем, и маску: инструменты переключаются на лету, и откат
   // «через границу» иначе воскрешал бы чужой слой.
   const undoStack: { pix: ImageData[]; off: string }[] = [];
@@ -348,6 +371,10 @@ export async function mountHelmEditor(): Promise<void> {
     [...layers, ...masks].map((l) => l.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, CELL, CELL));
 
   const pushUndo = (): void => {
+    // Правка отменяет незавершённую загрузку: её поздний спрайт не должен лечь
+    // поверх только что нарисованного. Через pushUndo проходит КАЖДАЯ правка
+    // (кисть, вставка иконки, масштаб, подгонка) — одна точка, где это ловится.
+    loadToken++;
     // Поправки кадров кладём строкой: их мало, а откат «через границу» между
     // рисованием и подгонкой иначе воскрешал бы чужое состояние.
     undoStack.push({ pix: snapshot(), off: JSON.stringify(offsets) });
@@ -382,8 +409,22 @@ export async function mountHelmEditor(): Promise<void> {
     cellCanvases.push(c);
 
     let drawing: 'paint' | 'erase' | null = null;
+    /**
+     * Факты текущего штриха ластика: задел ли он хоть один СВОЙ пиксель и
+     * прошёл ли по волосам героя. По ним mouseup решает, не подсказать ли про
+     * Hair rubber: ластик стирает только рисунок шлема, а заказчик тёр им
+     * торчащие волосы — то есть пустоту — и «не мог затереть».
+     */
+    let erasedOwn = false;
+    let strokeHair = false;
     /** Перетаскивание пикселей ячейки (Shift+драг): снимок и точка старта. */
     let moving: { snap: HTMLCanvasElement; x: number; y: number } | null = null;
+    /**
+     * Драг в режиме 🎯: двигается ПОСАДКА текущего кадра, а не пиксели.
+     * Старт в координатах экрана, не ячейки: cellPos подрезает выход за край,
+     * а посадку надо уметь утаскивать дальше, чем на пиксель за границу.
+     */
+    let fitting: { cx: number; cy: number; ox: number; oy: number } | null = null;
     /**
      * Координаты пикселя ячейки под курсором.
      *
@@ -424,8 +465,21 @@ export async function mountHelmEditor(): Promise<void> {
       }
 
       const ctx = layers[di].getContext('2d')!;
-      if (drawing === 'erase' || eraser) ctx.clearRect(x, y, 1, 1);
-      else {
+      if (drawing === 'erase' || eraser) {
+        // Собираем факты для подсказки: свой пиксель под ластиком или волосы
+        // героя под пустотой. Сам вывод делает mouseup — по целому штриху.
+        if (ctx.getImageData(x, y, 1, 1).data[3] > 0) erasedOwn = true;
+        else {
+          const f = frameInfo(refSheet, refCol, di);
+          const fx = x - Math.round(refs[di].dx);
+          const fy = y - Math.round(refs[di].dy);
+          if (f && fx >= 0 && fy >= 0 && fx < FRAME && fy < FRAME) {
+            const p = (fy * FRAME + fx) * 4;
+            if (f.data[p + 3] > 24 && HAIR_TONES.has((f.data[p] << 16) | (f.data[p + 1] << 8) | f.data[p + 2])) strokeHair = true;
+          }
+        }
+        ctx.clearRect(x, y, 1, 1);
+      } else {
         ctx.fillStyle = color;
         ctx.fillRect(x, y, 1, 1);
       }
@@ -495,6 +549,19 @@ export async function mountHelmEditor(): Promise<void> {
         return;
       }
 
+      // 🎯 Подгонка: любой драг двигает посадку ЭТОГО кадра, пиксели не
+      // трогаем. Кисть здесь выключена намеренно: рисунок один на все кадры,
+      // и «нарисовать иначе только в этом кадре» нельзя — только сдвинуть.
+      // Раньше режим слушал одни стрелки, и заказчик двигал шлем мышью:
+      // двигался общий рисунок, все кадры разом — а play показывал статику.
+      if (nudgeFrame) {
+        pushUndo();
+        const [ox, oy] = offsetOf(di);
+        fitting = { cx: e.clientX, cy: e.clientY, ox, oy };
+        dirty();
+        return;
+      }
+
       // Shift — взять рисунок ячейки и перетащить целиком.
       if (e.shiftKey) {
         pushUndo();
@@ -509,11 +576,25 @@ export async function mountHelmEditor(): Promise<void> {
 
       pushUndo();
       drawing = e.button === 2 ? 'erase' : 'paint';
+      erasedOwn = false;
+      strokeHair = false;
       dirty();
       last = null; // новый штрих начинается точкой, а не линией от прошлого
       paint(e);
     };
     c.onmousemove = (e) => {
+      if (fitting) {
+        const r = c.getBoundingClientRect();
+        if (!r.width) return;
+        const k = CELL / r.width;
+        setOffset(di,
+          fitting.ox + Math.round((e.clientX - fitting.cx) * k),
+          fitting.oy + Math.round((e.clientY - fitting.cy) * k));
+        renderCell(di);
+        renderPreview();
+        updateOffsetNote();
+        return;
+      }
       if (moving) {
         const { x, y } = cellPos(e);
         const ctx = layers[di].getContext('2d')!;
@@ -525,7 +606,23 @@ export async function mountHelmEditor(): Promise<void> {
       }
       if (drawing) paint(e);
     };
-    window.addEventListener('mouseup', () => { drawing = null; moving = null; last = null; scheduleHairNote(); });
+    window.addEventListener('mouseup', () => {
+      // Сдвинул общий рисунок на многокадровой анимации — почти наверняка
+      // хотелось «только этот кадр». Говорим об этом там же, где написано,
+      // что сейчас делают стрелки: заказчик таскал шлем по кадрам Walk и ждал
+      // анимацию, а двигал все кадры разом.
+      if (moving && frameCount(refSheet) > 1) {
+        offNote.textContent = `moved the drawing on ALL frames — 🎯 “Fit this frame” moves frame ${refCol + 1} alone`;
+      }
+      // Весь штрих ластика прошёл по волосам героя, своих пикселей не задел:
+      // стирать было нечего — волосы убирает другой инструмент. Пересчёт волос
+      // не нужен (ничего не изменилось), подсказка важнее.
+      if (drawing && (drawing === 'erase' || eraser) && !hairMode && !erasedOwn && strokeHair) {
+        hairNote.textContent = 'the eraser removes YOUR pixels only — that’s the hero’s hair: use 💈 Hair rubber, or “Find stray hair” for all frames at once';
+        hairNote.className = 'note bad';
+      } else if (drawing || moving || fitting) scheduleHairNote(); // fitting: сдвиг меняет покрытие волос
+      drawing = null; moving = null; fitting = null; last = null;
+    });
   });
 
   /** Якорь текущего предмета: шлем — центр головы, нагрудник — ниже на корпус. */
@@ -628,13 +725,18 @@ export async function mountHelmEditor(): Promise<void> {
     const cells = DIRS.map(() => new Set<number>());
 
     for (const sheet of SHEETS) {
-      for (let col = 0; col < frameCount(sheet); col++) {
+      const cols = frameCount(sheet);
+      for (let col = 0; col < cols; col++) {
         for (let row = 0; row < DIRS.length; row++) {
           const f = frameInfo(sheet, col, row);
           if (!f) continue;
-          // Та же посадка, что в игре: ячейка ложится в кадр по round(центр-16).
-          const ox = Math.round(f.cx - 16);
-          const oy = Math.round(f.cy - 16);
+          // Та же посадка, что в игре: ячейка ложится в кадр по round(центр-16)
+          // ПЛЮС ручная поправка кадра — шлем и маска в игре сдвинуты на неё
+          // (stampWorn/drawHeadMasked), значит и покрытие волос считается по
+          // сдвинутому положению.
+          const po = offsets[sheet]?.[row * cols + col] ?? [0, 0];
+          const ox = Math.round(f.cx - 16) + po[0];
+          const oy = Math.round(f.cy - 16) + po[1];
           for (let y = 0; y < FRAME; y++) {
             for (let x = 0; x < FRAME; x++) {
               const p = (y * FRAME + x) * 4;
@@ -695,7 +797,12 @@ export async function mountHelmEditor(): Promise<void> {
    * У Ember Helm так съедалось до 10 фантомных пикселей на ячейку.
    */
   function maskedHead(di: number): HTMLCanvasElement {
-    return maskedFrame(refs[di].head, masks[di], headCenter(refSheet, refCol, di));
+    // Маска едет ВМЕСТЕ со шлемом: игра сдвигает её на поправку кадра
+    // (drawHeadMasked, тот же offs), и вырез обязан оставаться под шлемом.
+    // Без этого на подогнанных кадрах редактор показывал дырку не там.
+    const hc = headCenter(refSheet, refCol, di);
+    const [ox, oy] = offsetOf(di);
+    return maskedFrame(refs[di].head, masks[di], { x: hc.x + ox, y: hc.y + oy });
   }
 
   function renderCell(di: number): void {
@@ -784,7 +891,9 @@ export async function mountHelmEditor(): Promise<void> {
 
       pctx.drawImage(heroFrame(sheet, col, di, BELOW), gx, gy);
       if (isBody) armor();
-      pctx.drawImage(maskedFrame(heroFrame(sheet, col, di, HEAD), masks[di], hc), gx, gy);
+      // Маска сдвинута на ту же поправку, что шлем, — как в игре (drawHeadMasked).
+      pctx.drawImage(maskedFrame(heroFrame(sheet, col, di, HEAD), masks[di],
+        { x: hc.x + po[0], y: hc.y + po[1] }), gx, gy);
       if (!isBody) armor();
     });
 
@@ -825,6 +934,10 @@ export async function mountHelmEditor(): Promise<void> {
   function setEraser(on: boolean): void {
     eraser = on;
     hairMode = false;
+    // Инструмент в руке значит «сейчас буду рисовать» — режим подгонки гасим.
+    // Заказчик выбрал ластик при включённом 🎯, а клики уходили в посадку
+    // кадра, и выглядело это как «ластик не работает».
+    if (nudgeFrame) setNudgeFrame(false);
     $<HTMLButtonElement>('h-eraser').setAttribute('aria-pressed', String(on));
     $<HTMLButtonElement>('h-brush').setAttribute('aria-pressed', String(!on));
     $<HTMLButtonElement>('h-hair').setAttribute('aria-pressed', 'false');
@@ -841,6 +954,7 @@ export async function mountHelmEditor(): Promise<void> {
   function setHair(on: boolean): void {
     hairMode = on && ITEMS[selItem.value]?.slot === 'helm';
     eraser = false;
+    if (nudgeFrame) setNudgeFrame(false); // тот же принцип, что в setEraser
     $<HTMLButtonElement>('h-hair').setAttribute('aria-pressed', String(hairMode));
     $<HTMLButtonElement>('h-eraser').setAttribute('aria-pressed', 'false');
     $<HTMLButtonElement>('h-brush').setAttribute('aria-pressed', String(!hairMode));
@@ -953,7 +1067,7 @@ export async function mountHelmEditor(): Promise<void> {
     // цена ошибки разная: второе правит вещь целиком.
     offNote.textContent =
       (nudgeFrame
-        ? `arrows: fit ${DIR_LABEL[DIRS[activeCell]]} on frame ${refCol + 1} — ${x || y ? `${sign(x)},${sign(y)}` : 'as anchored'}`
+        ? `drag or arrows: fit ${DIR_LABEL[DIRS[activeCell]]} on frame ${refCol + 1} — ${x || y ? `${sign(x)},${sign(y)}` : 'as anchored'}`
         : 'arrows: move the drawing (all frames)')
       + (total ? ` · ${total} frame${total > 1 ? 's' : ''} tuned` : '');
   }
@@ -966,6 +1080,8 @@ export async function mountHelmEditor(): Promise<void> {
   function setNudgeFrame(on: boolean): void {
     nudgeFrame = on;
     $<HTMLButtonElement>('h-nudgeframe').setAttribute('aria-pressed', String(on));
+    // Курсор — вторая подсказка о режиме: в подгонке ячейка не рисуется, а таскается.
+    for (const cc of cellCanvases) cc.style.cursor = on ? 'move' : 'crosshair';
     updateOffsetNote();
   }
   $<HTMLButtonElement>('h-nudgeframe').onclick = () => setNudgeFrame(!nudgeFrame);
@@ -976,6 +1092,7 @@ export async function mountHelmEditor(): Promise<void> {
     renderCell(activeCell);
     renderPreview();
     updateOffsetNote();
+    scheduleHairNote(); // посадка вернулась — покрытие волос уже другое
     dirty();
   };
   $<HTMLButtonElement>('h-offresetall').onclick = () => {
@@ -985,6 +1102,7 @@ export async function mountHelmEditor(): Promise<void> {
     renderAll();
     renderPreview();
     updateOffsetNote();
+    scheduleHairNote();
     dirty();
   };
 
@@ -1054,18 +1172,15 @@ export async function mountHelmEditor(): Promise<void> {
         renderCell(activeCell);
         renderPreview();
         updateOffsetNote();
+        scheduleHairNote(); // сдвиг шлема меняет, какие волосы он накрывает
         dirty();
       } else {
         nudge(activeCell, d[0], d[1]);
       }
     }
   });
-  // --- Вставка настоящей иконки предмета (те же листы, что в сумке/лавке) ---
-  //
-  // Иконка — готовый пиксель-арт: часто быстрее вставить её и подтереть, чем
-  // рисовать спрайт с нуля. 100% — как в сумке (32px, крупнее героя), 75% и
-  // 50% — ужатые до размеров головы/торса. Вставляется во фронтальную ячейку;
-  // на бока и спину — Front to sides и правка руками.
+  // Листы иконок — для показа иконки предмета (showItemIcon) и заготовки спрайта
+  // из неё, когда своего рисунка ещё нет (seedFromIcon в loadHelm).
   const ICON_SHEETS: Record<string, string> = {
     icons: 'assets/interface/PNG/Icons.png',
     armor: 'assets/armor-icons/armor_atlas.png',
@@ -1073,36 +1188,17 @@ export async function mountHelmEditor(): Promise<void> {
     scroll: 'assets/interface/ui/scroll.png',
   };
   const iconSheets: Record<string, HTMLImageElement> = {};
-  async function stampIcon(scale: number): Promise<void> {
-    const def = ITEMS[selItem.value];
-    if (!def) return;
-    const ico = def.icon;
-    iconSheets[ico.sheet] ??= await load(ICON_SHEETS[ico.sheet]);
-    pushUndo(); // один снимок на все ячейки — одна отмена возвращает всё
-    const w = Math.max(1, Math.round(ico.w * scale));
-    const h = Math.max(1, Math.round(ico.h * scale));
-    // Во ВСЕ четыре ячейки: вставка только во Front, прокрученный за экран,
-    // выглядела как «ничего не произошло» (в превью шлем есть, в панели нет).
-    for (const layer of layers) {
-      const ctx = layer.getContext('2d')!;
-      ctx.imageSmoothingEnabled = false; // пиксели, а не мыло
-      ctx.drawImage(iconSheets[ico.sheet], ico.x, ico.y, ico.w, ico.h, Math.round(16 - w / 2), Math.round(16 - h / 2), w, h);
-    }
-    renderAll();
-    renderPreview();
-    dirty();
-    // И показать результат: первая ячейка может быть прокручена прочь.
-    cellCanvases[0].parentElement?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-  $<HTMLButtonElement>('h-icon100').onclick = () => void stampIcon(1);
-  $<HTMLButtonElement>('h-icon75').onclick = () => void stampIcon(0.75);
-  $<HTMLButtonElement>('h-icon50').onclick = () => void stampIcon(0.5);
 
   /**
    * Масштаб рисунка: все четыре ячейки разом, вокруг центра (там якорь — шлем
-   * или нагрудник остаётся на месте). Шаг ~12%: достаточно мелкий, чтобы
-   * подогнать вставленную иконку, и один клик — один Undo. Пиксель-арт при
-   * многократном масштабировании сыпется — это нормально, откат всегда есть.
+   * или нагрудник остаётся на месте). Пиксель-арт при многократном масштабировании
+   * сыпется — это нормально, откат всегда есть.
+   *
+   * КАЖДАЯ ячейка масштабирует СВОЁ содержимое: фас остаётся фасом, профиль —
+   * профилем. Раньше кнопки процентов вместо этого вставляли иконку (один вид
+   * спереди) во все стороны, и у helm1..6 с отдельно нарисованными боками фас
+   * затирал их — «на всех сторонах один front». Теперь и проценты, и ± только
+   * меняют размер уже нарисованного, ничего не подменяя.
    */
   function scaleAll(k: number): void {
     pushUndo();
@@ -1121,6 +1217,39 @@ export async function mountHelmEditor(): Promise<void> {
     renderPreview();
     dirty();
   }
+  /**
+   * Проценты рисуют шлем ЗАНОВО из собранного спрайта (wornSource) в заданном
+   * масштабе — каждую сторону из своей ячейки полосы. Поэтому 100% всегда даёт
+   * полный шлем (в т.ч. после Clear), 50% — ровно половину, и повторные нажатия
+   * не копят искажения: всегда от исходника, а не от уже сжатого.
+   *
+   * Масштаб вокруг центра ячейки (16,16) — там якорь, на который игра сажает
+   * шлем: так он остаётся на голове, только мельче. Своего спрайта нет — сказать
+   * об этом, а не молчать (заказчик жал 100% на пустом и ждал шлем).
+   */
+  function resizeToSource(scale: number): void {
+    if (!wornSource) {
+      note.textContent = 'no sprite to resize yet — draw one, then use − Smaller / + Bigger';
+      note.className = 'note';
+      return;
+    }
+    pushUndo();
+    const w = Math.max(1, Math.round(CELL * scale));
+    const off = Math.round(16 - w / 2);
+    DIRS.forEach((_, di) => {
+      const ctx = layers[di].getContext('2d')!;
+      ctx.imageSmoothingEnabled = false; // пиксели, а не мыло
+      ctx.clearRect(0, 0, CELL, CELL);
+      ctx.drawImage(wornSource!, di * 32, 0, 32, 32, off, off, w, w);
+    });
+    renderAll();
+    renderPreview();
+    dirty();
+  }
+  $<HTMLButtonElement>('h-icon100').onclick = () => resizeToSource(1);
+  $<HTMLButtonElement>('h-icon75').onclick = () => resizeToSource(0.75);
+  $<HTMLButtonElement>('h-icon50').onclick = () => resizeToSource(0.5);
+  // ± — тонкая подгонка того, что СЕЙЧАС в ячейках (в т.ч. своего рисунка), шагом ~12%.
   $<HTMLButtonElement>('h-grow').onclick = () => scaleAll(1.125);
   $<HTMLButtonElement>('h-shrink').onclick = () => scaleAll(1 / 1.125);
 
@@ -1152,8 +1281,17 @@ export async function mountHelmEditor(): Promise<void> {
         <li><b>Undo</b> — step back (40 steps).</li>
         <li><b>Front to sides</b> — copy the Front cell onto Left and Right.</li>
         <li><b>Clear</b> — wipe all four cells.</li>
-        <li><b>Insert item icon 100/75/50%</b> — stamp the item's shop icon into all four cells.</li>
-        <li><b>− Smaller / + Bigger</b> — resize the drawing in all cells around its centre.</li>
+        <li><b>🎯 Fit this frame</b> — animate the item: with it on, dragging a cell (or pressing
+            arrows) moves the armour on the CURRENT frame only. Step frames with ◀ ▶, fit each
+            one, press Play to watch. <b>Reset frame / Reset all</b> clear these per-frame fits.
+            They are saved with the item and the game applies them. Picking Brush, Eraser or
+            Hair rubber switches 🎯 off — a tool in hand means you are drawing again.</li>
+        <li><b>Resize drawing 100/75/50%</b> — redraw the helmet from its saved sprite at that size:
+            100% is full size, 75% and 50% shrink all four sides at once, each keeping its own view.
+            It always works from the original, so 100% restores the helmet even after Clear, and
+            repeated clicks never smear it. Undo brings the last size back.</li>
+        <li><b>− Smaller / + Bigger</b> — nudge the size of whatever is in the cells now (including
+            your own drawing) in fine ~12% steps around the centre.</li>
         <li><b>Hero: on/off</b> — show or hide the hero under your pixels. Turn him off to see
             exactly what your sprite contains.</li>
         <li><b>Save</b> — write the file (with a backup); the game picks it up on reload.
@@ -1167,6 +1305,7 @@ export async function mountHelmEditor(): Promise<void> {
         <li><b>Arrows</b> — nudge the last-touched cell by one pixel.</li>
         <li><b>+ / −</b> — resize the drawing.</li>
         <li><b>Ctrl/Cmd+Z</b> — undo. <b>E</b> — eraser, <b>B</b> — brush, <b>H</b> — hero on/off.</li>
+        <li><b>M</b> — 🎯 fit-this-frame on/off, <b>Space</b> — play/pause the preview.</li>
         <li><b>Esc</b> — close this help.</li>
       </ul>
     </div>`;
@@ -1261,9 +1400,11 @@ export async function mountHelmEditor(): Promise<void> {
   }
 
   async function loadHelm(id: string): Promise<void> {
+    const token = ++loadToken; // моя загрузка; чужая правка/загрузка её обнулит
     currentId = id; // теперь в слоях рисунок ЭТОГО предмета — Save пишет его
     void showItemIcon(id);
     rebuildRefs(); // у шлема и нагрудника разные якоря — референс сдвигается
+    wornSource = null; // старый исходник больше не годится — новый придёт ниже
     layers.forEach((l) => l.getContext('2d')!.clearRect(0, 0, CELL, CELL));
     masks.forEach((m) => m.getContext('2d')!.clearRect(0, 0, CELL, CELL));
     // Поправки кадров есть далеко не у всех — их отсутствие норма.
@@ -1274,10 +1415,12 @@ export async function mountHelmEditor(): Promise<void> {
     } catch {
       /* нет файла — посадка чисто по якорю */
     }
+    if (token !== loadToken) return; // пока грузили — игрок начал править или сменил предмет
 
     // Маска нужна не каждому шлему, поэтому её отсутствие — норма, а не ошибка.
     try {
       const mimg = await load(`assets/worn/mask/${id}.png?t=${Date.now()}`);
+      if (token !== loadToken) return;
       DIRS.forEach((_, di) => masks[di].getContext('2d')!.drawImage(mimg, di * 32, 0, 32, 32, 0, 0, 32, 32));
     } catch {
       /* маски нет — значит из-под этого шлема ничего не торчит */
@@ -1287,12 +1430,19 @@ export async function mountHelmEditor(): Promise<void> {
     if (hairMode && ITEMS[id]?.slot !== 'helm') setHair(false);
     try {
       const img = await load(`assets/worn/${id}.png?t=${Date.now()}`);
+      // Спрайт пришёл, но игрок уже мог начать рисовать поверх пустых ячеек —
+      // не затираем его работу этим спрайтом (и не чистим его undo ниже).
+      if (token !== loadToken) return;
+      wornSource = img; // исходник для кнопок процентов
       DIRS.forEach((_, di) => layers[di].getContext('2d')!.drawImage(img, di * 32, 0, 32, 32, 0, 0, 32, 32));
       note.textContent = 'loaded';
       note.className = 'note ok';
     } catch {
+      if (token !== loadToken) return;
+      wornSource = null; // своего спрайта нет — масштабировать из исходника нечего
       // Спрайта нет — подкладываем иконку предмета как заготовку.
       if (await seedFromIcon(id)) {
+        if (token !== loadToken) return;
         note.textContent = 'seeded from the item icon — edit and save';
         note.className = 'note ok';
       } else {

@@ -10,12 +10,12 @@ test('без вещей бонусов нет', () => {
 });
 
 test('бонусы надетого складываются', () => {
-  const eq: Equipped = { weapon: 'sword', ring: 'ring', helm: 'helm' };
+  const eq: Equipped = { weapon: 'sword', ring: 'ring', helm: 'helm3' };
   const b = totalBonuses(eq);
 
   assert.equal(b.dmg, 3 + 2, 'меч +3 и кольцо +2');
-  assert.equal(b.def, 1, 'шлем');
-  assert.equal(b.hp, 10, 'шлем');
+  assert.equal(b.def, 2, 'шлем helm3 даёт +2 защиты');
+  assert.equal(b.hp, 10, 'шлем helm3 даёт +10 HP');
 });
 
 test('латы защищают, но замедляют — минус тоже считается', () => {
@@ -103,9 +103,9 @@ test('меч заметно меняет бой, а не для галочки',
 });
 
 test('находим, в каком слоте надет предмет', () => {
-  const eq: Equipped = { weapon: 'sword_blue', helm: 'helm' };
+  const eq: Equipped = { weapon: 'sword_blue', helm: 'helm1' };
   assert.equal(slotWearing(eq, 'sword_blue'), 'weapon');
-  assert.equal(slotWearing(eq, 'helm'), 'helm');
+  assert.equal(slotWearing(eq, 'helm1'), 'helm');
   assert.equal(slotWearing(eq, 'sword'), undefined, 'обычный меч не надет');
   assert.equal(slotWearing({}, 'sword'), undefined);
 });

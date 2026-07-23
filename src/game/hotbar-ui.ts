@@ -36,9 +36,9 @@ const CSS = `
     width: ${BAR.w * SCALE}px; height: ${BAR.h * SCALE}px;
     background: url(assets/interface/ui/hotbar.png) no-repeat 0 0 / 100% 100%;
     image-rendering: pixelated;
-    z-index: 15;
-    font: 12px/1 'MedievalSharp', system-ui, sans-serif;
-    filter: drop-shadow(0 3px 8px rgba(0, 0, 0, .5));
+    z-index: var(--z-hud-bar);
+    font: var(--fs-body)/1 var(--font-family);
+    filter: drop-shadow(0 3px 8px var(--border-dark));
   }
   #hotbar .hs {
     position: absolute; top: ${BAR.first * SCALE}px;
@@ -55,18 +55,18 @@ const CSS = `
   #hotbar .hs.worn { box-shadow: inset 0 0 0 2px #57c767; }
   #hotbar .hs.full { cursor: grab; }
   #hotbar .key {
-    position: absolute; top: -1px; left: 1px; font-size: 9px; color: #e5d6a1;
+    position: absolute; top: -1px; left: 1px; font-size: var(--fs-micro); color: var(--parchment);
     text-shadow: 1px 1px 0 #000; pointer-events: none;
   }
   #hotbar .cnt {
-    position: absolute; right: 1px; bottom: 0; font-size: 10px; font-weight: 700; color: #fff;
-    text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000;
+    position: absolute; right: 1px; bottom: 0; font-size: var(--fs-tiny); font-weight: var(--fw-bold); color: #fff;
+    text-shadow: var(--text-outline-4way);
     font-variant-numeric: tabular-nums; pointer-events: none;
   }
   /* Значок заточки оружия — «+N». Оружие не копится, угол количества свободен. */
   #hotbar .plusb {
-    position: absolute; right: 1px; bottom: 0; font-size: 10px; font-weight: 700; color: #ffcf5a;
-    text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000;
+    position: absolute; right: 1px; bottom: 0; font-size: var(--fs-tiny); font-weight: var(--fw-bold); color: var(--gold);
+    text-shadow: var(--text-outline-4way);
     pointer-events: none;
   }
   /* Куда можно бросить перетаскиваемое. */
@@ -81,14 +81,14 @@ const CSS = `
   /* Слот умения (первый): огненный шар, а не предмет. Кладётся не сумкой. */
   #hotbar .hs.skill { cursor: pointer; }
   #hotbar .hs.skill .fire {
-    position: absolute; inset: 3px; border-radius: 50%; pointer-events: none;
+    position: absolute; inset: 3px; border-radius: var(--radius-pill); pointer-events: none;
     background: radial-gradient(circle at 50% 42%,
-      #fff2a8 0 14%, #ffb02e 14% 34%, #e8641a 34% 60%, #7a2a08 60% 82%, transparent 82%);
+      var(--fire-core) 0 14%, var(--fire-hot) 14% 34%, var(--fire-orange) 34% 60%, var(--fire-ember) 60% 82%, transparent 82%);
     box-shadow: 0 0 6px 1px rgba(232, 100, 26, .7);
   }
   /* Затемнение перезарядки: «стекает» по кругу от полного к пустому. */
   #hotbar .hs.skill .cd {
-    position: absolute; inset: 0; border-radius: 3px; pointer-events: none;
+    position: absolute; inset: 0; border-radius: var(--radius-2); pointer-events: none;
     background: transparent;
   }
   #hotbar .hs.skill.ready .fire { box-shadow: 0 0 8px 2px rgba(255, 176, 46, .9); }

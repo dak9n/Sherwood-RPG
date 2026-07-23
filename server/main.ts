@@ -27,6 +27,7 @@ import { serveStatic } from './http/static.ts';
 import { send } from './http/body.ts';
 import { buildDeps } from './deps.ts';
 import { ENABLE_MARKET } from './flags.ts';
+import { attachOnline } from './online.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = resolve(ROOT, 'dist');
@@ -62,10 +63,16 @@ async function main(): Promise<void> {
     });
   });
 
+  // Тот самый обещанный upgrade: онлайн живёт на том же порту, что страница.
+  // Гостей боевой сервер не пускает — только аккаунты. root — для миров мобов:
+  // сервер читает карты и расселяет общих на всех монстров.
+  attachOnline(server, { auth: deps.store, now: deps.now, root: ROOT });
+
   server.listen(PORT, HOST, () => {
     console.log(`Sherwood RPG: http://localhost:${PORT}`);
     if (HOST === '0.0.0.0') console.log('  в локальной сети — по адресу этого компьютера на том же порту');
     console.log(`  рынок: ${ENABLE_MARKET ? 'ВКЛЮЧЁН' : 'закрыт (сервер ещё не проверяет предметы и золото)'}`);
+    console.log('  онлайн: игроки видят друг друга (WebSocket /__ws)');
   });
 
   // Ctrl+C и `kill` от супервизора: даём дочитать текущие ответы, а не рвём их.

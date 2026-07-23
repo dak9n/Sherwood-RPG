@@ -85,6 +85,12 @@ export class EditorState {
    */
   onPass: ((x: number, y: number, pass: number) => void) | null = null;
 
+  /**
+   * Кому сказать, что маркеры спавна изменились, — их накладке. Без координат:
+   * маркеров немного, накладка перерисовывает все разом (см. mount).
+   */
+  onMarker: (() => void) | null = null;
+
   constructor(
     public doc: MapDoc,
     public view: MapView,
@@ -121,6 +127,7 @@ export class EditorState {
       applyToDoc(this.doc, e);
       // Экран обновляем здесь: edit.ts намеренно не знает про Phaser.
       if (e.kind === 'pass') this.onPass?.(e.x, e.y, e.after);
+      else if (e.kind === 'marker') this.onMarker?.();
       else applyCell(this.view, e.layerIndex, e.x, e.y, e.after);
     }
 

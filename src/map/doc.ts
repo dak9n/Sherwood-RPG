@@ -1,4 +1,4 @@
-import type { GameMap, Pass } from './types';
+import type { GameMap, MapSpawn, Pass } from './types';
 
 /** Не задано — в игре это стена. */
 export const UNSET = 0;
@@ -85,6 +85,33 @@ export class MapDoc {
   /** Можно ли игроку в клетку. Всё, кроме явного «можно», — стена. */
   canWalk(x: number, y: number): boolean {
     return this.getPass(x, y) === WALK;
+  }
+
+  /** Все маркеры спавна. Пустой массив, если поля нет (старая карта). */
+  get spawns(): MapSpawn[] {
+    return this.map.spawns ?? [];
+  }
+
+  /** Маркер в клетке или null. В одной клетке маркер один. */
+  markerAt(x: number, y: number): MapSpawn | null {
+    return this.map.spawns?.find((s) => s.x === x && s.y === y) ?? null;
+  }
+
+  /**
+   * Поставить/снять маркер в клетке. null — снять. В одной клетке всегда не
+   * больше одного: сперва убираем то, что там было.
+   *
+   * БЕЗ скрытых эффектов на другие клетки — например правило «игрок один» тут не
+   * трогаем. Иначе отмена одной правки не восстановила бы затёртый ею чужой
+   * маркер. Единственность игрока обеспечивает инструмент, пакетом правок.
+   */
+  setMarker(x: number, y: number, spawn: MapSpawn | null): void {
+    if (!this.inBounds(x, y)) return;
+    const list = (this.map.spawns ??= []);
+    const at = list.findIndex((s) => s.x === x && s.y === y);
+    if (at !== -1) list.splice(at, 1);
+    if (spawn) list.push({ kind: spawn.kind, x, y });
+    if (list.length === 0) delete this.map.spawns; // пустого поля не держим
   }
 
   /** Верхний непустой слой в клетке — для пипетки. -1, если пусто везде. */

@@ -15,6 +15,7 @@
 import type { Plugin, ViteDevServer } from 'vite';
 import { handleApi } from './http/router.ts';
 import { buildDeps } from './deps.ts';
+import { attachOnline } from './online.ts';
 
 export function authPlugin(): Plugin {
   return {
@@ -25,6 +26,17 @@ export function authPlugin(): Plugin {
       // тем же scrypt, что и настоящие пароли), поэтому ждём его в каждом запросе,
       // а не задерживаем старт дев-сервера.
       const ready = buildDeps(server.config.root);
+
+      // Онлайн и на деве: тот же /__ws, что у боевого сервера. HMR-сокет Vite
+      // живёт на своём пути и не задевается. Гостям (?guest) вход разрешён —
+      // так игру можно проверить двумя вкладками без двух аккаунтов.
+      // Тип httpServer у Vite включает и http2 (когда настроен https) — у нас
+      // в деве обычный node:http, и upgrade у него именно http-шный.
+      const http = server.httpServer as import('node:http').Server | null;
+      if (http) {
+        void ready.then((deps) =>
+          attachOnline(http, { auth: deps.store, now: deps.now, root: server.config.root, allowGuests: true }));
+      }
 
       server.middlewares.use((req, res, next) => {
         void ready

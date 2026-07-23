@@ -9,6 +9,8 @@ export interface ResizeRequest {
   deltas: Deltas;
   dropped: number;
   droppedByLayer: Record<string, number>;
+  /** Сколько маркеров спавна вылетит за новые границы (см. resizeMap). */
+  droppedSpawns: number;
 }
 
 /**
@@ -77,7 +79,7 @@ export function askResize(doc: MapDoc): Promise<ResizeRequest | null> {
 
       // Считаем потери ДО применения: спрашивать «потерять N тайлов?» после
       // того, как они потеряны, бессмысленно.
-      const { dropped, droppedByLayer } = resizeMap(doc.map, d);
+      const { dropped, droppedByLayer, droppedSpawns } = resizeMap(doc.map, d);
       const cells = w * h;
       const parts = [`Becomes ${w}×${h} (${w * 16}×${h * 16} px).`];
       let cls = 'info';
@@ -87,6 +89,12 @@ export function askResize(doc: MapDoc): Promise<ResizeRequest | null> {
           .map(([n, c]) => `${n}: ${c}`)
           .join(', ');
         parts.push(`${dropped} tiles will be lost — ${where}.`);
+        cls = 'info danger';
+      }
+      // Про маркеры предупреждаем отдельно: их могло срезать и там, где тайлов не
+      // терялось, а вернуть их нечем — история после ресайза чистится.
+      if (droppedSpawns > 0) {
+        parts.push(`${droppedSpawns} spawn ${droppedSpawns === 1 ? 'marker' : 'markers'} will be lost.`);
         cls = 'info danger';
       }
       if (cells > HEAVY_CELLS) {
@@ -111,8 +119,8 @@ export function askResize(doc: MapDoc): Promise<ResizeRequest | null> {
       dlg.remove();
 
       if (value !== 'ok' || (!d.left && !d.right && !d.top && !d.bottom)) return done(null);
-      const { dropped, droppedByLayer } = resizeMap(doc.map, d);
-      done({ deltas: d, dropped, droppedByLayer });
+      const { dropped, droppedByLayer, droppedSpawns } = resizeMap(doc.map, d);
+      done({ deltas: d, dropped, droppedByLayer, droppedSpawns });
     });
 
     dlg.showModal();

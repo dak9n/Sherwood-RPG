@@ -315,6 +315,8 @@ export class Player {
   private mapWidth = 0;
   private tileW = 16;
   private tileH = 16;
+  /** Число слоёв карты — от него глубина «поверх всего» (см. depth.ts). 27 — как в лесу, до setTallObjects. */
+  private layerCount = 27;
 
   /**
    * Грузим героя ПО СЛОЯМ, а не готовым листом.
@@ -716,11 +718,12 @@ export class Player {
   }
 
   /** Сказать игроку, где большие деревья, чтобы он умел за ними прятаться. */
-  setTallObjects(tall: Map<number, number>, mapWidth: number, tileW: number, tileH: number): void {
+  setTallObjects(tall: Map<number, number>, mapWidth: number, tileW: number, tileH: number, layerCount: number): void {
     this.tallObjects = tall;
     this.mapWidth = mapWidth;
     this.tileW = tileW;
     this.tileH = tileH;
+    this.layerCount = layerCount;
   }
 
   /**
@@ -731,7 +734,7 @@ export class Player {
    */
   private updateDepth(): void {
     this.sprite.setDepth(
-      creatureDepth(this.sprite.x, this.sprite.y, this.tallObjects, this.mapWidth, this.tileW, this.tileH),
+      creatureDepth(this.sprite.x, this.sprite.y, this.tallObjects, this.mapWidth, this.tileW, this.tileH, this.layerCount),
     );
   }
 

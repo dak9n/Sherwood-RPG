@@ -33,6 +33,15 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    title: 'Spawns',
+    items: [
+      { keys: 'Spawns / M', what: 'Marker mode: place where the player and monsters appear' },
+      { keys: 'pick a kind', what: 'Player start (green), monsters (amber), bosses (red)' },
+      { keys: 'LMB', what: 'Place the picked spawn on a tile' },
+      { keys: 'RMB', what: 'Remove the spawn under the cursor' },
+    ],
+  },
+  {
     title: 'Navigation',
     items: [
       { keys: 'W A S D', what: 'Move the camera' },

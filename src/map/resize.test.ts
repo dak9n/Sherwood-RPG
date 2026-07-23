@@ -126,3 +126,55 @@ test('обрезка режет проходимость там же, где и 
   assert.equal(map.collision.length, 2 * 2);
   assert.deepEqual(map.collision, [1, 1, 2, 2]);
 });
+
+// --- маркеры спавна при ресайзе ---
+
+test('маркеры сдвигаются на дельту при добавлении слева/сверху', () => {
+  const m = makeMap();
+  m.spawns = [{ kind: 'player', x: 0, y: 0 }, { kind: 'golem1', x: 2, y: 1 }];
+  const { map } = resizeMap(m, { left: 2, right: 0, top: 1, bottom: 0 });
+  assert.deepEqual(map.spawns, [
+    { kind: 'player', x: 2, y: 1 },
+    { kind: 'golem1', x: 4, y: 2 },
+  ]);
+});
+
+test('маркер, вылезший за новый край, отбрасывается', () => {
+  const m = makeMap();
+  m.spawns = [{ kind: 'player', x: 0, y: 0 }, { kind: 'golem1', x: 2, y: 1 }];
+  // режем правый столбец и нижнюю строку: (2,1) уходит за границы 2x1
+  const { map } = resizeMap(m, { left: 0, right: -1, top: 0, bottom: -1 });
+  assert.deepEqual(map.spawns, [{ kind: 'player', x: 0, y: 0 }], 'остался только влезший');
+});
+
+test('все маркеры срезаны — поле spawns исчезает, а не остаётся пустым', () => {
+  const m = makeMap();
+  m.spawns = [{ kind: 'player', x: 2, y: 1 }];
+  const { map } = resizeMap(m, { left: 0, right: -1, top: 0, bottom: -1 });
+  assert.equal(map.spawns, undefined);
+});
+
+test('карта без маркеров ресайзится без поля spawns', () => {
+  const { map } = resizeMap(makeMap(), { left: 1, right: 0, top: 0, bottom: 0 });
+  assert.equal(map.spawns, undefined);
+});
+
+test('resizeMap считает потерянные маркеры отдельно от тайлов', () => {
+  const m = makeMap();
+  // маркер в пустой полосе: тайлов там нет, но маркер при срезе теряется
+  m.spawns = [{ kind: 'player', x: 0, y: 0 }, { kind: 'golem1', x: 2, y: 1 }];
+  const r = resizeMap(m, { left: -1, right: 0, top: 0, bottom: 0 });
+  assert.equal(r.droppedSpawns, 1, 'игрок в срезанном столбце потерян');
+  assert.deepEqual(r.map.spawns, [{ kind: 'golem1', x: 1, y: 1 }], 'уцелевший сдвинулся');
+});
+
+test('resizeMap: рост карты никого не теряет', () => {
+  const m = makeMap();
+  m.spawns = [{ kind: 'player', x: 1, y: 1 }];
+  const r = resizeMap(m, { left: 2, right: 2, top: 1, bottom: 1 });
+  assert.equal(r.droppedSpawns, 0);
+});
+
+test('resizeMap: нет маркеров — droppedSpawns 0', () => {
+  assert.equal(resizeMap(makeMap(), { left: -1, right: 0, top: 0, bottom: 0 }).droppedSpawns, 0);
+});

@@ -37,64 +37,26 @@ export const VALUE: Record<string, number> = Object.assign(Object.create(null), 
   sword: 90,
   sword_blue: 220,
   shield: 70,
-  helm: 110,
   armor: 150,
   boots: 60,
   ring: 90,
   amulet: 160,
-  // Комплекты брони: кожа дешевле железа, лазурь — топ (в цвет Azure Sword за 220).
-  leather_helm: 50,
-  leather_chest: 80,
-  leather_gloves: 40,
-  leather_boots: 55,
-  iron_helm: 130,
-  iron_chest: 190,
-  iron_gloves: 95,
-  iron_boots: 110,
-  azure_helm: 260,
-  azure_chest: 340,
-  azure_gloves: 210,
-  azure_boots: 240,
-  // Вторая волна: бронза дешевле кожи, золочёная — между железом и лазурью,
-  // изумруд и кармазин — эпики уровня лазури с разным уклоном, ткань — копейки.
-  bronze_helm: 30,
-  bronze_chest: 55,
-  bronze_gloves: 25,
-  bronze_boots: 35,
-  gilded_helm: 150,
-  gilded_chest: 210,
-  gilded_gloves: 120,
-  gilded_boots: 130,
-  emerald_helm: 240,
-  emerald_chest: 300,
-  emerald_gloves: 190,
-  emerald_boots: 220,
-  crimson_helm: 280,
-  crimson_chest: 360,
-  crimson_gloves: 230,
-  crimson_boots: 250,
-  cloth_hood: 20,
-  cloth_chest: 35,
-  // Дороже кримсонового: статы выше, и падает только с последнего босса.
-  // В лавке не стоит (нет в SHOP_STOCK) — цена нужна, чтобы его можно было продать.
-  phoenix_helm: 340,
-  ember_helm: 300,
+  // Шлемы helm1..helm6: цена растёт с номером, как и защита.
+  helm1: 40,
+  helm2: 90,
+  helm3: 150,
+  helm4: 220,
+  helm5: 300,
+  helm6: 380,
 });
 
 /** Что стоит на витрине и в каком порядке. Только эти предметы можно купить. */
 export const SHOP_STOCK: string[] = [
   'potion_hp', 'potion_mp', 'apple', 'scroll_sharpen',
-  'bow', 'sword', 'shield', 'boots', 'helm',
-  // Броня комплектами: у каждого надеваемого предмета должен быть источник
-  // (за этим следит тест), и для брони источник — лавка.
-  'leather_helm', 'leather_chest', 'leather_gloves', 'leather_boots',
-  'iron_helm', 'iron_chest', 'iron_gloves', 'iron_boots',
-  'azure_helm', 'azure_chest', 'azure_gloves', 'azure_boots',
-  'bronze_helm', 'bronze_chest', 'bronze_gloves', 'bronze_boots',
-  'gilded_helm', 'gilded_chest', 'gilded_gloves', 'gilded_boots',
-  'emerald_helm', 'emerald_chest', 'emerald_gloves', 'emerald_boots',
-  'crimson_helm', 'crimson_chest', 'crimson_gloves', 'crimson_boots',
-  'cloth_hood', 'cloth_chest',
+  'bow', 'sword', 'shield', 'armor', 'boots',
+  // Шлемы helm1..helm6: у каждого надеваемого предмета должен быть источник
+  // (за этим следит тест), и для шлемов источник — лавка (плюс дроп с монстров).
+  'helm1', 'helm2', 'helm3', 'helm4', 'helm5', 'helm6',
 ];
 
 /** Доля ценности, которую даёт лавка при продаже. Разница с покупкой — её навар. */

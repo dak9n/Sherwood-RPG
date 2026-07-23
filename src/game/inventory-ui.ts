@@ -114,16 +114,14 @@ const SLOT_GHOST: Record<string, Icon> = {
   ring: ico(5, 8),
   weapon: ico(0, 8),
   shield: ico(1, 8),
-  // Перчаток в старом UI-наборе нет — призрак берём из атласа брони (кожаные).
-  gloves: { sheet: 'armor', x: 0, y: 192, w: 32, h: 32 },
   boots: ico(2, 8),
 };
 
 const CSS = `
   #inv {
-    position: absolute; inset: 0; z-index: 20; display: none;
+    position: absolute; inset: 0; z-index: var(--z-window); display: none;
     align-items: center; justify-content: center;
-    font: 12px/1 'MedievalSharp', system-ui, sans-serif; color: ${C.ink};
+    font: var(--fs-body)/1 var(--font-family); color: ${C.ink};
     /* Растянут на весь экран, но кликов не ловит: игра не на паузе, и мимо окна
        удар должен доходить до пауков. Ловит только само окно — см. .win. */
     pointer-events: none;
@@ -135,8 +133,7 @@ const CSS = `
   /* Окно целиком — кусок набора: зелёная шапка и коричневое тело одной рамой. */
   #inv .win {
     pointer-events: auto;
-    border-image: url(${UI}/window.png) 16 5 5 5 fill / ${16 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px repeat;
-    border-width: ${16 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px;
+    border-width: var(--frame-window-w); border-image: var(--frame-window);
     border-style: solid;
     image-rendering: pixelated;
     position: relative;
@@ -145,9 +142,9 @@ const CSS = `
   /* Заголовок ложится поверх шапки, которая уже нарисована в рамке окна. */
   #inv .title {
     position: absolute; top: -${13 * SCALE}px; left: 0; right: 0;
-    text-align: center; font-weight: 700; font-size: 14px;
+    text-align: center; font-weight: var(--fw-bold); font-size: var(--fs-lg);
     letter-spacing: .1em; text-transform: uppercase;
-    color: #eaf6f0; text-shadow: 1px 1px 0 #294040;
+    color: var(--ink-bright); text-shadow: var(--text-shadow-teal);
   }
   #inv .close {
     position: absolute; top: -${13 * SCALE}px; right: 0;
@@ -164,21 +161,20 @@ const CSS = `
   /* --- Панель персонажа (левая страница) --- */
   #inv .hero {
     display: flex; flex-direction: column; gap: ${3 * SCALE}px;
-    border-image: url(${UI}/panel_dark.png) 2 3 4 3 fill / ${2 * SCALE}px ${3 * SCALE}px ${4 * SCALE}px ${3 * SCALE}px repeat;
-    border-width: ${2 * SCALE}px ${3 * SCALE}px ${4 * SCALE}px ${3 * SCALE}px;
+    border-width: var(--frame-dark-w); border-image: var(--frame-dark);
     border-style: solid; image-rendering: pixelated;
     padding: ${2 * SCALE}px;
   }
   #inv .who { text-align: center; }
-  #inv .who b { font-size: 14px; color: ${C.gold}; text-shadow: 1px 1px 0 #3e1f1d; }
-  #inv .who span { display: block; margin-top: 3px; font-size: 11px; color: ${C.ink}; }
+  #inv .who b { font-size: var(--fs-lg); color: ${C.gold}; text-shadow: var(--text-shadow-maroon); }
+  #inv .who span { display: block; margin-top: 3px; font-size: var(--fs-small); color: ${C.ink}; }
   #inv .xpbar {
     position: relative; height: ${3 * SCALE}px; margin-top: 4px;
-    background: #3e1f1d; border: 1px solid #241010; border-radius: 1px; overflow: hidden;
+    background: var(--wood-shadow); border: 1px solid #241010; border-radius: var(--radius-hair); overflow: hidden;
   }
-  #inv .xpbar i { height: 100%; background: linear-gradient(#e0c48a, #a07f2d); transition: width .2s; }
+  #inv .xpbar i { height: 100%; background: linear-gradient(var(--gold-soft), var(--gold-dark)); transition: width .2s; }
   #inv .xpnum {
-    text-align: center; font-size: 10px; margin-top: 3px; color: #d8c0a0;
+    text-align: center; font-size: var(--fs-tiny); margin-top: 3px; color: var(--tan);
     font-variant-numeric: tabular-nums;
   }
 
@@ -187,7 +183,7 @@ const CSS = `
   #inv .col { display: flex; flex-direction: column; gap: ${2 * SCALE}px; }
   #inv .portrait {
     flex: 1; position: relative; background: ${C.grass};
-    border: ${SCALE}px solid #3e1f1d; box-shadow: inset 0 0 0 ${SCALE}px #70492a;
+    border: ${SCALE}px solid var(--wood-shadow); box-shadow: inset 0 0 0 ${SCALE}px var(--wood-mid);
     display: flex; align-items: center; justify-content: center; overflow: hidden;
   }
   /* Мечник из игрового листа, увеличенный целым кратным — иначе поедут пиксели. */
@@ -211,32 +207,31 @@ const CSS = `
   /* Подпись НАД гнездом, как на образце: внутри она налезала бы на иконку. */
   #inv .eqslot { display: flex; flex-direction: column; gap: 2px; }
   #inv .eqslot > .lbl {
-    font-size: 9px; color: #d8c0a0; text-shadow: 1px 1px 0 #3e1f1d;
+    font-size: var(--fs-micro); color: var(--tan); text-shadow: var(--text-shadow-maroon);
     white-space: nowrap; text-align: center;
   }
 
   /* --- Характеристики: бежевая панель, монохромные иконки, тёмный текст --- */
   #inv .stats {
-    border-image: url(${UI}/panel_beige.png) 2 5 5 5 fill / ${2 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px repeat;
-    border-width: ${2 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px;
+    border-width: var(--frame-beige-w); border-image: var(--frame-beige);
     border-style: solid; image-rendering: pixelated;
     color: ${C.inkDark};
     display: grid; grid-template-columns: 1fr 1fr; gap: 3px ${3 * SCALE}px;
     padding: ${SCALE}px ${2 * SCALE}px;
   }
-  #inv .stat { display: flex; align-items: center; gap: 5px; font-size: 11px; }
+  #inv .stat { display: flex; align-items: center; gap: 5px; font-size: var(--fs-small); }
   #inv .stat i { width: 16px; height: 16px; flex: none; }
   #inv .stat span { flex: 1; }
-  #inv .stat b { font-weight: 700; font-variant-numeric: tabular-nums; }
+  #inv .stat b { font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
   #inv .plus { color: #2f7a2f; }
-  #inv .minus { color: #a33b2e; }
+  #inv .minus { color: var(--danger); }
 
   /* Очки характеристик: здесь только напоминание об остатке. Тратят их в окне
      умений (U) — панель персонажа их лишь показывает, не раздаёт. */
   #inv .pts {
     grid-column: 1 / -1; display: flex; align-items: center; gap: 6px;
     border-top: 1px solid #b0854f; margin-top: 2px; padding-top: 4px;
-    font-size: 11px;
+    font-size: var(--fs-small);
   }
   #inv .pts b { color: #2f7a2f; }
   #inv .pts.none { color: #7a6a52; }
@@ -247,23 +242,21 @@ const CSS = `
   #inv .tab {
     display: flex; align-items: center; gap: 3px; cursor: pointer;
     padding: ${2 * TAB_SCALE}px ${2 * TAB_SCALE}px ${TAB_SCALE}px;
-    border-image: url(${UI}/tab_off.png) 4 5 1 5 fill / ${4 * TAB_SCALE}px ${5 * TAB_SCALE}px ${TAB_SCALE}px ${5 * TAB_SCALE}px repeat;
-    border-width: ${4 * TAB_SCALE}px ${5 * TAB_SCALE}px ${TAB_SCALE}px ${5 * TAB_SCALE}px;
+    border-width: var(--frame-tab-off-w); border-image: var(--frame-tab-off);
     border-style: solid; image-rendering: pixelated;
-    font-size: 11px; color: ${C.ink}; position: relative; top: ${2 * TAB_SCALE}px;
+    font-size: var(--fs-small); color: ${C.ink}; position: relative; top: ${2 * TAB_SCALE}px;
   }
   #inv .tab i { width: 16px; height: 16px; flex: none; }
   #inv .tab:hover { filter: brightness(1.12); }
   /* Выбранная вкладка поднимается и прирастает к странице — как в наборе. */
   #inv .tab[aria-selected="true"] {
     border-image-source: url(${UI}/tab_on.png);
-    top: 0; padding-bottom: ${3 * TAB_SCALE}px; color: #eaf6f0;
+    top: 0; padding-bottom: ${3 * TAB_SCALE}px; color: var(--ink-bright);
   }
 
   #inv .page {
     flex: 1;
-    border-image: url(${UI}/panel_beige.png) 2 5 5 5 fill / ${2 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px repeat;
-    border-width: ${2 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px ${5 * SCALE}px;
+    border-width: var(--frame-beige-w); border-image: var(--frame-beige);
     border-style: solid; image-rendering: pixelated;
     padding: ${2 * SCALE}px;
   }
@@ -279,56 +272,54 @@ const CSS = `
   #inv .grid .slot.r-epic { box-shadow: inset 0 0 0 2px ${RARITY_COLOR.epic}; }
   #inv .qty {
     position: absolute; right: 2px; bottom: 1px;
-    font-size: 11px; font-weight: 700; color: #fff;
-    text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000;
+    font-size: var(--fs-small); font-weight: var(--fw-bold); color: #fff;
+    text-shadow: var(--text-outline-4way);
     font-variant-numeric: tabular-nums; pointer-events: none;
   }
 
   /* Значок заточки на оружии — «+N», как в MMORPG. Оружие не копится в стопки,
      поэтому правый нижний угол у него свободен. */
   #inv .plusb {
-    position: absolute; right: 2px; bottom: 1px; font-size: 11px; font-weight: 700;
-    color: #ffcf5a;
-    text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000;
+    position: absolute; right: 2px; bottom: 1px; font-size: var(--fs-small); font-weight: var(--fw-bold);
+    color: var(--gold);
+    text-shadow: var(--text-outline-4way);
     pointer-events: none;
   }
 
   /* Карточка предмета при наведении: тёмная панель набора, летит за курсором.
      pointer-events: none — карточка не должна перехватывать мышь у ячеек. */
   #inv .itemtip {
-    position: absolute; z-index: 40; display: none; pointer-events: none;
+    position: absolute; z-index: var(--z-tooltip); display: none; pointer-events: none;
     width: max-content; max-width: 216px;
-    border-image: url(${UI}/panel_dark.png) 2 3 4 3 fill / ${2 * SCALE}px ${3 * SCALE}px ${4 * SCALE}px ${3 * SCALE}px repeat;
-    border-width: ${2 * SCALE}px ${3 * SCALE}px ${4 * SCALE}px ${3 * SCALE}px; border-style: solid;
-    padding: ${SCALE}px ${2 * SCALE}px; font-size: 11px; line-height: 1.55; color: #d8c0a0;
+    border-width: var(--frame-dark-w); border-image: var(--frame-dark); border-style: solid;
+    padding: ${SCALE}px ${2 * SCALE}px; font-size: var(--fs-small); line-height: 1.55; color: var(--tan);
     filter: drop-shadow(0 6px 16px rgba(0,0,0,.55));
   }
-  #inv .itemtip .nm { font-size: 12px; font-weight: 700; }
-  #inv .itemtip .nm .pl { color: #ffcf5a; }
-  #inv .itemtip .nm.rar-common { color: #f0e0c8; }
-  #inv .itemtip .nm.rar-uncommon { color: #8ad46a; }
-  #inv .itemtip .nm.rar-rare { color: #7ab0e8; }
-  #inv .itemtip .nm.rar-epic { color: #c58ae8; }
-  #inv .itemtip .sub { color: #9a835f; font-size: 10px; margin-bottom: 3px; }
+  #inv .itemtip .nm { font-size: var(--fs-body); font-weight: var(--fw-bold); }
+  #inv .itemtip .nm .pl { color: var(--gold); }
+  #inv .itemtip .nm.rar-common { color: var(--ink); }
+  #inv .itemtip .nm.rar-uncommon { color: var(--rarity-uncommon-text); }
+  #inv .itemtip .nm.rar-rare { color: var(--rarity-rare-text); }
+  #inv .itemtip .nm.rar-epic { color: var(--rarity-epic-text); }
+  #inv .itemtip .sub { color: var(--tan-dim); font-size: var(--fs-tiny); margin-bottom: 3px; }
   #inv .itemtip .ln { display: flex; justify-content: space-between; gap: 14px; }
-  #inv .itemtip .ln b { color: #f0e0c8; font-variant-numeric: tabular-nums; font-weight: 700; }
-  #inv .itemtip .ln b.plus { color: #8ad46a; }
-  #inv .itemtip .ln b.minus { color: #e08a6a; }
+  #inv .itemtip .ln b { color: var(--ink); font-variant-numeric: tabular-nums; font-weight: var(--fw-bold); }
+  #inv .itemtip .ln b.plus { color: var(--rarity-uncommon-text); }
+  #inv .itemtip .ln b.minus { color: var(--salmon); }
   #inv .itemtip .dmg { margin-top: 3px; padding-top: 3px; border-top: 1px solid rgba(216,192,160,.25); }
-  #inv .itemtip .dmg b { color: #ffe08a; }
-  #inv .itemtip .act { margin-top: 3px; color: #7ab0e8; font-size: 10px; }
+  #inv .itemtip .dmg b { color: var(--gold-pale); }
+  #inv .itemtip .act { margin-top: 3px; color: var(--rarity-rare-text); font-size: var(--fs-tiny); }
 
   #inv .foot { display: flex; align-items: center; gap: ${2 * SCALE}px; margin-top: ${2 * SCALE}px; }
   #inv .btn {
-    cursor: pointer; font-size: 11px; color: #eaf6f0; text-shadow: 1px 1px 0 #294040;
+    cursor: pointer; font-size: var(--fs-small); color: var(--ink-bright); text-shadow: var(--text-shadow-teal);
     padding: ${SCALE}px ${3 * SCALE}px;
-    border-image: url(${UI}/button.png) 4 3 3 3 fill / ${4 * SCALE}px ${3 * SCALE}px ${3 * SCALE}px ${3 * SCALE}px repeat;
-    border-width: ${4 * SCALE}px ${3 * SCALE}px ${3 * SCALE}px ${3 * SCALE}px;
+    border-width: var(--frame-button-w); border-image: var(--frame-button);
     border-style: solid; image-rendering: pixelated;
   }
   #inv .btn:hover { filter: brightness(1.15); }
   #inv .btn:active { transform: translateY(1px); }
-  #inv .hint { flex: 1; font-size: 11px; color: #e5d6a1; min-height: 14px; }
+  #inv .hint { flex: 1; font-size: var(--fs-small); color: var(--parchment); min-height: 14px; }
 `;
 
 /** Что окно должно знать о герое, чтобы показать характеристики. */

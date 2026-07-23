@@ -17,7 +17,6 @@ export const SLOTS: { id: EquipSlot; label: string }[] = [
   { id: 'ring', label: 'Ring' },
   { id: 'weapon', label: 'Weapon' },
   { id: 'shield', label: 'Shield' },
-  { id: 'gloves', label: 'Gloves' },
   { id: 'boots', label: 'Boots' },
 ];
 
@@ -30,7 +29,7 @@ export const SLOTS: { id: EquipSlot; label: string }[] = [
  * следит тест — добавишь слот в SLOTS и не добавишь сюда, он упадёт.
  */
 export const LEFT_SLOTS: EquipSlot[] = ['helm', 'amulet', 'body', 'ring'];
-export const RIGHT_SLOTS: EquipSlot[] = ['weapon', 'shield', 'gloves', 'boots'];
+export const RIGHT_SLOTS: EquipSlot[] = ['weapon', 'shield', 'boots'];
 
 export interface Bonuses {
   dmg: number;

@@ -10,7 +10,6 @@ import { cleanName, MAX_NAME } from '../game/save';
  * Возвращает промис с ником и классом. Рама — та же, что у окна входа и сумки.
  */
 
-const UI = 'assets/interface/ui';
 const S = 3;
 
 /** Кадр мечника анфас — тот же, что в панели персонажа и окне входа. */
@@ -24,39 +23,39 @@ const CLASSES = [{ id: 'swordsman', label: 'Swordsman', hint: 'Melee, sturdy hea
 
 const CSS = `
   #charwin {
-    position: fixed; inset: 0; z-index: 100;
+    position: fixed; inset: 0; z-index: var(--z-modal);
     display: flex; align-items: center; justify-content: center;
-    background: radial-gradient(circle at 50% 35%, #2a3a2c, #12100c 72%);
-    font: 14px/1.5 'MedievalSharp', system-ui, sans-serif; color: #f0e0c8;
+    background: radial-gradient(circle at 50% 35%, var(--forest), #12100c 72%);
+    font: var(--fs-lg)/1.5 var(--font-family); color: var(--ink);
   }
   #charwin * { image-rendering: pixelated; }
   #charwin i { display: block; }
 
   #charwin .win {
     position: relative; width: 340px; max-width: 92vw;
-    border-image: url(${UI}/window.png) 16 5 5 5 fill / ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px repeat;
-    border-width: ${16 * S}px ${5 * S}px ${5 * S}px ${5 * S}px; border-style: solid;
+    border-width: var(--frame-window-w); border-image: var(--frame-window);
+    border-style: solid;
     padding: 2px 16px 8px;
-    filter: drop-shadow(0 14px 40px rgba(0,0,0,.6));
+    filter: drop-shadow(0 14px 40px var(--shadow-drop));
   }
   #charwin .title {
     position: absolute; top: -${13 * S}px; left: 0; right: 0; text-align: center;
-    font-weight: 700; font-size: 15px; letter-spacing: .08em; text-transform: uppercase;
-    color: #eaf6f0; text-shadow: 1px 1px 0 #294040;
+    font-weight: var(--fw-bold); font-size: var(--fs-title); letter-spacing: .08em; text-transform: uppercase;
+    color: var(--ink-bright); text-shadow: var(--text-shadow-teal);
   }
-  #charwin .sub { margin: 2px 0 10px; text-align: center; font-size: 12px; color: #d8c0a0; }
+  #charwin .sub { margin: 2px 0 10px; text-align: center; font-size: var(--fs-body); color: var(--tan); }
 
   /* Ряд карточек классов. Выбранная — золотой рамкой. */
   #charwin .classes { display: flex; gap: 8px; justify-content: center; margin-bottom: 8px; }
   #charwin .cls {
     width: 96px; cursor: pointer; text-align: center;
-    background: rgba(20,14,9,.35); border: 2px solid #3e1f1d; border-radius: 5px; padding: 6px 4px 5px;
+    background: rgba(20,14,9,.35); border: 2px solid var(--wood-shadow); border-radius: var(--radius-4); padding: 6px 4px 5px;
   }
-  #charwin .cls[aria-selected="true"] { border-color: #ffcf5a; box-shadow: 0 0 10px rgba(255,207,90,.4); }
+  #charwin .cls[aria-selected="true"] { border-color: var(--gold); box-shadow: 0 0 10px var(--gold-glow); }
   #charwin .cls .portrait {
     width: ${HERO.w * HERO.zoom + 12}px; height: ${HERO.h * HERO.zoom + 8}px; margin: 0 auto 5px;
-    position: relative; overflow: hidden; background: #7aad55;
-    border: ${S}px solid #3e1f1d; box-shadow: inset 0 0 0 ${S}px #70492a;
+    position: relative; overflow: hidden; background: var(--grass);
+    border: ${S}px solid var(--wood-shadow); box-shadow: inset 0 0 0 ${S}px var(--wood-mid);
     display: flex; align-items: flex-end; justify-content: center;
   }
   #charwin .cls .portrait i {
@@ -64,36 +63,36 @@ const CSS = `
     background: url(${HERO.sheet}) -${HERO.x}px -${HERO.y}px;
     transform: scale(${HERO.zoom}); transform-origin: bottom center;
   }
-  #charwin .cls .nm { font-size: 13px; font-weight: 700; color: #ffe08a; }
-  #charwin .cls .h { font-size: 10px; color: #c9b59a; line-height: 1.35; margin-top: 2px; }
+  #charwin .cls .nm { font-size: var(--fs-md); font-weight: var(--fw-bold); color: var(--gold-pale); }
+  #charwin .cls .h { font-size: var(--fs-tiny); color: #c9b59a; line-height: 1.35; margin-top: 2px; }
   #charwin .soon {
     width: 96px; display: flex; align-items: center; justify-content: center; text-align: center;
-    border: 2px dashed #5a4026; border-radius: 5px; color: #7a6a52; font-size: 11px; padding: 6px;
+    border: 2px dashed #5a4026; border-radius: var(--radius-4); color: #7a6a52; font-size: var(--fs-small); padding: 6px;
   }
 
   #charwin .page {
-    border-image: url(${UI}/panel_beige.png) 2 5 5 5 fill / ${2 * S}px ${5 * S}px ${5 * S}px ${5 * S}px repeat;
-    border-width: ${2 * S}px ${5 * S}px ${5 * S}px ${5 * S}px; border-style: solid;
+    border-width: var(--frame-beige-w); border-image: var(--frame-beige);
+    border-style: solid;
     padding: ${2 * S}px;
   }
-  #charwin label { display: block; margin: 0 0 4px; color: #6b4f2a; font-size: 12px; }
+  #charwin label { display: block; margin: 0 0 4px; color: #6b4f2a; font-size: var(--fs-body); }
   #charwin input {
-    width: 100%; box-sizing: border-box; font: inherit; padding: 8px 9px; color: #f0e0c8;
-    background: #241811; border: 2px solid #70492a; border-radius: 2px; image-rendering: auto;
+    width: 100%; box-sizing: border-box; font: inherit; padding: 8px 9px; color: var(--ink);
+    background: var(--wood-deep); border: 2px solid var(--wood-mid); border-radius: var(--radius-1); image-rendering: auto;
   }
   #charwin input:focus { outline: none; border-color: #63a354; }
 
   #charwin .go {
-    width: 100%; margin-top: 14px; cursor: pointer; font: inherit; font-weight: 700; font-size: 15px;
-    padding: ${2 * S}px 8px; color: #eaf6f0; text-shadow: 1px 1px 0 #294040;
-    border-image: url(${UI}/button.png) 4 3 3 3 fill / ${4 * S}px ${3 * S}px ${3 * S}px ${3 * S}px repeat;
-    border-width: ${4 * S}px ${3 * S}px ${3 * S}px ${3 * S}px; border-style: solid;
+    width: 100%; margin-top: 14px; cursor: pointer; font: inherit; font-weight: var(--fw-bold); font-size: var(--fs-title);
+    padding: ${2 * S}px 8px; color: var(--ink-bright); text-shadow: var(--text-shadow-teal);
+    border-width: var(--frame-button-w); border-image: var(--frame-button);
+    border-style: solid;
   }
   #charwin .go:hover { filter: brightness(1.12); }
   #charwin .go:active { transform: translateY(1px); }
   #charwin .go:disabled { filter: grayscale(.5) brightness(.8); cursor: default; }
 
-  #charwin .msg { min-height: 16px; margin-top: 8px; font-size: 12px; color: #e2705f; text-align: center; }
+  #charwin .msg { min-height: 16px; margin-top: 8px; font-size: var(--fs-body); color: var(--error); text-align: center; }
 `;
 
 export function showCharacterCreate(): Promise<{ name: string; class: string }> {

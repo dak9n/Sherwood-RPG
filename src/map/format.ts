@@ -26,7 +26,13 @@ export function serialize(map: GameMap): string {
     layers +
     '\n  ],\n' +
     // Проходимость — своей строкой, как слои: git покажет её правку отдельно.
-    `  "collision": ${JSON.stringify(map.collision)}\n` +
+    `  "collision": ${JSON.stringify(map.collision)}` +
+    // Маркеры спавна — по одному на строку, как слои: правку каждого git видит
+    // отдельно, и две правки разных точек сливаются сами. Нет маркеров — поля
+    // нет вовсе, чтобы старые карты не пухли пустым массивом.
+    (map.spawns && map.spawns.length
+      ? ',\n  "spawns": [\n' + map.spawns.map((s) => '    ' + JSON.stringify(s)).join(',\n') + '\n  ]\n'
+      : '\n') +
     '}\n'
   );
 }

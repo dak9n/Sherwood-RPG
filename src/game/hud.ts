@@ -34,10 +34,10 @@ const SCALE = 3;
 
 const CSS = `
   #hud {
-    position: absolute; inset: 0; z-index: 10;
+    position: absolute; inset: 0; z-index: var(--z-hud);
     /* Иначе невидимый слой съест все клики по игре. */
     pointer-events: none;
-    font: 10px/1 monospace; color: #f4e4c1;
+    font: var(--fs-tiny)/1 monospace; color: #f4e4c1;
     text-shadow: 1px 1px 0 #000;
   }
   #hud .panel {
@@ -61,7 +61,7 @@ const CSS = `
   #hud .death {
     position: absolute; inset: 0; display: none;
     align-items: center; justify-content: center;
-    background: rgba(20,0,0,.55); font-size: 28px; letter-spacing: .1em; color: #e05c4a;
+    background: rgba(20,0,0,.55); font-size: var(--fs-death); letter-spacing: .1em; color: #e05c4a;
   }
   #hud.dead .death { display: flex; }
 
@@ -70,9 +70,9 @@ const CSS = `
   #hud .gold {
     position: absolute; left: 16px; top: ${12 + PANEL.h * SCALE + 6}px;
     display: flex; align-items: center; gap: 5px;
-    font: 13px/1 monospace; color: #ffe08a;
+    font: var(--fs-md)/1 monospace; color: var(--gold-pale);
     text-shadow: 1px 1px 0 #000, -1px 0 0 #000, 1px 0 0 #000, 0 1px 0 #000;
-    background: rgba(20,24,27,.5); padding: 3px 9px 3px 6px; border-radius: 5px;
+    background: rgba(20,24,27,.5); padding: 3px 9px 3px 6px; border-radius: var(--radius-4);
   }
   #hud .gold i {
     width: 16px; height: 16px; image-rendering: pixelated;

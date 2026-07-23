@@ -74,3 +74,25 @@ test('разворот не портит исходную правку', () => {
   assert.equal(e.before, UNSET, 'исходная правка цела');
   assert.equal(e.after, BLOCK);
 });
+
+// --- маркеры спавна ---
+
+test('marker-правка пишет маркер в клетку и разворачивается для отмены', () => {
+  const doc = makeDoc();
+  const e: CellEdit = { kind: 'marker', x: 2, y: 1, before: null, after: { kind: 'player', x: 2, y: 1 } };
+
+  applyToDoc(doc, e);
+  assert.deepEqual(doc.markerAt(2, 1), { kind: 'player', x: 2, y: 1 }, 'маркер поставлен');
+  assert.equal(doc.getRaw(0, 2, 1), 0, 'слой не тронут');
+  assert.equal(doc.getPass(2, 1), UNSET, 'проходимость не тронута');
+
+  applyToDoc(doc, reverse(e));
+  assert.equal(doc.markerAt(2, 1), null, 'отмена сняла маркер');
+});
+
+test('marker-правка снимает существующий маркер (after=null)', () => {
+  const doc = makeDoc();
+  doc.setMarker(1, 0, { kind: 'spider1', x: 1, y: 0 });
+  applyToDoc(doc, { kind: 'marker', x: 1, y: 0, before: { kind: 'spider1', x: 1, y: 0 }, after: null });
+  assert.equal(doc.markerAt(1, 0), null);
+});

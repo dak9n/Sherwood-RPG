@@ -68,12 +68,38 @@ export class Monster {
   /** Последний выставленный цвет метки — чтобы не дёргать setColor каждый кадр. */
   private tagColor = '';
 
+  /**
+   * Кукольный режим: мобом владеет СЕРВЕР (общий на всех игроков), а этот
+   * объект только рисует. Свой AI и своё здоровье выключены: позиция и
+   * состояние приезжают через netSync, урон уходит в onNetHit, а не в hp.
+   * Все взаимодействия сцены (меч, стрелы, шары) работают как раньше — они
+   * просто не знают, что перед ними марионетка.
+   */
+  private puppet = false;
+  private onNetHit: (dmg: number) => void = () => {};
+  /** Куда тянемся между серверными снимками (10 Гц против 60 кадров). */
+  private netX = 0;
+  private netY = 0;
+  private netMode = 'idle';
+
+  makePuppet(onHit: (dmg: number) => void): void {
+    this.puppet = true;
+    this.onNetHit = onHit;
+    this.netX = this.sprite.x;
+    this.netY = this.sprite.y;
+    // Física марионетке не положена: её позиция — слово сервера, толкать её
+    // бессмысленно, а коллайдер группы дрался бы с сетевым лерпом.
+    this.scene.physics.world.disableBody(this.sprite.body as Phaser.Physics.Arcade.Body);
+  }
+
   /** Большие деревья: чтобы паук прятался за ними так же, как игрок. */
   private tallObjects: Map<number, number> = new Map();
   private mapWidth = 0;
   private mapHeight = 0;
   private tileW = 16;
   private tileH = 16;
+  /** Число слоёв карты — от него глубина «поверх всего» (см. depth.ts). */
+  private layerCount = 27;
 
   /**
    * Волна от игрока: в каждой клетке — сколько шагов до него. Одна на всех
@@ -86,12 +112,13 @@ export class Monster {
   }
 
   /** Сказать пауку, где большие деревья. Зовётся сценой один раз, как у игрока. */
-  setTallObjects(tall: Map<number, number>, mapWidth: number, mapHeight: number, tileW: number, tileH: number): void {
+  setTallObjects(tall: Map<number, number>, mapWidth: number, mapHeight: number, tileW: number, tileH: number, layerCount: number): void {
     this.tallObjects = tall;
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
     this.tileW = tileW;
     this.tileH = tileH;
+    this.layerCount = layerCount;
   }
 
   static preload(scene: Phaser.Scene, stats: MonsterStats): void {
@@ -170,6 +197,10 @@ export class Monster {
 
   /** Момент удара — по номеру кадра в листе (позиции в анимации сдвигают пустые кадры). */
   private onAnimFrame(anim: Phaser.Animations.Animation, frame: Phaser.Animations.AnimationFrame): void {
+    // Марионетка кусается только по слову сервера (mobhit): анимация атаки у
+    // неё играет для ВСЕХ игроков, а бьёт сервер одного — иначе стоящий рядом
+    // получал бы тот же укус второй раз, уже локально.
+    if (this.puppet) return;
     if (this.state !== 'attack' || this.didHit) return;
     if (!anim.key.startsWith(`${this.stats.key}-attack-`)) return;
 
@@ -204,6 +235,16 @@ export class Monster {
 
   takeDamage(amount: number): void {
     if (this.state === 'dead') return;
+
+    // Марионетка: урон уходит серверу, вспышка остаётся — отклик мгновенный,
+    // а здоровье поменяется, когда сервер подтвердит следующим снимком.
+    if (this.puppet) {
+      this.sprite.setTintFill(0xffffff);
+      this.scene.time.delayedCall(60, () => this.sprite.clearTint());
+      this.showBar();
+      this.onNetHit(amount);
+      return;
+    }
 
     this.hp -= amount;
     this.sprite.setTintFill(0xffffff);
@@ -290,6 +331,7 @@ export class Monster {
 
   /** Пора ли воскреснуть. Сцена спросит и позовёт reset. */
   shouldRespawn(now: number): boolean {
+    if (this.puppet) return false; // воскрешает сервер, а не местные часы
     // Босс возвращается не через полминуты, а через несколько минут: если он
     // отрастает к тому времени, как игрок дошёл до края поляны, это уже не
     // событие, а грядка.
@@ -304,18 +346,79 @@ export class Monster {
     this.sprite.setPosition(this.homeX, this.homeY);
     this.sprite.setAlpha(1);
     this.sprite.clearTint();
-    this.scene.physics.world.enableBody(this.sprite);
+    // Марионетке физику не возвращаем: её тело отключено навсегда (makePuppet).
+    if (!this.puppet) this.scene.physics.world.enableBody(this.sprite);
     this.nameTag.setVisible(true);
     this.play('idle');
   }
 
+  /**
+   * Свежий серверный снимок этого моба. Позицию не ставим, а запоминаем целью:
+   * снимки идут 10 раз в секунду, кадры — 60, лерп в update сглаживает.
+   */
+  netSync(row: { x: number; y: number; hp: number; m: string; d: string }): void {
+    this.netX = row.x;
+    this.netY = row.y;
+
+    if (row.m === 'dead') {
+      if (this.state !== 'dead') this.die();
+      return;
+    }
+    if (this.state === 'dead') this.reset(); // сервер воскресил — оживаем и мы
+
+    if (row.hp < this.hp) this.showBar(); // кто-то (может, не мы) его бьёт
+    this.hp = row.hp;
+
+    const dir = row.d as Dir;
+    if (['down', 'left', 'right', 'up'].includes(dir)) this.dir = dir;
+
+    // Режим сервера -> анимация. Атаку не перезапускаем, пока она играет.
+    const want = row.m === 'attack' ? 'attack' : row.m === 'idle' ? 'idle' : 'run';
+    if (this.netMode !== row.m) {
+      this.netMode = row.m;
+      if (want === 'attack') this.play('attack');
+    }
+    if (want !== 'attack') this.play(want);
+    this.state = want === 'attack' ? 'attack' : 'idle';
+  }
+
+  /** Кадр марионетки: дотянуть позицию к серверной, вести полоску и метку. */
+  private puppetUpdate(player: Player): void {
+    const now = this.scene.time.now;
+    this.sprite.setDepth(
+      creatureDepth(this.sprite.x, this.sprite.y, this.tallObjects, this.mapWidth, this.tileW, this.tileH, this.layerCount),
+    );
+    this.updateBar();
+
+    if (this.state === 'dead') {
+      const age = now - this.deadAt;
+      if (age > CORPSE_MS) this.sprite.setAlpha(Math.max(0, 1 - (age - CORPSE_MS) / 1000));
+      return;
+    }
+    this.updateNameTag(player.level);
+
+    const dx = this.netX - this.sprite.x;
+    const dy = this.netY - this.sprite.y;
+    // Тот же приём, что у чужих героев: далеко — прыжок (воскрес, телепорт),
+    // близко — дотягивание за период снимка.
+    if (Math.hypot(dx, dy) > 200) this.sprite.setPosition(this.netX, this.netY);
+    else {
+      const k = Math.min(1, this.scene.game.loop.delta / 100);
+      this.sprite.setPosition(this.sprite.x + dx * k, this.sprite.y + dy * k);
+    }
+  }
+
   update(player: Player): void {
+    if (this.puppet) {
+      this.puppetUpdate(player);
+      return;
+    }
     const now = this.scene.time.now;
     // Та же шкала, что у игрока. Раньше тут стоял sprite.y — мировые пиксели, —
     // и паук с севера (y=408) рисовался поверх героя (300), а южнее 16-го ряда
     // тайлов лез ещё и на кроны деревьев.
     this.sprite.setDepth(
-      creatureDepth(this.sprite.x, this.sprite.y, this.tallObjects, this.mapWidth, this.tileW, this.tileH),
+      creatureDepth(this.sprite.x, this.sprite.y, this.tallObjects, this.mapWidth, this.tileW, this.tileH, this.layerCount),
     );
     this.updateBar();
 
