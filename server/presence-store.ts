@@ -19,6 +19,8 @@ export interface PresenceEntry {
   /** Что надето — чтобы чужой герой выглядел как одетый, а не голый. */
   helm: string | null;
   body: string | null;
+  /** Оружие в руке — его видно у чужого героя так же, как у своего. */
+  weapon: string | null;
   /** Мёртв ли герой: мобы мёртвых не трогают, как и в одиночной игре. */
   dead: boolean;
   /** Когда о игроке слышали в последний раз (мс). Для prune. */
@@ -62,7 +64,7 @@ export class PresenceStore {
     const out: RosterRow[] = [];
     for (const [key, p] of this.players) {
       if (key === exceptKey || p.map !== map) continue;
-      out.push({ id: key, name: p.name, map: p.map, x: p.x, y: p.y, anim: p.anim, helm: p.helm, body: p.body, dead: p.dead });
+      out.push({ id: key, name: p.name, map: p.map, x: p.x, y: p.y, anim: p.anim, helm: p.helm, body: p.body, weapon: p.weapon, dead: p.dead });
     }
     return out;
   }

@@ -131,3 +131,68 @@ test('стена съедает ось: моб соскальзывает, а н
   assert.ok(m.x <= 112, 'в стену не вошёл');
   assert.ok(m.y > 104, 'по свободной оси сдвинулся');
 });
+
+test('смерть моба роняет ОБЩИЙ дроп на землю (ролит сервер, один раз)', () => {
+  // rng=0: выпадает максимум таблицы — детерминированно для теста.
+  const w = new MapWorld([{ kind: 'spider1', x: 100, y: 100 }], () => true, 16, 16, () => 0);
+  assert.deepEqual(w.lootSnapshot(), []);
+  w.hit(1, 999, 'killer', 5000);
+  const ls = w.lootSnapshot();
+  assert.ok(ls.length > 0, 'дроп лёг на землю');
+  assert.ok(ls.every((l) => Math.hypot(l.x - 100, l.y - 100) <= 12), 'лежит вокруг тела');
+  assert.ok(ls.every((l) => l.qty >= 1));
+});
+
+test('подбор: забирает первый дошедший, второму уже пусто', () => {
+  const w = new MapWorld([{ kind: 'spider1', x: 100, y: 100 }], () => true, 16, 16, () => 0);
+  w.hit(1, 999, 'a', 0);
+  const [l] = w.lootSnapshot();
+  const got = w.take(l.id, l.x + 10, l.y, 99);
+  assert.equal(got?.item, l.item);
+  assert.equal(got?.qty, l.qty);
+  assert.equal(w.take(l.id, l.x, l.y, 99), null, 'второй опоздал');
+  assert.equal(w.lootSnapshot().find((x) => x.id === l.id), undefined);
+});
+
+test('подбор издалека не работает, частичный оставляет остаток лежать', () => {
+  const w = new MapWorld([{ kind: 'spider1', x: 100, y: 100 }], () => true, 16, 16, () => 0);
+  w.hit(1, 999, 'a', 0);
+  const stack = w.lootSnapshot().find((l) => l.qty >= 2);
+  if (!stack) return; // таблица дала только единицы — частичный подбор не проверить
+  assert.equal(w.take(stack.id, stack.x + 200, stack.y, 99), null, 'слишком далеко');
+  const part = w.take(stack.id, stack.x, stack.y, 1);
+  assert.equal(part?.qty, 1);
+  const rest = w.lootSnapshot().find((l) => l.id === stack.id);
+  assert.equal(rest?.qty, stack.qty - 1, 'остаток лежит для всех');
+});
+
+test('пролежавшая добыча истлевает', () => {
+  const w = new MapWorld([{ kind: 'spider1', x: 100, y: 100 }], () => true, 16, 16, () => 0);
+  w.hit(1, 999, 'a', 1000);
+  assert.ok(w.lootSnapshot().length > 0);
+  w.tick(1000 + 120_000 + 1, 100, []);
+  assert.deepEqual(w.lootSnapshot(), []);
+});
+
+test('голем бьёт сплешем: достаётся всем в радиусе, лучник поодаль цел', () => {
+  const w = world([{ kind: 'golem1', x: 100, y: 100 }]);
+  const near1 = player({ key: 'танк', x: 120, y: 100 });
+  const near2 = player({ key: 'сосед', x: 100, y: 130 }); // в 30 px — внутри сплеша (44)
+  const far = player({ key: 'лучник', x: 300, y: 100 });
+  w.tick(0, 100, [near1, near2, far]);
+  assert.equal(w.snapshot()[0].m, 'attack');
+
+  // Кадр удара голема — hitFrame 6 из 9 при 16 к/с: 375 мс от начала замаха.
+  const events = w.tick(400, 100, [near1, near2, far]);
+  assert.deepEqual(events.map((e) => e.player).sort(), ['сосед', 'танк']);
+  assert.ok(events.every((e) => e.dmg === 16));
+});
+
+test('обычный паук сплешем не бьёт — достаётся только цели', () => {
+  const w = world([{ kind: 'spider1', x: 100, y: 100 }]);
+  const target = player({ key: 'цель', x: 110, y: 100 });
+  const bystander = player({ key: 'зевака', x: 100, y: 112 }); // тоже вплотную
+  w.tick(0, 100, [target, bystander]);
+  const events = w.tick(260, 100, [target, bystander]);
+  assert.deepEqual(events.map((e) => e.player), ['цель']);
+});

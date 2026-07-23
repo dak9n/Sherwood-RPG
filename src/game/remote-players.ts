@@ -18,6 +18,9 @@
 
 import Phaser from 'phaser';
 import { creatureDepth } from './depth';
+import { makeHeldImage, placeHeld } from './player';
+import { ensureHeroLook } from './hero-look';
+import { ITEMS } from './items';
 import type { RemoteRow } from '../net/online';
 
 interface Ghost {
@@ -30,6 +33,12 @@ interface Ghost {
   tx: number;
   ty: number;
   anim: string;
+  /** Префикс набора листов под ЕГО броню (см. hero-look.ts). */
+  prefix: string;
+  helm: string | null;
+  body: string | null;
+  weapon: string | null;
+  held: Phaser.GameObjects.Image | null;
 }
 
 /** Дальше этого не тянемся, а прыгаем: телепорт или смена карты, тянуть нелепо. */
@@ -79,11 +88,35 @@ export class RemotePlayers {
         g.name = p.name;
         g.tag.setText(p.name);
       }
-      // Ключ анимации проигрываем как есть; чужая версия игры могла прислать
-      // ключ, которого у нас нет, — тогда просто оставляем как было.
-      if (p.anim && p.anim !== g.anim && this.scene.anims.exists(p.anim)) {
-        g.anim = p.anim;
-        g.sprite.anims.play(p.anim, true);
+
+      // Переоделся — собираем (или берём из кэша) набор листов под его броню
+      // и переигрываем текущую анимацию уже в новом наборе.
+      if (g.helm !== p.helm || g.body !== p.body) {
+        g.helm = p.helm;
+        g.body = p.body;
+        g.prefix = ensureHeroLook(this.scene, p.helm, p.body);
+        g.anim = ''; // заставить play ниже перезапустить в новом наборе
+      }
+      // Оружие: как у своего героя — та же иконка в той же рукояти.
+      if (g.weapon !== p.weapon) {
+        g.weapon = p.weapon;
+        const tex = p.weapon && ITEMS[p.weapon]?.held ? `held-${p.weapon}` : null;
+        if (!tex) {
+          g.held?.destroy();
+          g.held = null;
+        } else if (g.held) {
+          g.held.setTexture(tex);
+        } else {
+          g.held = makeHeldImage(this.scene, tex);
+        }
+      }
+
+      // Ключ анимации приходит в наборе отправителя (`sw-walk-down`) —
+      // переводим в НАШ набор его брони. Неизвестный ключ оставляем как был.
+      const want = this.translate(p.anim, g.prefix);
+      if (want && want !== g.anim && this.scene.anims.exists(want)) {
+        g.anim = want;
+        g.sprite.anims.play(want, true);
       }
     }
     for (const [id, g] of this.ghosts) {
@@ -94,9 +127,16 @@ export class RemotePlayers {
     }
   }
 
+  /** `sw-walk-down` -> `<prefix>-walk-down`: тот же кадр, но в его броне. */
+  private translate(anim: string, prefix: string): string {
+    if (!anim) return '';
+    return anim.startsWith('sw-') ? `${prefix}-${anim.slice(3)}` : anim;
+  }
+
   private spawn(p: RemoteRow): Ghost {
+    const prefix = ensureHeroLook(this.scene, p.helm, p.body);
     const sprite = this.scene.add
-      .sprite(p.x, p.y, 'sw-idle', 0)
+      .sprite(p.x, p.y, `${prefix}-idle`, 0)
       .setOrigin(0.5, 0.75); // как у героя: ноги в точке (x, y)
     const tag = this.scene.add
       .text(p.x, p.y - 33, p.name, {
@@ -109,10 +149,14 @@ export class RemotePlayers {
       })
       .setOrigin(0.5, 1)
       .setResolution(this.res);
-    const g: Ghost = { sprite, tag, bubble: null, bubbleUntil: 0, name: p.name, tx: p.x, ty: p.y, anim: '' };
-    if (p.anim && this.scene.anims.exists(p.anim)) {
-      g.anim = p.anim;
-      sprite.anims.play(p.anim, true);
+    const g: Ghost = {
+      sprite, tag, bubble: null, bubbleUntil: 0, name: p.name, tx: p.x, ty: p.y,
+      anim: '', prefix, helm: p.helm, body: p.body, weapon: null, held: null,
+    };
+    const want = this.translate(p.anim, prefix);
+    if (want && this.scene.anims.exists(want)) {
+      g.anim = want;
+      sprite.anims.play(want, true);
     }
     return g;
   }
@@ -121,6 +165,7 @@ export class RemotePlayers {
     g.sprite.destroy();
     g.tag.destroy();
     g.bubble?.destroy();
+    g.held?.destroy();
   }
 
   /** Реплика из чата — облачко над головой говорившего. Ищем по имени: в чате другого ключа нет. */
@@ -164,6 +209,15 @@ export class RemotePlayers {
       }
       g.tag.setPosition(g.sprite.x, g.sprite.y - 33);
       g.tag.setDepth(g.sprite.depth + 0.03);
+
+      // Оружие — в рукоять текущего кадра, тем же кодом, что у своего героя.
+      if (g.held) {
+        const frame = g.sprite.anims.currentFrame;
+        const parts = g.sprite.anims.getName().split('-');
+        const animName = parts[parts.length - 2] ?? ''; // `<prefix>-walk-down`
+        if (!frame || animName === 'death') g.held.setVisible(false);
+        else placeHeld(g.held, g.sprite.x, g.sprite.y, g.sprite.depth, animName, Number(frame.textureFrame));
+      }
       if (g.bubble) {
         if (this.scene.time.now > g.bubbleUntil) {
           g.bubble.setVisible(false);

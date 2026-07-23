@@ -77,6 +77,8 @@ export class Monster {
    */
   private puppet = false;
   private onNetHit: (dmg: number) => void = () => {};
+  /** Серверный id общего моба — чтобы показать чужую цифру урона над ним. */
+  netId: number | null = null;
   /** Куда тянемся между серверными снимками (10 Гц против 60 кадров). */
   private netX = 0;
   private netY = 0;

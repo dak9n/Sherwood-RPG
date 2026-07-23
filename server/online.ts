@@ -8,13 +8,16 @@
  *   {t:'pos', map,x,y,anim,helm,body,dead} — «я тут», шлётся на ходу ~10 раз/с
  *   {t:'chat', text}             — сказать всем на своей карте
  *   {t:'hit', id, dmg}           — я ударил моба id на dmg
+ *   {t:'take', id, max}          — подбираю добычу id, влезает max штук
  * И от сервера:
  *   {t:'ok', name}               — вход принят
  *   {t:'roster', ps:[...]}       — кто ещё на этой карте (каждые 100 мс)
  *   {t:'mobs', ms:[...]}         — мобы карты: у ВСЕХ одни и те же (каждые 100 мс)
+ *   {t:'loot', ls:[...]}         — добыча на земле: общая, забирает первый (каждые 100 мс)
  *   {t:'chat', from, text}
  *   {t:'mobhit', id, dmg}        — моб id укусил ТЕБЯ
- *   {t:'kill', id}               — твой удар был смертельным: забирай опыт и добычу
+ *   {t:'kill', id}               — твой удар был смертельным: забирай опыт (дроп уже на земле)
+ *   {t:'taken', id, item, qty}   — подбор удался: клади в сумку
  *
  * Мобами владеет сервер (world.ts): он их расселяет, водит и хоронит. Клиент
  * присылает только урон — сколько именно, считает клиент (криты, заточка), а
@@ -72,7 +75,15 @@ interface Client {
   key: string;
   name: string;
   map: string;
+  /** Остаток бюджета эффектов до следующего пульса — от спама fx. */
+  fxLeft: number;
 }
+
+/** Сколько fx-сообщений клиент может разослать за один пульс (100 мс). */
+const FX_PER_TICK = 12;
+/** Что пропускаем в fx наружу: только форма, никакого исполняемого содержимого. */
+const FX_NUM_FIELDS = ['x', 'y', 'angle', 'dmg', 'mobId'] as const;
+const FX_BOOL_FIELDS = ['crit', 'heavy'] as const;
 
 export interface OnlineHandle {
   close(): void;
@@ -150,7 +161,7 @@ export function attachOnline(server: Server, opts: OnlineOptions): OnlineHandle 
         // Тот же аккаунт со второй вкладки: старое соединение уступает новому,
         // иначе два «я» дерутся за одну запись присутствия.
         clients.get(key)?.conn.destroy();
-        me = { conn, key, name, map: '' };
+        me = { conn, key, name, map: '', fxLeft: FX_PER_TICK };
         clients.set(key, me);
         sendTo(me, { t: 'ok', name });
         return;
@@ -168,6 +179,7 @@ export function attachOnline(server: Server, opts: OnlineOptions): OnlineHandle 
           anim: typeof msg.anim === 'string' ? msg.anim.slice(0, 40) : '',
           helm: typeof msg.helm === 'string' ? msg.helm.slice(0, 40) : null,
           body: typeof msg.body === 'string' ? msg.body.slice(0, 40) : null,
+          weapon: typeof msg.weapon === 'string' ? msg.weapon.slice(0, 40) : null,
           dead: msg.dead === true,
           ts: opts.now(),
         });
@@ -176,11 +188,43 @@ export function attachOnline(server: Server, opts: OnlineOptions): OnlineHandle 
 
       if (msg.t === 'hit') {
         // Удар по мобу. Сервер применяет урон к ОБЩЕМУ мобу; смертельный удар
-        // возвращается убийце событием kill — опыт и добычу начисляет он сам.
+        // возвращается убийце событием kill — опыт начисляет он сам, а дроп
+        // мир уже разложил по земле для всех.
         const world = me.map ? worldOf(me.map) : null;
         if (!world || typeof msg.id !== 'number') return;
         if (world.hit(msg.id, Number(msg.dmg), me.key, opts.now()) === 'dead') {
           sendTo(me, { t: 'kill', id: msg.id });
+        }
+        return;
+      }
+
+      if (msg.t === 'take') {
+        // Подбор добычи: забирает первый дошедший. Позиция — из presence, а не
+        // из сообщения: клиенту про своё «где я» тут веры нет.
+        const world = me.map ? worldOf(me.map) : null;
+        const at = presence.playersFor(me.map).find((p) => p.key === me!.key);
+        if (!world || !at || typeof msg.id !== 'number') return;
+        const got = world.take(msg.id, at.x, at.y, Number(msg.max ?? 1));
+        if (got) sendTo(me, { t: 'taken', id: msg.id, item: got.item, qty: got.qty });
+        return;
+      }
+
+      if (msg.t === 'fx') {
+        // Чужой бой — снаряды, вспышки, цифры урона. Сервер тут ретранслятор:
+        // физику не проверяет (это только картинка), но форму сообщения — да,
+        // и частоту ограничивает, чтобы один клиент не заспамил карту.
+        if (!me.map || typeof msg.kind !== 'string' || me.fxLeft <= 0) return;
+        me.fxLeft--;
+        const fx: Record<string, unknown> = { t: 'fx', kind: msg.kind.slice(0, 16) };
+        for (const f of FX_NUM_FIELDS) {
+          const v = Number(msg[f]);
+          if (Number.isFinite(v)) fx[f] = v;
+        }
+        for (const f of FX_BOOL_FIELDS) {
+          if (msg[f] === true) fx[f] = true;
+        }
+        for (const c of clients.values()) {
+          if (c !== me && c.map === me.map) sendTo(c, fx);
         }
         return;
       }
@@ -234,11 +278,15 @@ export function attachOnline(server: Server, opts: OnlineOptions): OnlineHandle 
 
     if (!clients.size) return;
     for (const c of clients.values()) {
+      c.fxLeft = FX_PER_TICK; // новый пульс — новый бюджет эффектов
       if (!c.map) continue;
       const ps: RosterRow[] = presence.listFor(c.map, c.key);
       sendTo(c, { t: 'roster', ps });
       const world = worlds.get(c.map);
-      if (world) sendTo(c, { t: 'mobs', ms: world.snapshot() });
+      if (world) {
+        sendTo(c, { t: 'mobs', ms: world.snapshot() });
+        sendTo(c, { t: 'loot', ls: world.lootSnapshot() });
+      }
     }
   }, ROSTER_MS);
   timer.unref?.();

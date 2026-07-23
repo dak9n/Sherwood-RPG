@@ -2,8 +2,8 @@ import Phaser from 'phaser';
 import { MapScene } from './MapScene';
 import { Player, CHEST_OFFSET, type ArmorTint, type FrameOffsets, type Strike, type Shot } from '../game/player';
 import { Monster } from '../game/monster';
-import { Arrow, ARROW_RANGE } from '../game/arrow';
-import { Fireball, FIREBALL_RANGE, FIREBALL_MP_COST, FIREBALL_COOLDOWN, FIREBALL_CAST_TIME } from '../game/fireball';
+import { Arrow, ARROW_RANGE, ARROW_SPEED } from '../game/arrow';
+import { Fireball, FIREBALL_RANGE, FIREBALL_SPEED, FIREBALL_MP_COST, FIREBALL_COOLDOWN, FIREBALL_CAST_TIME } from '../game/fireball';
 import {
   RAIN_TEX, RAIN_RANGE, RAIN_RADIUS, RAIN_MP_COST, RAIN_COOLDOWN, RAIN_DURATION, RAIN_TICKS, RAIN_ARROWS,
   ensureRainArrowTexture,
@@ -152,6 +152,10 @@ export class GameScene extends MapScene {
   private lastPosAt = 0;
   /** Общие мобы с сервера: id -> марионетка. Пуст в оффлайне. */
   private netMobs = new Map<number, Monster>();
+  /** Общая добыча с сервера: id -> лежащий предмет. */
+  private netLoot = new Map<number, Loot>();
+  /** По какой добыче уже послан take — не спамить сервер каждый кадр. */
+  private takeAskedAt = new Map<number, number>();
   /** Чей лес: ждём сервер, сервер прислал, или спавним своих (оффлайн/фолбэк). */
   private mobsMode: 'pending' | 'server' | 'local' = 'pending';
   /** Деревья — марионеткам они нужны при создании из снимка. */
@@ -625,6 +629,10 @@ export class GameScene extends MapScene {
       void m; // сам моб уже играет анимацию атаки по серверному снимку
     };
 
+    this.online.onLoot = (ls) => this.applyLoot(ls);
+    this.online.onTaken = (id, item, qty) => this.collectNetLoot(id, item, qty);
+    this.online.onFx = (fx) => this.showRemoteFx(fx);
+
     this.time.delayedCall(6000, () => {
       if (this.mobsMode === 'pending') {
         this.mobsMode = 'local';
@@ -632,6 +640,58 @@ export class GameScene extends MapScene {
         this.chat.system('Server mobs unavailable — spawning local ones.');
       }
     });
+  }
+
+  /**
+   * Снимок общей добычи: она одна на всех, подбирает первый дошедший. Тут
+   * только зеркалим снимок в спрайты; сам подбор — в updateLoot через сервер.
+   */
+  private applyLoot(ls: import('../net/online').LootRow[]): void {
+    if (this.mobsMode === 'local') return;
+    const seen = new Set<number>();
+    for (const row of ls) {
+      seen.add(row.id);
+      const have = this.netLoot.get(row.id);
+      if (!have) {
+        if (ITEMS[row.item]) this.netLoot.set(row.id, new Loot(this, row.item, row.qty, row.x, row.y));
+      } else {
+        have.qty = row.qty; // кто-то забрал часть стопки — остаток общий
+      }
+    }
+    for (const [id, l] of this.netLoot) {
+      if (seen.has(id)) continue;
+      // Пропал из снимка: забрали (или истлело). Наш собственный подбор красиво
+      // улетает в сумку через taken — здесь только чужие и просроченные.
+      this.netLoot.delete(id);
+      this.takeAskedAt.delete(id);
+      l.destroy();
+    }
+  }
+
+  /** Сервер отдал добычу МНЕ: в сумку и красиво улететь. */
+  private collectNetLoot(id: number, item: string, qty: number): void {
+    if (!ITEMS[item]) return;
+    const left = addToBag(this.bag, item, qty);
+    const taken = qty - left;
+    if (taken <= 0) return; // место успело кончиться — увы, предмет уже у нас, кладём при первой дырке
+    this.refreshBags();
+
+    const name = ITEMS[item].name;
+    const px = this.player.sprite.x;
+    const py = this.player.sprite.y;
+    const l = this.netLoot.get(id);
+    if (l) {
+      this.netLoot.delete(id);
+      this.takeAskedAt.delete(id);
+      l.flyTo(px, py, () => {
+        this.damageNumber(px, py - 44, 0, '#d8c07a', `${name}${taken > 1 ? ` ×${taken}` : ''}`);
+      });
+    } else {
+      this.damageNumber(px, py - 44, 0, '#d8c07a', `${name}${taken > 1 ? ` ×${taken}` : ''}`);
+    }
+    if (rarityOf(item) !== 'common') {
+      this.chat.system(`Loot: ${name}${taken > 1 ? ` ×${taken}` : ''}.`);
+    }
   }
 
   /** Свежий снимок общих мобов: создать новых, обновить живых, убрать пропавших. */
@@ -649,6 +709,7 @@ export class GameScene extends MapScene {
         m = new Monster(this, stats, row.x, row.y);
         m.setTallObjects(this.mobTall, this.doc.width, this.doc.height, this.doc.map.tileWidth, this.doc.map.tileHeight, this.doc.layers.length);
         const id = row.id;
+        m.netId = id;
         m.makePuppet((dmg) => this.online?.sendHit(id, dmg));
         this.netMobs.set(id, m);
         this.monsters.push(m); // меч, стрелы и шары находят их как раньше
@@ -727,10 +788,15 @@ export class GameScene extends MapScene {
    */
   private heavySwingFx(angle: number): void {
     const hero = this.player.sprite;
-    const depth = hero.depth + 0.5;
+    this.online?.sendFx({ kind: 'slash', x: Math.round(hero.x), y: Math.round(hero.y), angle });
+    this.heavySwingFxAt(hero.x, hero.y, angle, hero.depth + 0.5);
+  }
+
+  /** Тот же росчерк, но в заданной точке — так рисуются и ЧУЖИЕ тяжёлые удары. */
+  private heavySwingFxAt(x: number, y: number, angle: number, depth: number): void {
     // Центр эффекта — перед грудью героя, в сторону взмаха.
-    const ox = hero.x + Math.cos(angle) * 12;
-    const oy = hero.y - CHEST_OFFSET + Math.sin(angle) * 12;
+    const ox = x + Math.cos(angle) * 12;
+    const oy = y - CHEST_OFFSET + Math.sin(angle) * 12;
 
     // Полумесяц-росчерк: толстая светящаяся дуга, развёрнутая по удару, растёт и тает.
     const slash = this.add.graphics({ x: ox, y: oy });
@@ -777,6 +843,8 @@ export class GameScene extends MapScene {
     // Крит — оранжевым и с восклицанием; тяжёлый — золотой; обычный — белый.
     const color = crit ? '#ff6a4d' : heavy ? '#ffd35c' : '#ffffff';
     this.damageNumber(m.sprite.x, m.sprite.y - 30, damage, color, crit ? `${damage}!` : undefined);
+    // Общий моб: пусть и остальные видят, что его бьют и на сколько.
+    if (m.netId !== null) this.online?.sendFx({ kind: 'dmg', mobId: m.netId, dmg: damage, crit, heavy });
     // Вампиризм (навык): часть нанесённого урона возвращается здоровьем.
     this.healFromLifesteal(damage);
     if (m.isDead) this.awardKill(m);
@@ -789,7 +857,8 @@ export class GameScene extends MapScene {
    */
   private awardKill(m: Monster): void {
     this.gainXp(m.stats.xp);
-    this.dropLoot(m);
+    // Общий моб — общий дроп: его уже разложил по земле сервер, для всех.
+    if (m.netId === null) this.dropLoot(m);
     const gold = this.awardGold(m);
     // Одна строка в чат на убийство: опыт и золото вместе.
     const goldPart = gold > 0 ? `, +${gold} gold` : '';
@@ -818,6 +887,7 @@ export class GameScene extends MapScene {
   /** Лук выстрелил: рождаем стрелу. Дальше её ведёт updateArrows. */
   private spawnArrow(shot: Shot): void {
     this.arrows.push(new Arrow(this, shot.x, shot.y, shot.angle, shot.damage, shot.heavy, shot.crit));
+    this.online?.sendFx({ kind: 'arrow', x: Math.round(shot.x), y: Math.round(shot.y), angle: shot.angle });
   }
 
   /**
@@ -940,6 +1010,7 @@ export class GameScene extends MapScene {
     if (crit) dmg = Math.round(dmg * (BASE_CRIT_MUL + sb.critMul));
 
     this.fireballs.push(new Fireball(this, ox, oy, angle, dmg, crit));
+    this.online?.sendFx({ kind: 'fireball', x: Math.round(ox), y: Math.round(oy), angle });
   }
 
   /** Полоску каста создаём при первом касте и показываем над героем. */
@@ -983,6 +1054,7 @@ export class GameScene extends MapScene {
       if (hit) {
         this.hitMonster(hit, f.damage, false, f.crit);
         this.fireBurst(ax, ay);
+        this.online?.sendFx({ kind: 'burst', x: Math.round(ax), y: Math.round(ay) });
         this.cameras.main.shake(90, 0.004);
         f.destroy();
         this.fireballs.splice(i, 1);
@@ -994,7 +1066,10 @@ export class GameScene extends MapScene {
       const outside = tx < 0 || ty < 0 || tx >= this.doc.width || ty >= this.doc.height;
       const intoWall = f.traveled > 6 && !outside && !this.doc.canWalk(tx, ty);
       if (f.traveled > FIREBALL_RANGE || outside || intoWall) {
-        if (intoWall) this.fireBurst(ax, ay); // о стену — вспышка; на излёте просто гаснет
+        if (intoWall) {
+          this.fireBurst(ax, ay); // о стену — вспышка; на излёте просто гаснет
+          this.online?.sendFx({ kind: 'burst', x: Math.round(ax), y: Math.round(ay) });
+        }
         f.destroy();
         this.fireballs.splice(i, 1);
       }
@@ -1073,7 +1148,12 @@ export class GameScene extends MapScene {
   private spawnArrowRain(cx: number, cy: number): void {
     // Первая волна урона — через долю длительности, дальше по updateRains.
     this.rains.push({ cx, cy, nextTick: this.time.now + RAIN_DURATION / RAIN_TICKS, ticksLeft: RAIN_TICKS });
+    this.online?.sendFx({ kind: 'rain', x: Math.round(cx), y: Math.round(cy) });
+    this.rainVisual(cx, cy);
+  }
 
+  /** Падающие стрелы залпа — картинка без урона: её видят и чужие клиенты. */
+  private rainVisual(cx: number, cy: number): void {
     ensureRainArrowTexture(this);
     const half = Math.round(RAIN_RADIUS / 2);
     for (let i = 0; i < RAIN_ARROWS; i++) {
@@ -1201,6 +1281,20 @@ export class GameScene extends MapScene {
   private updateLoot(now: number): void {
     const px = this.player.sprite.x;
     const py = this.player.sprite.y;
+
+    // Общая добыча: подбор решает СЕРВЕР — кто первым дошёл и попросил, тот и
+    // забрал. Мы только просим (не чаще раза в секунду на предмет) и ждём
+    // taken; чужие подборы просто исчезают из снимка.
+    for (const [id, l] of this.netLoot) {
+      l.update(now);
+      if (this.player.isDead || !l.inReach(px, py)) continue;
+      const room = roomFor(this.bag, l.id);
+      if (room <= 0) continue;
+      const asked = this.takeAskedAt.get(id) ?? 0;
+      if (now - asked < 1000) continue;
+      this.takeAskedAt.set(id, now);
+      this.online?.sendTake(id, Math.min(room, l.qty));
+    }
 
     for (let i = this.loot.length - 1; i >= 0; i--) {
       const l = this.loot[i];
@@ -1953,8 +2047,49 @@ export class GameScene extends MapScene {
       anim: this.player.sprite.anims.currentAnim?.key ?? '',
       helm: this.equipped.helm ?? null,
       body: this.equipped.body ?? null,
+      weapon: this.equipped.weapon ?? null,
       dead: this.player.isDead, // мёртвых серверные мобы не трогают
     });
+  }
+
+  /**
+   * Чужой боевой эффект — чистая картинка. Урон НИКОГДА не считается отсюда:
+   * по мобам он ходит через hit, по нам — через mobhit. Потому подделка fx
+   * максимум подрисует лишнюю стрелу, а не снимет здоровье.
+   */
+  private showRemoteFx(fx: import('../net/online').FxMsg): void {
+    if (fx.kind === 'dmg' && typeof fx.mobId === 'number' && typeof fx.dmg === 'number') {
+      const m = this.netMobs.get(fx.mobId);
+      if (!m || m.isDead) return;
+      // Чуть приглушённее своих: свои циферки должны читаться главными.
+      const color = fx.crit ? '#ff8a70' : fx.heavy ? '#ffe08a' : '#cfcfcf';
+      this.damageNumber(m.sprite.x, m.sprite.y - 30, fx.dmg, color, fx.crit ? `${fx.dmg}!` : undefined);
+      return;
+    }
+
+    if (typeof fx.x !== 'number' || typeof fx.y !== 'number') return;
+    if (fx.kind === 'arrow' || fx.kind === 'fireball') {
+      // Чужой снаряд летит свою дальность и гаснет: во что он попал на самом
+      // деле, скажут цифры урона — картинке этого знать не нужно.
+      const angle = fx.angle ?? 0;
+      const arrow = fx.kind === 'arrow';
+      const range = arrow ? ARROW_RANGE : FIREBALL_RANGE;
+      const speed = arrow ? ARROW_SPEED : FIREBALL_SPEED;
+      const proj = arrow
+        ? new Arrow(this, fx.x, fx.y, angle, 0, false, false)
+        : new Fireball(this, fx.x, fx.y, angle, 0, false);
+      this.tweens.add({
+        targets: proj.sprite,
+        x: fx.x + Math.cos(angle) * range,
+        y: fx.y + Math.sin(angle) * range,
+        duration: (range / speed) * 1000,
+        onComplete: () => proj.destroy(),
+      });
+      return;
+    }
+    if (fx.kind === 'burst') this.fireBurst(fx.x, fx.y);
+    else if (fx.kind === 'rain') this.rainVisual(fx.x, fx.y);
+    else if (fx.kind === 'slash') this.heavySwingFxAt(fx.x, fx.y, fx.angle ?? 0, 340);
   }
 
   /** Метка с ником над героем: идёт за ним и сортируется вместе с ним. */

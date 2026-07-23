@@ -10,6 +10,7 @@ const entry = (over: Partial<PresenceEntry> = {}): PresenceEntry => ({
   anim: 'sw-idle-down',
   helm: null,
   body: null,
+  weapon: null,
   dead: false,
   ts: 1000,
   ...over,

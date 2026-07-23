@@ -17,7 +17,7 @@
  */
 
 import { decideChase, type Chase } from '../src/game/chase.ts';
-import { ALL_CREATURES, type MonsterStats } from '../src/game/creatures.ts';
+import { ALL_CREATURES, rollDrop, type MonsterStats } from '../src/game/creatures.ts';
 import type { SpawnPoint } from '../src/game/spawn.ts';
 
 /** Кадры атаки листаются на этой скорости (см. createDirAnims в monster.ts). */
@@ -57,6 +57,27 @@ export interface MobHitEvent {
   dmg: number;
 }
 
+/** Добыча на земле — общая: видят все на карте, забирает первый дошедший. */
+export interface LootRow {
+  id: number;
+  item: string;
+  qty: number;
+  x: number;
+  y: number;
+}
+
+interface LootEntry extends LootRow {
+  bornAt: number;
+}
+
+/** Сколько добыча лежит — как LIFETIME_MS клиентского Loot. */
+const LOOT_TTL = 120_000;
+/**
+ * С какого расстояния сервер разрешает подбор. Клиент просит с своих 20 px —
+ * запас на лаг и лерп: за время запроса игрок успевает съехать.
+ */
+const TAKE_RANGE = 48;
+
 interface Mob {
   id: number;
   /** Имя вида в ALL_CREATURES ('spider1') — по нему клиент найдёт статы. */
@@ -83,19 +104,25 @@ interface Mob {
 
 export class MapWorld {
   private mobs: Mob[] = [];
+  private loot: LootEntry[] = [];
+  private lootSeq = 0;
   private canWalk: (cx: number, cy: number) => boolean;
   private tileW: number;
   private tileH: number;
+  /** Случай для дропа. Параметром — ради воспроизводимых тестов, как у rollDrop. */
+  private rng: () => number;
 
   constructor(
     spawns: SpawnPoint[],
     canWalk: (cx: number, cy: number) => boolean,
     tileW = 16,
     tileH = 16,
+    rng: () => number = Math.random,
   ) {
     this.canWalk = canWalk;
     this.tileW = tileW;
     this.tileH = tileH;
+    this.rng = rng;
     let id = 0;
     for (const p of spawns) {
       const stats = ALL_CREATURES[p.kind];
@@ -155,13 +182,55 @@ export class MapWorld {
     m.hp = 0;
     m.mode = 'dead';
     m.respawnAt = now + (m.stats.respawnMs ?? RESPAWN_MS);
+
+    // Дроп ролится ЗДЕСЬ, на сервере, один раз — и падает на землю для всех.
+    // Раньше его ролил клиент-убийца у себя, и другие даже не видели.
+    // Раскладка вокруг тела — та же, что у клиентского dropLoot.
+    const drops = rollDrop(m.stats.drop, this.rng);
+    for (const [i, d] of drops.entries()) {
+      const angle = (i / Math.max(1, drops.length)) * Math.PI * 2;
+      const dist = drops.length > 1 ? 10 : 0;
+      this.loot.push({
+        id: ++this.lootSeq,
+        item: d.id,
+        qty: d.qty,
+        x: Math.round(m.x + Math.cos(angle) * dist),
+        y: Math.round(m.y + Math.sin(angle) * dist),
+        bornAt: now,
+      });
+    }
     return 'dead';
+  }
+
+  /** Добыча на земле — для рассылки клиентам. */
+  lootSnapshot(): LootRow[] {
+    return this.loot.map(({ id, item, qty, x, y }) => ({ id, item, qty, x, y }));
+  }
+
+  /**
+   * Игрок подбирает добычу. Забирает первый дошедший — никакой очереди и
+   * приоритета убийцы, как и просили. maxQty — сколько влезает в сумку:
+   * остаток стопки остаётся лежать для всех (как и в одиночной игре).
+   */
+  take(lootId: number, px: number, py: number, maxQty: number): { item: string; qty: number } | null {
+    const i = this.loot.findIndex((l) => l.id === lootId);
+    if (i < 0) return null; // уже забрали (или истлело) — опоздал
+    const l = this.loot[i];
+    if (this.dist2(px, py, l.x, l.y) > TAKE_RANGE * TAKE_RANGE) return null;
+    const qty = Math.min(l.qty, Math.max(0, Math.floor(maxQty)));
+    if (qty <= 0) return null;
+    if (qty >= l.qty) this.loot.splice(i, 1);
+    else l.qty -= qty;
+    return { item: l.item, qty };
   }
 
   /** Один шаг мира. Возвращает укусы мобов — сеть доставит их жертвам. */
   tick(now: number, dtMs: number, players: WorldPlayer[]): MobHitEvent[] {
     const events: MobHitEvent[] = [];
     const alive = players.filter((p) => !p.dead);
+
+    // Пролежавшая добыча истлевает — как на клиенте, только для всех разом.
+    if (this.loot.length) this.loot = this.loot.filter((l) => now - l.bornAt <= LOOT_TTL);
 
     for (const m of this.mobs) {
       if (m.mode === 'dead') {
@@ -173,10 +242,21 @@ export class MapWorld {
       if (m.mode === 'attack') {
         if (!m.hitDone && now >= m.hitAt) {
           m.hitDone = true;
-          const t = alive.find((p) => p.key === m.targetKey);
-          // Бьём по месту, где жертва СЕЙЧАС: отошла за время замаха — промах.
-          if (t && this.dist2(m.x, m.y, t.x, t.y) <= this.reach2(m, 8)) {
-            events.push({ player: t.key, mobId: m.id, dmg: m.stats.dmg });
+          if (m.stats.splash) {
+            // Сплеш (голем): удар о землю достаётся всем в радиусе, не только
+            // цели. Толпа вплотную к боссу ловит кулак вся.
+            const r2 = m.stats.splash * m.stats.splash;
+            for (const p of alive) {
+              if (this.dist2(m.x, m.y, p.x, p.y) <= r2) {
+                events.push({ player: p.key, mobId: m.id, dmg: m.stats.dmg });
+              }
+            }
+          } else {
+            const t = alive.find((p) => p.key === m.targetKey);
+            // Бьём по месту, где жертва СЕЙЧАС: отошла за время замаха — промах.
+            if (t && this.dist2(m.x, m.y, t.x, t.y) <= this.reach2(m, 8)) {
+              events.push({ player: t.key, mobId: m.id, dmg: m.stats.dmg });
+            }
           }
         }
         if (now >= m.attackEndAt) {

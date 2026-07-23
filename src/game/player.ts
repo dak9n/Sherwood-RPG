@@ -101,6 +101,47 @@ const ICON_BLADE_LEN = 34;
 const HELD_SCALE = 1.15;
 
 /**
+ * Оружие в руке — общие хелперы для СВОЕГО героя и для чужих по сети: одна
+ * геометрия (пивот-рукоять, масштаб под штатный меч, довороты по якорям),
+ * иначе чужой меч висел бы не так, как свой.
+ */
+export function makeHeldImage(scene: Phaser.Scene, texKey: string): Phaser.GameObjects.Image {
+  const held = scene.add.image(0, 0, texKey);
+  // Пивот — рукоять (низ-лево диагональной иконки): вокруг неё оружие и
+  // поворачивается при взмахе, как в кисти.
+  held.setOrigin(0.12, 0.88);
+  held.setScale((ANCHORS.bladeLen * HELD_SCALE) / ICON_BLADE_LEN);
+  return held;
+}
+
+/**
+ * Посадить оружие в рукоять кадра. animName — имя анимации ('walk'), frame —
+ * номер кадра листа. false — на этом кадре оружия не видно (замах из-за спины).
+ */
+export function placeHeld(
+  held: Phaser.GameObjects.Image,
+  x: number,
+  y: number,
+  depth: number,
+  animName: string,
+  frame: number,
+): boolean {
+  const table = ANCHORS.anims[animName];
+  const a = table?.frames[frame];
+  if (!a) {
+    held.setVisible(false);
+    return false;
+  }
+  held.setVisible(true);
+  // Якорь задан в пикселях кадра 64x64, а точка спрайта — ноги (origin 0.5/0.75).
+  held.setPosition(x + (a.x - FRAME / 2), y + (a.y - FRAME * 0.75));
+  // Оружие «из-за спины» рисуем под героем, иначе поверх.
+  held.setDepth(depth + (a.behind ? -0.01 : 0.01));
+  held.setAngle(a.angle - ICON_BLADE_ANGLE);
+  return true;
+}
+
+/**
  * Броня на герое — ПЕРЕКРАСКА, а не спрайт поверх.
  *
  * Пробовали накладывать сами иконки: герой — чиби, голова 15px и есть
@@ -365,6 +406,51 @@ export class Player {
         tex.add(i, 0, (i % cols) * FRAME, Math.floor(i / cols) * FRAME, FRAME, FRAME);
       }
     }
+  }
+
+  /**
+   * Отдельный НАБОР листов героя под ЧУЖУЮ экипировку — для игроков по сети.
+   *
+   * Листы sw-* перекрашены под местного игрока (retintArmor правит их на
+   * месте), поэтому чужие герои в них выглядели как ты. Здесь собирается
+   * параллельный набор `<prefix>-idle/walk/attack/death` тем же drawSheet — с
+   * их палитрами, их спрайтами брони и их покадровыми поправками — и анимации
+   * к нему. Наборы кэшируются по префиксу: три игрока в одинаковых шлемах
+   * делят один набор, а не плодят три.
+   *
+   * Зовётся ПОСЛЕ buildTextures: центры головы уже посчитаны и общие.
+   */
+  static buildGearSet(
+    scene: Phaser.Scene,
+    prefix: string,
+    tunic: ArmorTint | null,
+    hair: ArmorTint | null,
+    helmTex: string | null,
+    chestTex: string | null,
+    helmMaskTex: string | null,
+    helmOffsets?: FrameOffsets,
+    chestOffsets?: FrameOffsets,
+  ): void {
+    for (const key of Object.keys(ANIM_SHEETS)) {
+      const texKey = `${prefix}-${key}`;
+      if (scene.textures.exists(texKey)) continue;
+      const first = scene.textures.get(`sw-${key}-body`).getSourceImage() as HTMLImageElement;
+      const tex = scene.textures.createCanvas(texKey, first.width, first.height)!;
+      Player.drawSheet(scene, key, tex, tunic, hair, helmTex, chestTex, helmMaskTex, helmOffsets, chestOffsets);
+      const cols = first.width / FRAME;
+      const rows = first.height / FRAME;
+      for (let i = 0; i < cols * rows; i++) {
+        tex.add(i, 0, (i % cols) * FRAME, Math.floor(i / cols) * FRAME, FRAME, FRAME);
+      }
+    }
+    // Те же скорости и длины, что у своего героя (см. конструктор Player):
+    // разъехавшийся шаг чужого героя выглядел бы льдом под ногами.
+    createDirAnims(scene, prefix, DIRS_HERO, {
+      idle: { texture: `${prefix}-idle`, cols: 12, frameRate: 8, loop: true },
+      walk: { texture: `${prefix}-walk`, cols: 6, frameRate: 10, loop: true },
+      attack: { texture: `${prefix}-attack`, cols: 8, frameRate: 16, loop: false },
+      death: { texture: `${prefix}-death`, cols: 7, frameRate: 10, loop: false },
+    });
   }
 
   /** Центры головы по кадрам листа: середина bbox непрозрачных пикселей слоя head. */
@@ -766,13 +852,7 @@ export class Player {
       return;
     }
     if (!this.held) {
-      this.held = this.scene.add.image(this.sprite.x, this.sprite.y, texKey);
-      // Пивот — рукоять (низ-лево диагональной иконки, замерено по icon_02:
-      // кончик в (2,30) из 32, кисть чуть выше по диагонали): вокруг неё оружие
-      // и поворачивается при взмахе, как в кисти.
-      this.held.setOrigin(0.12, 0.88);
-      // Длина клинка постоянна: подгоняем иконку под штатный меч раз и навсегда.
-      this.held.setScale((ANCHORS.bladeLen * HELD_SCALE) / ICON_BLADE_LEN);
+      this.held = makeHeldImage(this.scene, texKey); // общий стиль с чужими героями
     } else {
       this.held.setTexture(texKey);
     }
@@ -794,38 +874,17 @@ export class Player {
 
     // Берём позу ПО ТЕКУЩЕМУ КАДРУ, в том числе на ударе. Раньше взмах шёл по
     // таймеру и отставал от тела: тело живёт кадрами, а меч жил часами.
-    const a = this.currentAnchor();
-    if (!a) {
-      this.held.setVisible(false); // на этом кадре оружия не видно (замах из-за спины)
+    // Размер НЕ трогаем покадрово (см. placeHeld): длина клинка одна, меняются
+    // лишь место и наклон — масштаб ставится один раз в makeHeldImage.
+    const frame = this.sprite.anims.currentFrame;
+    const anim = this.sprite.anims.getName().split('-')[1];
+    if (!frame) {
+      this.held.setVisible(false);
       return;
     }
-
-    // Якорь задан в пикселях кадра 64x64, а точка спрайта — ноги (origin 0.5/0.75).
-    this.held.setVisible(true);
-    this.held.setPosition(
-      this.sprite.x + (a.x - FRAME / 2),
-      this.sprite.y + (a.y - FRAME * 0.75),
-    );
-    // Оружие «из-за спины» рисуем под героем, иначе поверх.
-    this.held.setDepth(this.sprite.depth + (a.behind ? -0.01 : 0.01));
-    this.held.setAngle(a.angle - ICON_BLADE_ANGLE);
-    // Размер НЕ трогаем покадрово. Раньше он брался из длины клинка на кадре, но
-    // на замахе художник рисует смазанный след — длина там взлетает втрое, и меч
-    // на долю секунды раздувался. Меч жёсткий: длина одна, меняются лишь место и
-    // наклон. Масштаб ставится один раз в setHeldWeapon.
+    placeHeld(this.held, this.sprite.x, this.sprite.y, this.sprite.depth, anim, Number(frame.textureFrame));
   }
 
-  /** Якорь оружия для показанного сейчас кадра. null — кадра нет в таблице. */
-  private currentAnchor(): Anchor | null {
-    const frame = this.sprite.anims.currentFrame;
-    if (!frame) return null;
-    // Ключ анимации вида `sw-walk-left` — вытаскиваем из него имя анимации.
-    const anim = this.sprite.anims.getName().split('-')[1];
-    const table = ANCHORS.anims[anim];
-    if (!table) return null;
-    const index = Number(frame.textureFrame);
-    return table.frames[index] ?? null;
-  }
 
   /**
    * Урон по герою. Возвращает, СКОЛЬКО реально прошло (0 — не прошёл вовсе: герой

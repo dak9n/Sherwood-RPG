@@ -22,6 +22,7 @@ export interface RemoteRow {
   anim: string;
   helm: string | null;
   body: string | null;
+  weapon: string | null;
 }
 
 export interface PosUpdate {
@@ -31,8 +32,33 @@ export interface PosUpdate {
   anim: string;
   helm: string | null;
   body: string | null;
+  weapon: string | null;
   /** Мёртвого героя серверные мобы не трогают. */
   dead: boolean;
+}
+
+/** Добыча на земле — общая: видят все, забирает первый дошедший. */
+export interface LootRow {
+  id: number;
+  item: string;
+  qty: number;
+  x: number;
+  y: number;
+}
+
+/**
+ * Чужой боевой эффект: снаряд, вспышка, цифра урона. Чистая картинка — урон
+ * никогда не считается по fx, только по hit/mobhit.
+ */
+export interface FxMsg {
+  kind: string;
+  x?: number;
+  y?: number;
+  angle?: number;
+  dmg?: number;
+  mobId?: number;
+  crit?: boolean;
+  heavy?: boolean;
 }
 
 /** Общий моб, каким его знает сервер (см. server/world.ts). */
@@ -64,8 +90,14 @@ export class OnlineClient {
   onMobs: (ms: MobRow[]) => void = () => {};
   /** Моб укусил МЕНЯ: сервер решил, клиент считает броню и показывает цифру. */
   onMobHit: (id: number, dmg: number) => void = () => {};
-  /** Мой удар оказался смертельным: опыт и добыча — мои. */
+  /** Мой удар оказался смертельным: опыт мой (добыча уже лежит на земле у всех). */
   onKill: (id: number) => void = () => {};
+  /** Добыча на земле — общая для всех на карте. */
+  onLoot: (ls: LootRow[]) => void = () => {};
+  /** Мой подбор удался: сервер отдал мне item×qty. */
+  onTaken: (id: number, item: string, qty: number) => void = () => {};
+  /** Чужой боевой эффект: нарисовать и забыть. */
+  onFx: (fx: FxMsg) => void = () => {};
 
   private ws: WebSocket | null = null;
   private authed = false;
@@ -118,6 +150,12 @@ export class OnlineClient {
         this.onMobHit(msg.id, msg.dmg);
       } else if (msg.t === 'kill' && typeof msg.id === 'number') {
         this.onKill(msg.id);
+      } else if (msg.t === 'loot' && Array.isArray(msg.ls)) {
+        this.onLoot(msg.ls as LootRow[]);
+      } else if (msg.t === 'taken' && typeof msg.id === 'number' && typeof msg.item === 'string') {
+        this.onTaken(msg.id, msg.item, Number(msg.qty) || 1);
+      } else if (msg.t === 'fx' && typeof msg.kind === 'string') {
+        this.onFx(msg as unknown as FxMsg);
       } else if (msg.t === 'chat' && typeof msg.from === 'string' && typeof msg.text === 'string') {
         this.onChat(msg.from, msg.text);
       }
@@ -156,6 +194,16 @@ export class OnlineClient {
   /** Я ударил моба id на dmg. Смертельный ли — решит сервер (придёт kill). */
   sendHit(id: number, dmg: number): void {
     if (this.online) this.ws!.send(JSON.stringify({ t: 'hit', id, dmg }));
+  }
+
+  /** Подбираю добычу id; влезает max. Ответ придёт событием taken (или никак). */
+  sendTake(id: number, max: number): void {
+    if (this.online) this.ws!.send(JSON.stringify({ t: 'take', id, max }));
+  }
+
+  /** Показать мой эффект остальным. Дешёвая картинка — шлём и забываем. */
+  sendFx(fx: FxMsg): void {
+    if (this.online) this.ws!.send(JSON.stringify({ t: 'fx', ...fx }));
   }
 
   destroy(): void {
