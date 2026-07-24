@@ -4,7 +4,7 @@ import { EditorScene } from './scenes/EditorScene';
 import { whoami, logout } from './auth/client';
 import { showAuthWindow, showAccountBadge } from './auth/window';
 import { showCharacterCreate } from './auth/character-window';
-import { fetchProgress, setPendingSave, setPendingChar, setAccount } from './auth/progress';
+import { fetchProgress, setPendingSave, setPendingChar, setPendingClass, setAccount } from './auth/progress';
 import { cleanName } from './game/save';
 
 /** Игра и редактор — две разные сцены, вместе они не запускаются никогда. */
@@ -111,7 +111,12 @@ async function main(): Promise<void> {
     setAccount('guest');
     const save = await fetchProgress();
     const savedName = cleanName((save as { charName?: unknown } | null)?.charName);
-    const charName = savedName || (await showCharacterCreate()).name;
+    let charName = savedName;
+    if (!charName) {
+      const created = await showCharacterCreate();
+      charName = created.name;
+      setPendingClass(created.class); // класс — только новому герою
+    }
     setPendingChar(charName);
     setPendingSave(save);
     bootGame();
@@ -132,7 +137,12 @@ async function main(): Promise<void> {
   // Нет героя (новый игрок) — экран создания: класс и ник. Есть ник в сейве —
   // идём сразу в игру. Ник передаём сцене отдельно (у нового сейва ещё нет).
   const savedName = cleanName((save as { charName?: unknown } | null)?.charName);
-  const charName = savedName || (await showCharacterCreate()).name;
+  let charName = savedName;
+  if (!charName) {
+    const created = await showCharacterCreate();
+    charName = created.name;
+    setPendingClass(created.class); // класс — только новому герою
+  }
   setPendingChar(charName);
 
   setPendingSave(save);

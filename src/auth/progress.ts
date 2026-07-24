@@ -44,6 +44,23 @@ export function takePendingChar(): string {
   return c;
 }
 
+/**
+ * Класс героя с экрана создания. Применяется ОДИН раз и только к новому герою
+ * (у которого нет сейва): класс здесь — это стартовая экипировка, а дальше
+ * всё живёт в самих вещах и сохраняется обычным сейвом.
+ */
+let pendingClass = '';
+
+export function setPendingClass(id: string): void {
+  pendingClass = id;
+}
+
+export function takePendingClass(): string {
+  const c = pendingClass;
+  pendingClass = '';
+  return c;
+}
+
 /** Ключ локального сейва: у каждого аккаунта свой, чтобы не путать прогресс. */
 const localKey = (): string => (account ? `progress:${account}` : '');
 

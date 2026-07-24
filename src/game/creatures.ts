@@ -348,6 +348,12 @@ export const BOSSES: Record<string, MonsterStats> = {
       { id: 'helm6', chance: 0.22 },
       { id: 'helm3', chance: 0.3 },
       { id: 'sword_blue', chance: 0.2 },
+      // Комплект Vanguard — по частям, редко: собрать весь сет — это цель на
+      // много походов, а не один удачный вечер.
+      { id: 'vanguard_helm', chance: 0.12 },
+      { id: 'vanguard_chest', chance: 0.1 },
+      { id: 'vanguard_boots', chance: 0.14 },
+      { id: 'vanguard_gloves', chance: 0.14 },
     ],
   },
 };

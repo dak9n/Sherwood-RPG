@@ -7,7 +7,7 @@
  */
 
 export type Tab = 'weapon' | 'armor' | 'resource' | 'food';
-export type EquipSlot = 'helm' | 'body' | 'weapon' | 'shield' | 'boots' | 'ring' | 'amulet';
+export type EquipSlot = 'helm' | 'body' | 'weapon' | 'shield' | 'boots' | 'gloves' | 'ring' | 'amulet';
 
 /**
  * Редкость. Красит рамку ячейки, но это не украшение: цвет обязан совпадать с
@@ -256,6 +256,30 @@ export const ITEMS: Record<string, ItemDef> = {
   helm6: {
     id: 'helm6', name: 'Helmet 6', tab: 'armor',
     icon: aico(107), stack: 1, slot: 'helm', bonus: { def: 4, hp: 20 }, rarity: 'epic',
+  },
+
+  // --- Комплект Vanguard ---
+  //
+  // Нарезан из public/assets/new-armor/armor1.png (лист 4x4: вещь x ракурс).
+  // Ракурсы лежат в armor-icons/vanguard_*/, иконки — клетки 108..111 атласа,
+  // спрайты на героя для шлема и нагрудника собирает tools/worn-from-views.py.
+  // Топовый сет: сильнее одиночных вещей, но добывается только с боссов.
+  vanguard_helm: {
+    id: 'vanguard_helm', name: 'Vanguard Helm', tab: 'armor',
+    icon: aico(109), stack: 1, slot: 'helm', bonus: { def: 5, hp: 20, mp: 10 }, rarity: 'epic',
+  },
+  vanguard_chest: {
+    id: 'vanguard_chest', name: 'Vanguard Cuirass', tab: 'armor',
+    // Тяжёлый, но не как Plate: золото куют легче стали.
+    icon: aico(108), stack: 1, slot: 'body', bonus: { def: 6, hp: 25, speed: -2 }, rarity: 'epic',
+  },
+  vanguard_boots: {
+    id: 'vanguard_boots', name: 'Vanguard Greaves', tab: 'armor',
+    icon: aico(110), stack: 1, slot: 'boots', bonus: { def: 2, speed: 6 }, rarity: 'epic',
+  },
+  vanguard_gloves: {
+    id: 'vanguard_gloves', name: 'Vanguard Gauntlets', tab: 'armor',
+    icon: aico(111), stack: 1, slot: 'gloves', bonus: { def: 2, dmg: 2 }, rarity: 'epic',
   },
 };
 

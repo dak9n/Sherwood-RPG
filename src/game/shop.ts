@@ -48,6 +48,12 @@ export const VALUE: Record<string, number> = Object.assign(Object.create(null), 
   helm4: 220,
   helm5: 300,
   helm6: 380,
+  // Комплект Vanguard: в лавке НЕ продаётся (только дроп с боссов, см.
+  // creatures.ts), но ценность нужна — иначе добытое не продать.
+  vanguard_helm: 520,
+  vanguard_chest: 640,
+  vanguard_boots: 360,
+  vanguard_gloves: 360,
 });
 
 /** Что стоит на витрине и в каком порядке. Только эти предметы можно купить. */

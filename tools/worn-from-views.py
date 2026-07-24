@@ -22,7 +22,7 @@
 Требует Pillow. В игру и сборку не входит — офлайн-утилита.
 """
 
-from PIL import Image
+from PIL import Image, ImageEnhance
 import json
 import os
 
@@ -55,15 +55,73 @@ VIEWS = {
     for n in range(1, 7)
 }
 
+# Комплект Vanguard — нарезан из new-armor/armor1.png (4 ракурса на вещь).
+#
+# Параметры подобраны ПО КОМПОЗИТУ НА ГЕРОЕ (см. историю): арт комплекта
+# вытянут вертикально, и на стандартной высоте 20 шлем упирался в кирасу —
+# герой превращался в золотой столб. Шлем 18 с посадкой -3: накрывает причёску
+# (иначе маска волос вырезала бы полголовы), но между ним и кирасой остаётся
+# просвет. Кираса обрезана до торса (crop 0.5 — юбка до колен на герое ростом
+# в 20px заливала ноги) и уже (14/11) — по бокам выглядывают руки.
+VIEWS["vanguard_helm"] = {
+    "dir": "public/assets/armor-icons/vanguard_helm",
+    "files": {"down": "front.png", "left": "left.png",
+              "right": "right.png", "up": "back.png"},
+    "height": 16, "lift": -4, "stylize": True,
+}
+VIEWS["vanguard_chest"] = {
+    "dir": "public/assets/armor-icons/vanguard_chest",
+    "files": {"down": "front.png", "left": "left.png",
+              "right": "right.png", "up": "back.png"},
+    # По ВЫСОТЕ (13 — торс с ремнём, не блин), ширина капится подрезкой боков:
+    # арт после обрезки юбки шире торса героя, и нормировка по ширине его
+    # сплющивала (14x9). maxw держит панцирь в силуэте, руки видны.
+    "kind": "chest", "crop": 0.6, "chest_h": 13,
+    "maxw": {"down": 14, "left": 11, "right": 11, "up": 14},
+    "stylize": True,
+}
+
 DIRS = ("down", "left", "right", "up")
 
 
-def scaled(src, height):
-    """Ужать до нужной высоты, сохранив пропорции, и убрать полупрозрачные края."""
+def stylize(img, colors=10, sat=1.25, con=1.15):
+    """Из мыла — в пиксель-арт: плоские тона, сочность, тёмная кромка.
+
+    Ужатый в дюжину пикселей детальный арт превращается в шум: сотня цветов,
+    ни одной читаемой зоны. Рисованные руками спрайты живут наоборот — крупными
+    плоскими тонами и тёмным краем. Квантизация склеивает шум в зоны, лёгкий
+    подъём насыщенности возвращает цвет, съеденный усреднением, а затемнённая
+    кромка отделяет силуэт от героя и травы — как обводка у художника.
+    Только для машинных нарезок: рисованное руками стилизовать нечего.
+    """
+    rgb = img.convert("RGB")
+    rgb = ImageEnhance.Color(rgb).enhance(sat)
+    rgb = ImageEnhance.Contrast(rgb).enhance(con)
+    q = rgb.quantize(colors, method=Image.MEDIANCUT).convert("RGB")
+    out = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    a = img.getchannel("A").load()
+    qp = q.load()
+    op = out.load()
+    for y in range(img.height):
+        for x in range(img.width):
+            if a[x, y] == 0:
+                continue
+            r, g, b = qp[x, y]
+            edge = any(
+                xx < 0 or yy < 0 or xx >= img.width or yy >= img.height or a[xx, yy] == 0
+                for xx, yy in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)))
+            if edge:
+                r, g, b = int(r * 0.45), int(g * 0.45), int(b * 0.45)
+            op[x, y] = (r, g, b, 255)
+    return out
+
+
+def scaled(src, height=None, width=None):
+    """Ужать до высоты ИЛИ ширины, сохранив пропорции, и убрать полупрозрачные края."""
     bb = src.getbbox()
     core = src.crop(bb) if bb else src
-    k = height / core.height
-    small = core.resize((max(1, round(core.width * k)), height), Image.LANCZOS)
+    k = (height / core.height) if height else (width / core.width)
+    small = core.resize((max(1, round(core.width * k)), max(1, round(core.height * k))), Image.LANCZOS)
 
     # Пиксель-арт не терпит полупрозрачных краёв: край либо есть, либо нет.
     # Исходники сглаженные, без этого шаг шлем получил бы мыльную кайму.
@@ -87,15 +145,35 @@ def build(item_id, spec):
 
     strip = Image.new("RGBA", (CELL * 4, CELL), (0, 0, 0, 0))
     sizes = []
+    chest = spec.get("kind") == "chest"
+    # Нагрудник: ширины фас/бок как у worn-from-icons.py, посадка по центру.
+    chest_widths = spec.get("widths", {"down": 16, "left": 12, "right": 12, "up": 16})
 
     for i, d in enumerate(DIRS):
         path = os.path.join(ROOT, spec["dir"], spec["files"][d])
-        piece = scaled(Image.open(path).convert("RGBA"), H_HELM)
+        src = Image.open(path).convert("RGBA")
+        # crop — верхняя доля арта: длиннополый доспех обрезается до торса,
+        # иначе на герое он заливает и ноги.
+        if "crop" in spec:
+            src = src.crop((0, 0, src.width, round(src.height * spec["crop"])))
+        if chest and "chest_h" in spec:
+            # По высоте, широкое — подрезаем бока по центру (см. VIEWS Vanguard).
+            piece = scaled(src, height=spec["chest_h"])
+            maxw = spec["maxw"][d]
+            if piece.width > maxw:
+                x0 = (piece.width - maxw) // 2
+                piece = piece.crop((x0, 0, x0 + maxw, piece.height))
+        elif chest:
+            piece = scaled(src, width=chest_widths[d])
+        else:
+            piece = scaled(src, height=spec.get("height", H_HELM))
+        if spec.get("stylize"):
+            piece = stylize(piece)
         sizes.append(f"{d} {piece.width}x{piece.height}")
 
         cell = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
         cell.paste(piece, ((CELL - piece.width) // 2,
-                           (CELL - piece.height) // 2 + HELM_LIFT), piece)
+                           (CELL - piece.height) // 2 + (0 if chest else spec.get("lift", HELM_LIFT))), piece)
         strip.paste(cell, (i * CELL, 0))
 
     strip.save(os.path.join(OUT, f"{item_id}.png"))

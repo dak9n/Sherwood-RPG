@@ -40,7 +40,7 @@ import { bind, swap, unbind, findInBag, emptyHotbar, type Hotbar } from '../game
 import { equipFromBag, unequip, totalBonuses, slotWearing, ensureStarterWeapon, STARTER_WEAPON, type Equipped } from '../game/equipment';
 import { emptySpent, unspent, spendPoint, bonusFrom, POINTS_PER_LEVEL, type Spent, type Stat } from '../game/stats';
 import { parseSave, serializeProgress, type Progress } from '../game/save';
-import { takePendingSave, takePendingChar, pushProgress, loadFailed } from '../auth/progress';
+import { takePendingSave, takePendingChar, takePendingClass, pushProgress, loadFailed } from '../auth/progress';
 import { ChatUi } from '../game/chat-ui';
 
 /** Целый зум: при дробном пиксели карты не легли бы на пиксели экрана. */
@@ -1429,7 +1429,11 @@ export class GameScene extends MapScene {
    */
   private applySave(): void {
     const prog = parseSave(takePendingSave(), BAG_SIZE);
-    if (!prog) return;
+    if (!prog) {
+      // Сейва нет — герой новый: одеваем его по выбранному классу.
+      this.applyStarterClass();
+      return;
+    }
 
     // Сумка и панель — по месту: ссылки в окнах остаются те же.
     for (let i = 0; i < BAG_SIZE; i++) this.bag[i] = prog.bag[i] ?? null;
@@ -2090,6 +2094,21 @@ export class GameScene extends MapScene {
     if (fx.kind === 'burst') this.fireBurst(fx.x, fx.y);
     else if (fx.kind === 'rain') this.rainVisual(fx.x, fx.y);
     else if (fx.kind === 'slash') this.heavySwingFxAt(fx.x, fx.y, fx.angle ?? 0, 340);
+  }
+
+  /**
+   * Стартовая экипировка класса — один раз, только новому герою. Дальше класс
+   * нигде не хранится: всё, чем он отличался, лежит в самих вещах и едет в
+   * обычном сейве.
+   */
+  private applyStarterClass(): void {
+    if (takePendingClass() !== 'vanguard') return;
+    this.equipped.helm = 'vanguard_helm';
+    this.equipped.body = 'vanguard_chest';
+    this.equipped.boots = 'vanguard_boots';
+    this.equipped.gloves = 'vanguard_gloves';
+    this.applyGear(); // прибавки и надетый вид — сразу, как у восстановленного сейва
+    this.refreshBags();
   }
 
   /** Метка с ником над героем: идёт за ним и сортируется вместе с ним. */

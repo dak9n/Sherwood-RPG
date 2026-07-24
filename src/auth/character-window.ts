@@ -18,8 +18,15 @@ const HERO = {
   x: 19, y: 20, w: 20, h: 27, zoom: 3,
 };
 
-/** Классы. Пока один; массив — чтобы добавить остальные строкой, а не переписью. */
-const CLASSES = [{ id: 'swordsman', label: 'Swordsman', hint: 'Melee, sturdy health' }];
+/**
+ * Классы. Vanguard — тот же мечник в полном комплекте Vanguard со старта:
+ * ходит медленнее и бьёт крепче с первой минуты. Иконка комплекта — на
+ * портрете поверх героя, чтобы карточки различались с одного взгляда.
+ */
+const CLASSES: { id: string; label: string; hint: string; badge?: string }[] = [
+  { id: 'swordsman', label: 'Swordsman', hint: 'Melee, sturdy health' },
+  { id: 'vanguard', label: 'Vanguard', hint: 'Starts in full Vanguard armor', badge: 'assets/armor-icons/vanguard_helm/front.png' },
+];
 
 const CSS = `
   #charwin {
@@ -63,6 +70,8 @@ const CSS = `
     background: url(${HERO.sheet}) -${HERO.x}px -${HERO.y}px;
     transform: scale(${HERO.zoom}); transform-origin: bottom center;
   }
+  /* Значок комплекта в углу портрета: чем классы отличаются — видно сразу. */
+  #charwin .cls .badge { position: absolute; right: 2px; bottom: 2px; width: 24px; height: auto; }
   #charwin .cls .nm { font-size: var(--fs-md); font-weight: var(--fw-bold); color: var(--gold-pale); }
   #charwin .cls .h { font-size: var(--fs-tiny); color: #c9b59a; line-height: 1.35; margin-top: 2px; }
   #charwin .soon {
@@ -111,7 +120,7 @@ export function showCharacterCreate(): Promise<{ name: string; class: string }> 
           ${CLASSES.map(
             (c, i) => `
             <div class="cls" data-class="${c.id}" aria-selected="${i === 0}">
-              <div class="portrait"><i></i></div>
+              <div class="portrait"><i></i>${c.badge ? `<img class="badge" src="${c.badge}" alt="">` : ''}</div>
               <div class="nm">${c.label}</div>
               <div class="h">${c.hint}</div>
             </div>`,

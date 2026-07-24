@@ -114,6 +114,9 @@ const SLOT_GHOST: Record<string, Icon> = {
   ring: ico(5, 8),
   weapon: ico(0, 8),
   shield: ico(1, 8),
+  // Заглушка перчаток — иконка Vanguard Gauntlets из атласа брони: в наборе
+  // интерфейса перчаток не нарисовано.
+  gloves: { sheet: 'armor', x: ((111 - 1) % 10) * 32, y: Math.floor((111 - 1) / 10) * 32, w: 32, h: 32 },
   boots: ico(2, 8),
 };
 
